@@ -1,0 +1,28 @@
+#ifndef APP_CONTROLLER_H
+#define APP_CONTROLLER_H
+
+#include <Arduino.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Application controller
+bool app_controller_init(void);
+void app_controller_deinit(void);
+void app_controller_run(void);
+
+// Application state management
+void app_controller_setup_ui_components(void);
+void app_controller_update_periodic_data(void);
+
+// Configuration
+#define APP_UPDATE_INTERVAL_MS 500
+#define APP_QR_CODE_SIZE 100
+#define APP_QR_CODE_DATA "https://github.com/rzeldent/esp32-smartdisplay"
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // APP_CONTROLLER_H
