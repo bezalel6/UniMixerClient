@@ -15,6 +15,7 @@ void app_controller_run(void);
 // Application state management
 void app_controller_setup_ui_components(void);
 void app_controller_update_periodic_data(void);
+void app_controller_update_network_status(void);
 
 // Configuration
 #define APP_UPDATE_INTERVAL_MS 500

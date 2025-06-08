@@ -15,6 +15,14 @@ lv_obj_t * ui_Label3;
 lv_obj_t * ui_Slider2;
 lv_obj_t * ui_btnAudio1;
 lv_obj_t * ui_Label2;
+lv_obj_t * ui_pnlNetwork;
+lv_obj_t * ui_lblWifi;
+lv_obj_t * ui_lblWifiStatus;
+lv_obj_t * ui_objWifiIndicator;
+lv_obj_t * ui_lblSSID;
+lv_obj_t * ui_lblSSIDValue;
+lv_obj_t * ui_lblIP;
+lv_obj_t * ui_lblIPValue;
 
 // event funtions
 
@@ -75,6 +83,52 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_Label2, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label2, "text");
 
+    ui_pnlNetwork = lv_obj_create(ui_Screen1);
+    lv_obj_set_width(ui_pnlNetwork, 200);
+    lv_obj_set_height(ui_pnlNetwork, 100);
+    lv_obj_remove_flag(ui_pnlNetwork, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_lblWifi = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_lblWifi, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblWifi, LV_SIZE_CONTENT);    /// 1
+    lv_label_set_text(ui_lblWifi, "Wifi:");
+
+    ui_lblWifiStatus = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_lblWifiStatus, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblWifiStatus, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblWifiStatus, LV_ALIGN_TOP_RIGHT);
+    lv_label_set_text(ui_lblWifiStatus, "Wifi:");
+
+    ui_objWifiIndicator = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_objWifiIndicator, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_objWifiIndicator, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_objWifiIndicator, LV_ALIGN_TOP_MID);
+    lv_label_set_text(ui_objWifiIndicator, "Wifi:");
+
+    ui_lblSSID = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_lblSSID, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblSSID, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblSSID, LV_ALIGN_LEFT_MID);
+    lv_label_set_text(ui_lblSSID, "SSID:");
+
+    ui_lblSSIDValue = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_lblSSIDValue, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblSSIDValue, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblSSIDValue, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_lblSSIDValue, "SSID:");
+
+    ui_lblIP = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_lblIP, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblIP, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblIP, LV_ALIGN_BOTTOM_LEFT);
+    lv_label_set_text(ui_lblIP, "IP:");
+
+    ui_lblIPValue = lv_label_create(ui_pnlNetwork);
+    lv_obj_set_width(ui_lblIPValue, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblIPValue, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblIPValue, LV_ALIGN_BOTTOM_MID);
+    lv_label_set_text(ui_lblIPValue, "IP:");
+
     ui_Panel3 = ui_Panel3;
     ui_btnAudio2 = ui_btnAudio2;
     ui_btnAudio1 = ui_btnAudio1;
@@ -96,5 +150,13 @@ void ui_Screen1_screen_destroy(void)
     ui_btnAudio1 = NULL;
     ui_btnAudio1 = NULL;
     ui_Label2 = NULL;
+    ui_pnlNetwork = NULL;
+    ui_lblWifi = NULL;
+    ui_lblWifiStatus = NULL;
+    ui_objWifiIndicator = NULL;
+    ui_lblSSID = NULL;
+    ui_lblSSIDValue = NULL;
+    ui_lblIP = NULL;
+    ui_lblIPValue = NULL;
 
 }

@@ -108,3 +108,39 @@ void display_tick_update(void) {
     lv_tick_inc(now - lv_last_tick);
     lv_last_tick = now;
 }
+
+void display_update_wifi_status(lv_obj_t* status_label, lv_obj_t* indicator_obj, const char* status_text, bool connected) {
+    if (status_label && status_text) {
+        lv_label_set_text(status_label, status_text);
+    }
+
+    if (indicator_obj) {
+        if (connected) {
+            // Green circle for connected
+            lv_label_set_text(indicator_obj, "●");
+            lv_obj_set_style_text_color(indicator_obj, lv_color_hex(0x00FF00), LV_PART_MAIN);
+        } else if (strcmp(status_text, "Connecting...") == 0) {
+            // Yellow circle for connecting
+            lv_label_set_text(indicator_obj, "●");
+            lv_obj_set_style_text_color(indicator_obj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
+        } else {
+            // Red circle for disconnected/failed
+            lv_label_set_text(indicator_obj, "●");
+            lv_obj_set_style_text_color(indicator_obj, lv_color_hex(0xFF0000), LV_PART_MAIN);
+        }
+    }
+}
+
+void display_update_network_info(lv_obj_t* ssid_label, lv_obj_t* ip_label, const char* ssid, const char* ip_address) {
+    if (ssid_label && ssid && strlen(ssid) > 0) {
+        lv_label_set_text(ssid_label, ssid);
+    } else if (ssid_label) {
+        lv_label_set_text(ssid_label, "N/A");
+    }
+
+    if (ip_label && ip_address && strlen(ip_address) > 0) {
+        lv_label_set_text(ip_label, ip_address);
+    } else if (ip_label) {
+        lv_label_set_text(ip_label, "0.0.0.0");
+    }
+}
