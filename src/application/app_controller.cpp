@@ -16,7 +16,10 @@ static mqtt_handler_t audio_status_handler;
 
 // Audio status handler callback function
 static void audio_status_message_handler(const char* topic, const char* payload) {
-    ESP_LOGI(TAG, "Audio status received - Topic: %s, Payload: %s", topic, payload);
+    ESP_LOGI(TAG, "🎵 AUDIO STATUS RECEIVED! 🎵");
+    ESP_LOGI(TAG, "Topic: %s", topic);
+    ESP_LOGI(TAG, "Payload: %s", payload);
+    ESP_LOGI(TAG, "Payload length: %d", strlen(payload));
 
     // Parse the audio status payload and update UI components
     // You can add specific handling logic here based on the payload format
@@ -29,8 +32,8 @@ static void audio_status_message_handler(const char* topic, const char* payload)
 // Initialize audio status handler
 static void initialize_audio_status_handler(void) {
     strcpy(audio_status_handler.identifier, "AudioStatusHandler");
-    strcpy(audio_status_handler.subscribe_topic, "unimix/audio_status");
-    strcpy(audio_status_handler.publish_topic, "unimix/audio/requests");
+    strcpy(audio_status_handler.subscribe_topic, "homeassistant/unimix/audio_status");
+    strcpy(audio_status_handler.publish_topic, "homeassistant/unimix/audio/requests");
     audio_status_handler.callback = audio_status_message_handler;
     audio_status_handler.active = true;
 }

@@ -440,6 +440,9 @@ static void subscribe_to_registered_handlers(void) {
     for (int i = 0; i < handler_count; i++) {
         if (registered_handlers[i] != nullptr &&
             strlen(registered_handlers[i]->subscribe_topic) > 0) {
+            ESP_LOGI(TAG, "Handler %s subscribing to: %s",
+                     registered_handlers[i]->identifier,
+                     registered_handlers[i]->subscribe_topic);
             mqtt_subscribe(registered_handlers[i]->subscribe_topic);
         }
     }
