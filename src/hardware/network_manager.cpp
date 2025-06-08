@@ -1,5 +1,6 @@
 #include "network_manager.h"
 #include "device_manager.h"
+#include "mqtt_manager.h"
 #include <esp_log.h>
 
 static const char* TAG = "NetworkManager";
@@ -33,12 +34,20 @@ bool network_manager_init(void) {
     // Start WiFi connection
     network_connect_wifi();
 
+    // Initialize MQTT manager
+    ESP_LOGI(TAG, "Initializing MQTT manager");
+    mqtt_manager_init();
+
     initialization_complete = true;
     return true;
 }
 
 void network_manager_deinit(void) {
     ESP_LOGI(TAG, "Deinitializing network manager");
+
+    // Deinitialize MQTT manager first
+    mqtt_manager_deinit();
+
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     initialization_complete = false;
@@ -50,6 +59,9 @@ void network_manager_update(void) {
     }
 
     update_connection_status();
+
+    // Update MQTT manager
+    mqtt_manager_update();
 
     // Handle reconnection logic
     unsigned long now = device_get_millis();
@@ -164,12 +176,24 @@ static void wifi_event_handler(WiFiEvent_t event) {
             current_wifi_status = WIFI_STATUS_CONNECTED;
             current_ip_address = WiFi.localIP().toString();
             connection_start_time = 0;  // Reset connection timer
+
+            // Attempt MQTT connection when WiFi is ready
+            if (!mqtt_is_connected()) {
+                ESP_LOGI(TAG, "WiFi connected, attempting MQTT connection");
+                mqtt_connect();
+            }
             break;
 
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             ESP_LOGW(TAG, "WiFi disconnected");
             current_wifi_status = WIFI_STATUS_DISCONNECTED;
             current_ip_address = "";
+
+            // Disconnect MQTT when WiFi is lost
+            if (mqtt_is_connected()) {
+                ESP_LOGI(TAG, "WiFi disconnected, disconnecting MQTT");
+                mqtt_disconnect();
+            }
             break;
 
         case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:

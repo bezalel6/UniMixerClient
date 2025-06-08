@@ -16,4 +16,6 @@ void setup() {
 void loop() {
     // Run the main application loop
     app_controller_run();
+
+    delay(10);
 }
