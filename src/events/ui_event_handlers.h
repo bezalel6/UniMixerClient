@@ -8,8 +8,6 @@ extern "C" {
 #endif
 
 // UI Event Handlers
-void OnAddOneClicked(lv_event_t *e);
-void OnRotateClicked(lv_event_t *e);
 
 #ifdef __cplusplus
 }

@@ -19,8 +19,6 @@ void app_controller_update_network_status(void);
 
 // Configuration
 #define APP_UPDATE_INTERVAL_MS 500
-#define APP_QR_CODE_SIZE 100
-#define APP_QR_CODE_DATA "https://github.com/rzeldent/esp32-smartdisplay"
 
 #ifdef __cplusplus
 }

@@ -62,24 +62,13 @@ void app_controller_run(void) {
 }
 
 void app_controller_setup_ui_components(void) {
-    // Create QR code component
-    display_create_qr_code(ui_scrMain, APP_QR_CODE_DATA, APP_QR_CODE_SIZE);
-
     // Set display to 180 degrees rotation
     display_set_rotation(DISPLAY_ROTATION_180);
 }
 
 void app_controller_update_periodic_data(void) {
-    unsigned long now = device_get_millis();
-
-    // Update milliseconds counter
-    display_update_label_uint32(ui_lblMillisecondsValue, now);
-
-#ifdef BOARD_HAS_CDS
-    // Update light sensor reading
-    uint32_t light_sensor_mv = device_read_light_sensor_mv();
-    display_update_label_uint32(ui_lblCdrValue, light_sensor_mv);
-#endif
+    // This function can be used for any Screen1-specific periodic data updates
+    // Currently focused on network status updates only
 }
 
 void app_controller_update_network_status(void) {

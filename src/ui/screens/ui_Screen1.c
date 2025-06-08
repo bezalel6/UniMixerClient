@@ -100,10 +100,10 @@ void ui_Screen1_screen_init(void)
     lv_label_set_text(ui_lblWifiStatus, "Wifi:");
 
     ui_objWifiIndicator = lv_label_create(ui_pnlNetwork);
-    lv_obj_set_width(ui_objWifiIndicator, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_width(ui_objWifiIndicator, 10);
     lv_obj_set_height(ui_objWifiIndicator, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_objWifiIndicator, LV_ALIGN_TOP_MID);
-    lv_label_set_text(ui_objWifiIndicator, "Wifi:");
+    lv_label_set_text(ui_objWifiIndicator, "_");
 
     ui_lblSSID = lv_label_create(ui_pnlNetwork);
     lv_obj_set_width(ui_lblSSID, LV_SIZE_CONTENT);   /// 1
