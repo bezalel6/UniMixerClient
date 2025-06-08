@@ -2,6 +2,7 @@
 #include <ui/ui.h>
 #include <string.h>
 #include <stdio.h>
+#include <cinttypes>
 
 // Private variables
 static lv_obj_t* current_qr_code = nullptr;
@@ -84,7 +85,7 @@ void display_update_qr_code(lv_obj_t* qr_obj, const char* data) {
 void display_update_label_uint32(lv_obj_t* label, uint32_t value) {
     if (label) {
         char buffer[32];
-        sprintf(buffer, "%lu", value);
+        sprintf(buffer, "%" PRIu32, value);
         lv_label_set_text(label, buffer);
     }
 }
@@ -98,7 +99,7 @@ void display_update_label_string(lv_obj_t* label, const char* text) {
 void display_update_label_millivolts(lv_obj_t* label, uint32_t millivolts) {
     if (label) {
         char buffer[32];
-        sprintf(buffer, "%lu mV", millivolts);
+        sprintf(buffer, "%" PRIu32 " mV", millivolts);
         lv_label_set_text(label, buffer);
     }
 }
@@ -115,18 +116,25 @@ void display_update_wifi_status(lv_obj_t* status_label, lv_obj_t* indicator_obj,
     }
 
     if (indicator_obj) {
+        // Position indicator to the left of the status label
+        if (status_label) {
+            lv_obj_align_to(indicator_obj, status_label, LV_ALIGN_OUT_LEFT_MID, -5, 0);
+        }
+
+        // Clear text and style as round background indicator
+        lv_label_set_text(indicator_obj, "");
+        lv_obj_set_style_radius(indicator_obj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(indicator_obj, LV_OPA_80, LV_PART_MAIN);
+
         if (connected) {
-            // Green circle for connected
-            lv_label_set_text(indicator_obj, "●");
-            lv_obj_set_style_text_color(indicator_obj, lv_color_hex(0x00FF00), LV_PART_MAIN);
+            // Green background for connected
+            lv_obj_set_style_bg_color(indicator_obj, lv_color_hex(0x00FF00), LV_PART_MAIN);
         } else if (strcmp(status_text, "Connecting...") == 0) {
-            // Yellow circle for connecting
-            lv_label_set_text(indicator_obj, "●");
-            lv_obj_set_style_text_color(indicator_obj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
+            // Yellow background for connecting
+            lv_obj_set_style_bg_color(indicator_obj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
         } else {
-            // Red circle for disconnected/failed
-            lv_label_set_text(indicator_obj, "●");
-            lv_obj_set_style_text_color(indicator_obj, lv_color_hex(0xFF0000), LV_PART_MAIN);
+            // Red background for disconnected/failed
+            lv_obj_set_style_bg_color(indicator_obj, lv_color_hex(0xFF0000), LV_PART_MAIN);
         }
     }
 }
