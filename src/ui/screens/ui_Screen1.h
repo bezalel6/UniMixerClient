@@ -32,6 +32,8 @@ extern lv_obj_t * ui_lblIPValue;
 extern lv_obj_t * ui_mqttContainer;
 extern lv_obj_t * ui_lblMQTT;
 extern lv_obj_t * ui_lblMQTTValue;
+extern lv_obj_t * ui_btnRequestData;
+extern lv_obj_t * ui_Label5;
 // CUSTOM VARIABLES
 extern lv_obj_t * ui_Panel3;
 

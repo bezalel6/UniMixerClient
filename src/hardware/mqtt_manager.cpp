@@ -161,7 +161,7 @@ bool mqtt_connect(void) {
         subscribe_to_registered_handlers();
 
         // Publish system status
-        mqtt_publish_system_status();
+        // mqtt_publish_system_status();
 
         return true;
     } else {
@@ -275,7 +275,7 @@ void mqtt_publish_system_status(void) {
     String status_json;
     serializeJson(doc, status_json);
 
-    mqtt_publish("smartdisplay/status", status_json.c_str());
+    mqtt_publish("homeassistant/smartdisplay/status", status_json.c_str());
 }
 
 bool mqtt_subscribe(const char* topic) {

@@ -25,6 +25,8 @@ lv_obj_t * ui_lblIPValue;
 lv_obj_t * ui_mqttContainer;
 lv_obj_t * ui_lblMQTT;
 lv_obj_t * ui_lblMQTTValue;
+lv_obj_t * ui_btnRequestData;
+lv_obj_t * ui_Label5;
 
 // event funtions
 
@@ -163,6 +165,21 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_lblMQTTValue, LV_ALIGN_BOTTOM_RIGHT);
     lv_label_set_text(ui_lblMQTTValue, "-");
 
+    ui_btnRequestData = lv_button_create(ui_Screen1);
+    lv_obj_set_width(ui_btnRequestData, 132);
+    lv_obj_set_height(ui_btnRequestData, 50);
+    lv_obj_set_x(ui_btnRequestData, 0);
+    lv_obj_set_y(ui_btnRequestData, -10);
+    lv_obj_set_align(ui_btnRequestData, LV_ALIGN_BOTTOM_MID);
+    lv_obj_add_flag(ui_btnRequestData, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_remove_flag(ui_btnRequestData, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_Label5 = lv_label_create(ui_btnRequestData);
+    lv_obj_set_width(ui_Label5, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label5, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label5, "Request Data");
+
     ui_Panel3 = ui_Panel3;
 
 }
@@ -192,5 +209,7 @@ void ui_Screen1_screen_destroy(void)
     ui_mqttContainer = NULL;
     ui_lblMQTT = NULL;
     ui_lblMQTTValue = NULL;
+    ui_btnRequestData = NULL;
+    ui_Label5 = NULL;
 
 }

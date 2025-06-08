@@ -5,9 +5,35 @@
 #include "../hardware/mqtt_manager.h"
 #include "../events/ui_event_handlers.h"
 #include <ui/ui.h>
+#include <esp_log.h>
 
 // Private variables
 static unsigned long next_update_millis = 0;
+static const char* TAG = "AppController";
+
+// Audio status handler
+static mqtt_handler_t audio_status_handler;
+
+// Audio status handler callback function
+static void audio_status_message_handler(const char* topic, const char* payload) {
+    ESP_LOGI(TAG, "Audio status received - Topic: %s, Payload: %s", topic, payload);
+
+    // Parse the audio status payload and update UI components
+    // You can add specific handling logic here based on the payload format
+    // For now, just log the received data
+
+    // Example: Update a UI component if needed
+    // display_update_label_string(ui_lblAudioStatus, payload);
+}
+
+// Initialize audio status handler
+static void initialize_audio_status_handler(void) {
+    strcpy(audio_status_handler.identifier, "AudioStatusHandler");
+    strcpy(audio_status_handler.subscribe_topic, "unimix/audio_status");
+    strcpy(audio_status_handler.publish_topic, "unimix/audio/requests");
+    audio_status_handler.callback = audio_status_message_handler;
+    audio_status_handler.active = true;
+}
 
 bool app_controller_init(void) {
     // Initialize hardware/device manager
@@ -23,6 +49,14 @@ bool app_controller_init(void) {
     // Initialize display manager
     if (!display_manager_init()) {
         return false;
+    }
+
+    // Initialize and register audio status handler
+    initialize_audio_status_handler();
+    if (!mqtt_register_handler(&audio_status_handler)) {
+        ESP_LOGE(TAG, "Failed to register audio status handler");
+    } else {
+        ESP_LOGI(TAG, "Audio status handler registered successfully");
     }
 
     // Setup UI components
@@ -65,6 +99,9 @@ void app_controller_run(void) {
 void app_controller_setup_ui_components(void) {
     // Set display to 180 degrees rotation
     display_set_rotation(DISPLAY_ROTATION_180);
+
+    // Register button click event handler
+    lv_obj_add_event_cb(ui_btnRequestData, ui_btnRequestData_clicked_handler, LV_EVENT_CLICKED, NULL);
 }
 
 void app_controller_update_periodic_data(void) {

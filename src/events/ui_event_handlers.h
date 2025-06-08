@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 // UI Event Handlers
+void ui_btnRequestData_clicked_handler(lv_event_t* e);
 
 #ifdef __cplusplus
 }

@@ -11,7 +11,7 @@ static void example_message_handler(const char* topic, const char* payload) {
 
     // Example: Echo the message back
     char response_topic[128];
-    snprintf(response_topic, sizeof(response_topic), "smartdisplay/response");
+    snprintf(response_topic, sizeof(response_topic), "homeassistant/smartdisplay/response");
 
     char response_payload[256];
     snprintf(response_payload, sizeof(response_payload), "Received: %s", payload);
@@ -24,8 +24,8 @@ static mqtt_handler_t example_handler;
 
 static void initialize_example_handler(void) {
     strcpy(example_handler.identifier, "ExampleHandler");
-    strcpy(example_handler.subscribe_topic, "smartdisplay/command");
-    strcpy(example_handler.publish_topic, "smartdisplay/response");
+    strcpy(example_handler.subscribe_topic, "homeassistant/smartdisplay/command");
+    strcpy(example_handler.publish_topic, "homeassistant/smartdisplay/response");
     example_handler.callback = example_message_handler;
     example_handler.active = true;
 }
@@ -51,7 +51,7 @@ void mqtt_example_publish_test_message(void) {
     }
 
     ESP_LOGI(TAG, "Publishing test message");
-    mqtt_publish("smartdisplay/test", "Hello from ESP32 Smart Display!");
+    mqtt_publish("homeassistant/smartdisplay/test", "Hello from ESP32 Smart Display!");
 }
 
 void mqtt_example_publish_sensor_data(float temperature, float humidity) {
@@ -62,5 +62,5 @@ void mqtt_example_publish_sensor_data(float temperature, float humidity) {
     char payload[128];
     snprintf(payload, sizeof(payload), "{\"temperature\":%.2f,\"humidity\":%.2f}", temperature, humidity);
 
-    mqtt_publish_delayed("smartdisplay/sensors", payload);
+    mqtt_publish_delayed("homeassistant/smartdisplay/sensors", payload);
 }
