@@ -5,24 +5,26 @@
 
 #include "../ui.h"
 
-lv_obj_t * ui_btnAudio1;
-lv_obj_t * ui_btnAudio2;
 lv_obj_t * ui_Panel3;
 lv_obj_t * ui_Screen1;
 lv_obj_t * ui_Panel3;
-lv_obj_t * ui_btnAudio2;
-lv_obj_t * ui_Label3;
+lv_obj_t * ui_Dropdown1;
 lv_obj_t * ui_Slider2;
-lv_obj_t * ui_btnAudio1;
-lv_obj_t * ui_Label2;
+lv_obj_t * ui_Dropdown2;
 lv_obj_t * ui_pnlNetwork;
+lv_obj_t * ui_wifiContainer;
 lv_obj_t * ui_lblWifi;
 lv_obj_t * ui_lblWifiStatus;
 lv_obj_t * ui_objWifiIndicator;
+lv_obj_t * ui_ssidContainer;
 lv_obj_t * ui_lblSSID;
 lv_obj_t * ui_lblSSIDValue;
+lv_obj_t * ui_ipContainer;
 lv_obj_t * ui_lblIP;
 lv_obj_t * ui_lblIPValue;
+lv_obj_t * ui_mqttContainer;
+lv_obj_t * ui_lblMQTT;
+lv_obj_t * ui_lblMQTTValue;
 
 // event funtions
 
@@ -45,18 +47,12 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_style_pad_top(ui_Panel3, 25, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_bottom(ui_Panel3, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    ui_btnAudio2 = lv_button_create(ui_Panel3);
-    lv_obj_set_width(ui_btnAudio2, 100);
-    lv_obj_set_height(ui_btnAudio2, 50);
-    lv_obj_set_align(ui_btnAudio2, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_btnAudio2, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
-    lv_obj_remove_flag(ui_btnAudio2, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_Label3 = lv_label_create(ui_btnAudio2);
-    lv_obj_set_width(ui_Label3, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Label3, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Label3, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label3, "text");
+    ui_Dropdown1 = lv_dropdown_create(ui_Panel3);
+    lv_dropdown_set_options(ui_Dropdown1, "None");
+    lv_obj_set_width(ui_Dropdown1, 150);
+    lv_obj_set_height(ui_Dropdown1, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_Dropdown1, LV_ALIGN_RIGHT_MID);
+    lv_obj_add_flag(ui_Dropdown1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
 
     ui_Slider2 = lv_slider_create(ui_Panel3);
     lv_slider_set_value(ui_Slider2, 0, LV_ANIM_OFF);
@@ -65,73 +61,109 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_height(ui_Slider2, 10);
     lv_obj_set_x(ui_Slider2, 408);
     lv_obj_set_y(ui_Slider2, -8);
-    lv_obj_set_align(ui_Slider2, LV_ALIGN_CENTER);
+    lv_obj_set_align(ui_Slider2, LV_ALIGN_TOP_MID);
 
     //Compensating for LVGL9.1 draw crash with bar/slider max value when top-padding is nonzero and right-padding is 0
     if(lv_obj_get_style_pad_top(ui_Slider2, LV_PART_MAIN) > 0) lv_obj_set_style_pad_right(ui_Slider2,
                                                                                               lv_obj_get_style_pad_right(ui_Slider2, LV_PART_MAIN) + 1, LV_PART_MAIN);
-    ui_btnAudio1 = lv_button_create(ui_Panel3);
-    lv_obj_set_width(ui_btnAudio1, 100);
-    lv_obj_set_height(ui_btnAudio1, 50);
-    lv_obj_set_align(ui_btnAudio1, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_btnAudio1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
-    lv_obj_remove_flag(ui_btnAudio1, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_Label2 = lv_label_create(ui_btnAudio1);
-    lv_obj_set_width(ui_Label2, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Label2, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Label2, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label2, "text");
+    ui_Dropdown2 = lv_dropdown_create(ui_Panel3);
+    lv_dropdown_set_options(ui_Dropdown2, "None");
+    lv_obj_set_width(ui_Dropdown2, 150);
+    lv_obj_set_height(ui_Dropdown2, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Dropdown2, 0);
+    lv_obj_set_y(ui_Dropdown2, -1);
+    lv_obj_set_align(ui_Dropdown2, LV_ALIGN_LEFT_MID);
+    lv_obj_add_flag(ui_Dropdown2, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
 
     ui_pnlNetwork = lv_obj_create(ui_Screen1);
     lv_obj_set_width(ui_pnlNetwork, 200);
-    lv_obj_set_height(ui_pnlNetwork, 100);
+    lv_obj_set_height(ui_pnlNetwork, 134);
+    lv_obj_set_flex_flow(ui_pnlNetwork, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(ui_pnlNetwork, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_remove_flag(ui_pnlNetwork, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_lblWifi = lv_label_create(ui_pnlNetwork);
+    ui_wifiContainer = lv_obj_create(ui_pnlNetwork);
+    lv_obj_remove_style_all(ui_wifiContainer);
+    lv_obj_set_width(ui_wifiContainer, lv_pct(100));
+    lv_obj_set_height(ui_wifiContainer, LV_SIZE_CONTENT);    /// 100
+    lv_obj_remove_flag(ui_wifiContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_lblWifi = lv_label_create(ui_wifiContainer);
     lv_obj_set_width(ui_lblWifi, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblWifi, LV_SIZE_CONTENT);    /// 1
     lv_label_set_text(ui_lblWifi, "Wifi:");
 
-    ui_lblWifiStatus = lv_label_create(ui_pnlNetwork);
+    ui_lblWifiStatus = lv_label_create(ui_wifiContainer);
     lv_obj_set_width(ui_lblWifiStatus, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblWifiStatus, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_lblWifiStatus, LV_ALIGN_TOP_RIGHT);
-    lv_label_set_text(ui_lblWifiStatus, "Wifi:");
+    lv_label_set_text(ui_lblWifiStatus, "-");
 
-    ui_objWifiIndicator = lv_label_create(ui_pnlNetwork);
+    ui_objWifiIndicator = lv_label_create(ui_wifiContainer);
     lv_obj_set_width(ui_objWifiIndicator, 10);
     lv_obj_set_height(ui_objWifiIndicator, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_objWifiIndicator, -1);
+    lv_obj_set_y(ui_objWifiIndicator, 0);
     lv_obj_set_align(ui_objWifiIndicator, LV_ALIGN_TOP_MID);
-    lv_label_set_text(ui_objWifiIndicator, "_");
+    lv_label_set_text(ui_objWifiIndicator, "");
 
-    ui_lblSSID = lv_label_create(ui_pnlNetwork);
+    ui_ssidContainer = lv_obj_create(ui_pnlNetwork);
+    lv_obj_remove_style_all(ui_ssidContainer);
+    lv_obj_set_width(ui_ssidContainer, lv_pct(100));
+    lv_obj_set_height(ui_ssidContainer, LV_SIZE_CONTENT);    /// 100
+    lv_obj_set_x(ui_ssidContainer, -257);
+    lv_obj_set_y(ui_ssidContainer, -111);
+    lv_obj_remove_flag(ui_ssidContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_lblSSID = lv_label_create(ui_ssidContainer);
     lv_obj_set_width(ui_lblSSID, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblSSID, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_lblSSID, LV_ALIGN_LEFT_MID);
     lv_label_set_text(ui_lblSSID, "SSID:");
 
-    ui_lblSSIDValue = lv_label_create(ui_pnlNetwork);
+    ui_lblSSIDValue = lv_label_create(ui_ssidContainer);
     lv_obj_set_width(ui_lblSSIDValue, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblSSIDValue, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblSSIDValue, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_lblSSIDValue, "SSID:");
+    lv_obj_set_align(ui_lblSSIDValue, LV_ALIGN_RIGHT_MID);
+    lv_label_set_text(ui_lblSSIDValue, "-");
 
-    ui_lblIP = lv_label_create(ui_pnlNetwork);
+    ui_ipContainer = lv_obj_create(ui_pnlNetwork);
+    lv_obj_remove_style_all(ui_ipContainer);
+    lv_obj_set_width(ui_ipContainer, lv_pct(100));
+    lv_obj_set_height(ui_ipContainer, LV_SIZE_CONTENT);    /// 1
+    lv_obj_remove_flag(ui_ipContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_lblIP = lv_label_create(ui_ipContainer);
     lv_obj_set_width(ui_lblIP, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblIP, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_lblIP, LV_ALIGN_BOTTOM_LEFT);
     lv_label_set_text(ui_lblIP, "IP:");
 
-    ui_lblIPValue = lv_label_create(ui_pnlNetwork);
+    ui_lblIPValue = lv_label_create(ui_ipContainer);
     lv_obj_set_width(ui_lblIPValue, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblIPValue, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblIPValue, LV_ALIGN_BOTTOM_MID);
-    lv_label_set_text(ui_lblIPValue, "IP:");
+    lv_obj_set_align(ui_lblIPValue, LV_ALIGN_BOTTOM_RIGHT);
+    lv_label_set_text(ui_lblIPValue, "-");
+
+    ui_mqttContainer = lv_obj_create(ui_pnlNetwork);
+    lv_obj_remove_style_all(ui_mqttContainer);
+    lv_obj_set_width(ui_mqttContainer, lv_pct(100));
+    lv_obj_set_height(ui_mqttContainer, LV_SIZE_CONTENT);    /// 1
+    lv_obj_remove_flag(ui_mqttContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_lblMQTT = lv_label_create(ui_mqttContainer);
+    lv_obj_set_width(ui_lblMQTT, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblMQTT, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblMQTT, LV_ALIGN_BOTTOM_LEFT);
+    lv_label_set_text(ui_lblMQTT, "MQTT:");
+
+    ui_lblMQTTValue = lv_label_create(ui_mqttContainer);
+    lv_obj_set_width(ui_lblMQTTValue, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblMQTTValue, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblMQTTValue, LV_ALIGN_BOTTOM_RIGHT);
+    lv_label_set_text(ui_lblMQTTValue, "-");
 
     ui_Panel3 = ui_Panel3;
-    ui_btnAudio2 = ui_btnAudio2;
-    ui_btnAudio1 = ui_btnAudio1;
 
 }
 
@@ -143,20 +175,22 @@ void ui_Screen1_screen_destroy(void)
     ui_Screen1 = NULL;
     ui_Panel3 = NULL;
     ui_Panel3 = NULL;
-    ui_btnAudio2 = NULL;
-    ui_btnAudio2 = NULL;
-    ui_Label3 = NULL;
+    ui_Dropdown1 = NULL;
     ui_Slider2 = NULL;
-    ui_btnAudio1 = NULL;
-    ui_btnAudio1 = NULL;
-    ui_Label2 = NULL;
+    ui_Dropdown2 = NULL;
     ui_pnlNetwork = NULL;
+    ui_wifiContainer = NULL;
     ui_lblWifi = NULL;
     ui_lblWifiStatus = NULL;
     ui_objWifiIndicator = NULL;
+    ui_ssidContainer = NULL;
     ui_lblSSID = NULL;
     ui_lblSSIDValue = NULL;
+    ui_ipContainer = NULL;
     ui_lblIP = NULL;
     ui_lblIPValue = NULL;
+    ui_mqttContainer = NULL;
+    ui_lblMQTT = NULL;
+    ui_lblMQTTValue = NULL;
 
 }

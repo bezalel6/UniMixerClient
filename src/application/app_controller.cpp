@@ -2,6 +2,7 @@
 #include "../display/display_manager.h"
 #include "../hardware/device_manager.h"
 #include "../hardware/network_manager.h"
+#include "../hardware/mqtt_manager.h"
 #include "../events/ui_event_handlers.h"
 #include <ui/ui.h>
 
@@ -83,4 +84,10 @@ void app_controller_update_network_status(void) {
 
     // Update network information
     display_update_network_info(ui_lblSSIDValue, ui_lblIPValue, ssid, ip_address);
+
+    // Get MQTT status
+    const char* mqtt_status = mqtt_get_status_string();
+
+    // Update MQTT status
+    display_update_mqtt_status(ui_lblMQTTValue, mqtt_status);
 }

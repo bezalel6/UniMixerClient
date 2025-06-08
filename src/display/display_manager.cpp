@@ -152,3 +152,9 @@ void display_update_network_info(lv_obj_t* ssid_label, lv_obj_t* ip_label, const
         lv_label_set_text(ip_label, "0.0.0.0");
     }
 }
+
+void display_update_mqtt_status(lv_obj_t* mqtt_label, const char* status_text) {
+    if (mqtt_label && status_text) {
+        lv_label_set_text(mqtt_label, status_text);
+    }
+}

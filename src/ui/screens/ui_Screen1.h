@@ -15,23 +15,25 @@ extern void ui_Screen1_screen_init(void);
 extern void ui_Screen1_screen_destroy(void);
 extern lv_obj_t * ui_Screen1;
 extern lv_obj_t * ui_Panel3;
-extern lv_obj_t * ui_btnAudio2;
-extern lv_obj_t * ui_Label3;
+extern lv_obj_t * ui_Dropdown1;
 extern lv_obj_t * ui_Slider2;
-extern lv_obj_t * ui_btnAudio1;
-extern lv_obj_t * ui_Label2;
+extern lv_obj_t * ui_Dropdown2;
 extern lv_obj_t * ui_pnlNetwork;
+extern lv_obj_t * ui_wifiContainer;
 extern lv_obj_t * ui_lblWifi;
 extern lv_obj_t * ui_lblWifiStatus;
 extern lv_obj_t * ui_objWifiIndicator;
+extern lv_obj_t * ui_ssidContainer;
 extern lv_obj_t * ui_lblSSID;
 extern lv_obj_t * ui_lblSSIDValue;
+extern lv_obj_t * ui_ipContainer;
 extern lv_obj_t * ui_lblIP;
 extern lv_obj_t * ui_lblIPValue;
+extern lv_obj_t * ui_mqttContainer;
+extern lv_obj_t * ui_lblMQTT;
+extern lv_obj_t * ui_lblMQTTValue;
 // CUSTOM VARIABLES
 extern lv_obj_t * ui_Panel3;
-extern lv_obj_t * ui_btnAudio2;
-extern lv_obj_t * ui_btnAudio1;
 
 #ifdef __cplusplus
 } /*extern "C"*/

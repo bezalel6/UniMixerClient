@@ -37,6 +37,7 @@ void display_update_label_millivolts(lv_obj_t* label, uint32_t millivolts);
 
 // Network UI update functions
 void display_update_wifi_status(lv_obj_t* status_label, lv_obj_t* indicator_obj, const char* status_text, bool connected);
+void display_update_mqtt_status(lv_obj_t* mqtt_label, const char* status_text);
 void display_update_network_info(lv_obj_t* ssid_label, lv_obj_t* ip_label, const char* ssid, const char* ip_address);
 
 // LVGL tick management
