@@ -28,6 +28,10 @@ bool init(void);
 void deinit(void);
 void update(void);
 
+// FPS display
+void updateFpsDisplay(lv_obj_t* fpsLabel);
+float getFPS(void);
+
 // Display control
 void setRotation(Rotation rotation);
 Rotation getRotation(void);

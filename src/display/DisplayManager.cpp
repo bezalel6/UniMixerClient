@@ -9,6 +9,10 @@ namespace Display {
 
 // Private variables
 static unsigned long lvLastTick = 0;
+static unsigned long frameCount = 0;
+static unsigned long lastFpsTime = 0;
+static float currentFPS = 0.0f;
+static const unsigned long FPS_UPDATE_INTERVAL = 1000;  // Update FPS every 1 second
 
 bool init(void) {
     // Initialize the smart display
@@ -30,6 +34,16 @@ void deinit(void) {
 void update(void) {
     tickUpdate();
     lv_timer_handler();
+
+    // Update frame count for FPS calculation
+    frameCount++;
+
+    unsigned long now = millis();
+    if (now - lastFpsTime >= FPS_UPDATE_INTERVAL) {
+        currentFPS = (float)frameCount * 1000.0f / (float)(now - lastFpsTime);
+        frameCount = 0;
+        lastFpsTime = now;
+    }
 }
 
 void setRotation(Rotation rotation) {
@@ -190,6 +204,18 @@ void updateMqttStatus(lv_obj_t* mqttLabel, const char* statusText) {
 void updateMqttStatus(lv_obj_t* mqttLabel, lv_obj_t* indicatorObj, const char* statusText) {
     ConnectionStatus status = statusStringToConnectionStatus(statusText);
     updateConnectionStatus(mqttLabel, indicatorObj, statusText, status);
+}
+
+float getFPS(void) {
+    return currentFPS;
+}
+
+void updateFpsDisplay(lv_obj_t* fpsLabel) {
+    if (fpsLabel == NULL) return;
+
+    char fpsText[32];
+    snprintf(fpsText, sizeof(fpsText), "FPS: %.1f", currentFPS);
+    lv_label_set_text(fpsLabel, fpsText);
 }
 
 }  // namespace Display

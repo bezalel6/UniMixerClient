@@ -168,6 +168,12 @@ void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels)
         updateAudioLevel(level.processName, level.volume);
     }
 
+    // Auto-select first device if none is selected and devices are available
+    if (selectedDevice.isEmpty() && !audioLevels.empty()) {
+        setSelectedDevice(audioLevels[0].processName);
+        ESP_LOGI(TAG, "Auto-selected first device: %s", audioLevels[0].processName.c_str());
+    }
+
     // Update UI dropdowns with new audio device list
     updateAudioDeviceDropdowns();
 

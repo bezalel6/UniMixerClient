@@ -32,6 +32,8 @@ lv_obj_t * ui_volumeSliderLbl;
 lv_obj_t * ui_volumeSlider;
 lv_obj_t * ui_btnRequestData;
 lv_obj_t * ui_Label5;
+lv_obj_t * ui_lblFPS;
+lv_obj_t * ui_lblFPS1;
 
 // event funtions
 
@@ -213,6 +215,22 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label5, "Request Data");
 
+    ui_lblFPS = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_lblFPS, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_lblFPS, 382);
+    lv_obj_set_y(ui_lblFPS, -188);
+    lv_obj_set_align(ui_lblFPS, LV_ALIGN_TOP_RIGHT);
+    lv_label_set_text(ui_lblFPS, "text");
+
+    ui_lblFPS1 = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_lblFPS1, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblFPS1, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_lblFPS1, 345);
+    lv_obj_set_y(ui_lblFPS1, -164);
+    lv_obj_set_align(ui_lblFPS1, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_lblFPS1, "text");
+
 }
 
 void ui_Screen1_screen_destroy(void)
@@ -247,5 +265,7 @@ void ui_Screen1_screen_destroy(void)
     ui_volumeSlider = NULL;
     ui_btnRequestData = NULL;
     ui_Label5 = NULL;
+    ui_lblFPS = NULL;
+    ui_lblFPS1 = NULL;
 
 }

@@ -71,6 +71,7 @@ void run(void) {
         updatePeriodicData();
         updateNetworkStatus();
         updateAudioStatus();
+        updateFpsDisplay();
         nextUpdateMillis = now + APP_UPDATE_INTERVAL_MS;
     }
 
@@ -139,6 +140,11 @@ void updateAudioStatus(void) {
                      highest.processName.c_str(), highest.volume);
         }
     }
+}
+
+void updateFpsDisplay(void) {
+    // Update FPS display
+    Display::updateFpsDisplay(ui_lblFPS);
 }
 
 }  // namespace Application
