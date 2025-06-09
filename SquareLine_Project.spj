@@ -1221,7 +1221,8 @@
                 "InheritedType": 11
               }
             ],
-            "saved_objtypeKey": "TABVIEW"
+            "saved_objtypeKey": "TABVIEW",
+            "tree_closed": true
           },
           {
             "guid": "GUID60171047-856601S177004159",
@@ -3863,7 +3864,8 @@
                     "InheritedType": 11
                   }
                 ],
-                "saved_objtypeKey": "BUTTON"
+                "saved_objtypeKey": "BUTTON",
+                "tree_closed": true
               }
             ],
             "dont_export": false,
@@ -4285,7 +4287,7 @@
     "uiExportFolderPath": "E:\\SharedCo\\esp32-smartdisplay-demo\\src\\ui",
     "projectExportFolderPath": "C:\\Users\\bezal\\OneDrive\\Documents\\Squareline Studio\\esp32",
     "custom_variable_prefix": "ui",
-    "backup_cnt": 86,
+    "backup_cnt": 87,
     "autosave_cnt": 0,
     "group_color_cnt": 1,
     "lvgl_version": "9.1.0",
@@ -4303,7 +4305,7 @@
     "naming": null,
     "naming_force_lowercase": false,
     "naming_add_subcomponent": false,
-    "nidcnt": 1000219,
+    "nidcnt": 1000297,
     "BitDepth": 16,
     "Name": "SquareLine_Project"
   }

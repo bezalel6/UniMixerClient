@@ -38,6 +38,10 @@ void connectWifi(void);
 void disconnectWifi(void);
 void reconnectWifi(void);
 
+// Auto-reconnect control functions
+void enableAutoReconnect(bool enable);
+bool isAutoReconnectEnabled(void);
+
 }  // namespace Network
 }  // namespace Hardware
 

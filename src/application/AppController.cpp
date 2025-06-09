@@ -24,12 +24,6 @@ bool init(void) {
         return false;
     }
 
-    // Initialize network manager
-    if (!Hardware::Network::init()) {
-        ESP_LOGE(TAG, "Failed to initialize network manager");
-        return false;
-    }
-
     // Initialize messaging system
     if (!Messaging::MessageBus::Init()) {
         ESP_LOGE(TAG, "Failed to initialize messaging system");
@@ -37,9 +31,15 @@ bool init(void) {
     }
 
     // Configure transport based on MessagingConfig.h settings
+    // Network manager will only be initialized if MQTT transport is needed
 #if MESSAGING_DEFAULT_TRANSPORT == 0
-// MQTT only
+// MQTT only - initialize network manager
 #if MESSAGING_ENABLE_MQTT_TRANSPORT
+    ESP_LOGI(TAG, "MQTT transport required - initializing network manager");
+    if (!Hardware::Network::init()) {
+        ESP_LOGE(TAG, "Failed to initialize network manager");
+        return false;
+    }
     ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
     Messaging::MessageBus::EnableMqttTransport();
 #else
@@ -47,17 +47,22 @@ bool init(void) {
     return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 1
-// Serial only
+// Serial only - no network initialization needed
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
+    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only, no network required)");
     Messaging::MessageBus::EnableSerialTransport();
 #else
     ESP_LOGE(TAG, "Serial transport requested but disabled in config");
     return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 2
-// Both transports
+// Both transports - initialize network manager for MQTT
 #if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
+    ESP_LOGI(TAG, "Dual transport requires network - initializing network manager");
+    if (!Hardware::Network::init()) {
+        ESP_LOGE(TAG, "Failed to initialize network manager");
+        return false;
+    }
     ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
     Messaging::MessageBus::EnableBothTransports();
 #else
@@ -96,7 +101,12 @@ void deinit(void) {
 
     Application::Audio::StatusManager::deinit();
     Messaging::MessageBus::Deinit();
+
+    // Only deinitialize network manager if it was initialized (MQTT transport used)
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
     Hardware::Network::deinit();
+#endif
+
     Display::deinit();
     Hardware::Device::deinit();
 }
@@ -104,8 +114,10 @@ void deinit(void) {
 void run(void) {
     unsigned long now = Hardware::Device::getMillis();
 
-    // Update network manager
+    // Update network manager only if it was initialized (MQTT transport used)
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
     Hardware::Network::update();
+#endif
 
     // Update messaging system
     Messaging::MessageBus::Update();
@@ -148,7 +160,8 @@ void updatePeriodicData(void) {
 }
 
 void updateNetworkStatus(void) {
-    // Get network status
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
+    // Network manager is initialized - show actual network status
     const char* wifiStatus = Hardware::Network::getWifiStatusString();
     bool isConnected = Hardware::Network::isConnected();
     const char* ssid = Hardware::Network::getSsid();
@@ -159,6 +172,11 @@ void updateNetworkStatus(void) {
 
     // Update network information
     Display::updateNetworkInfo(ui_lblSSIDValue, ui_lblIPValue, ssid, ipAddress);
+#else
+    // Network manager not initialized - show "Not Required" status
+    Display::updateWifiStatus(ui_lblWifiStatus, ui_objWifiIndicator, "Not Required", false);
+    Display::updateNetworkInfo(ui_lblSSIDValue, ui_lblIPValue, "N/A", "N/A");
+#endif
 
     // Get messaging status
     const char* messagingStatus = Messaging::MessageBus::GetStatusString();

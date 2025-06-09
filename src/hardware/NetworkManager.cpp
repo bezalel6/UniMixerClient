@@ -1,6 +1,5 @@
 #include "NetworkManager.h"
 #include "DeviceManager.h"
-#include "MqttManager.h"
 #include <esp_log.h>
 
 static const char* TAG = "NetworkManager";
@@ -15,6 +14,7 @@ static unsigned long connectionStartTime = 0;
 static String currentIpAddress = "";
 static String currentSsid = "";
 static bool initializationComplete = false;
+static bool autoReconnectEnabled = false;
 
 // Private function declarations
 static void wifiEventHandler(WiFiEvent_t event);
@@ -33,27 +33,23 @@ bool init(void) {
     currentWifiStatus = WIFI_STATUS_DISCONNECTED;
     currentIpAddress = "";
     currentSsid = "";
+    autoReconnectEnabled = false;
 
-    // Start WiFi connection
-    connectWifi();
-
-    // Initialize MQTT manager
-    ESP_LOGI(TAG, "Initializing MQTT manager");
-    Hardware::Mqtt::init();
+    // Do not automatically start WiFi connection
+    // This will be controlled by components that need network access
 
     initializationComplete = true;
+    ESP_LOGI(TAG, "Network manager initialized (WiFi not connected)");
     return true;
 }
 
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing network manager");
 
-    // Deinitialize MQTT manager first
-    Hardware::Mqtt::deinit();
-
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     initializationComplete = false;
+    autoReconnectEnabled = false;
 }
 
 void update(void) {
@@ -63,10 +59,11 @@ void update(void) {
 
     updateConnectionStatus();
 
-    // Update MQTT manager
-    Hardware::Mqtt::update();
+    // Handle reconnection logic only if auto-reconnect is enabled
+    if (!autoReconnectEnabled) {
+        return;
+    }
 
-    // Handle reconnection logic
     unsigned long now = Hardware::Device::getMillis();
 
     switch (currentWifiStatus) {
@@ -154,12 +151,22 @@ void disconnectWifi(void) {
     WiFi.disconnect();
     currentWifiStatus = WIFI_STATUS_DISCONNECTED;
     currentIpAddress = "";
+    autoReconnectEnabled = false;
 }
 
 void reconnectWifi(void) {
     WiFi.disconnect();
     delay(100);
     connectWifi();
+}
+
+void enableAutoReconnect(bool enable) {
+    autoReconnectEnabled = enable;
+    ESP_LOGI(TAG, "Auto-reconnect %s", enable ? "enabled" : "disabled");
+}
+
+bool isAutoReconnectEnabled(void) {
+    return autoReconnectEnabled;
 }
 
 // Private function implementations
@@ -179,24 +186,12 @@ static void wifiEventHandler(WiFiEvent_t event) {
             currentWifiStatus = WIFI_STATUS_CONNECTED;
             currentIpAddress = WiFi.localIP().toString();
             connectionStartTime = 0;  // Reset connection timer
-
-            // Attempt MQTT connection when WiFi is ready
-            if (!Hardware::Mqtt::isConnected()) {
-                ESP_LOGI(TAG, "WiFi connected, attempting MQTT connection");
-                Hardware::Mqtt::connect();
-            }
             break;
 
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             ESP_LOGW(TAG, "WiFi disconnected");
             currentWifiStatus = WIFI_STATUS_DISCONNECTED;
             currentIpAddress = "";
-
-            // Disconnect MQTT when WiFi is lost
-            if (Hardware::Mqtt::isConnected()) {
-                ESP_LOGI(TAG, "WiFi disconnected, disconnecting MQTT");
-                Hardware::Mqtt::disconnect();
-            }
             break;
 
         case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:

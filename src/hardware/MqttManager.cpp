@@ -21,6 +21,7 @@ static unsigned long lastConnectionAttempt = 0;
 static unsigned long connectionStartTime = 0;
 static unsigned long lastActivityTime = 0;
 static bool initializationComplete = false;
+static bool networkRequested = false;
 
 // Message queue for delayed publishing
 static Message publishQueue[1];  // Single message queue as per original design
@@ -37,6 +38,7 @@ static void updateConnectionStatus(void);
 static void processPublishQueue(void);
 static void subscribeToRegisteredHandlers(void);
 static Handler* findHandlerByTopic(const char* topic);
+static void ensureNetworkAvailable(void);
 
 bool init(void) {
     ESP_LOGI(TAG, "Initializing MQTT manager");
@@ -48,6 +50,7 @@ bool init(void) {
     lastActivityTime = Hardware::Device::getMillis();
     queueHasMessage = false;
     handlerCount = 0;
+    networkRequested = false;
 
     // Clear handlers array
     for (int i = 0; i < MQTT_MAX_HANDLERS; i++) {
@@ -59,13 +62,8 @@ bool init(void) {
     mqttClient.setCallback(mqttCallback);
     mqttClient.setKeepAlive(MQTT_KEEPALIVE);
 
-    // Start connection if WiFi is available
-    if (Hardware::Network::isConnected()) {
-        connect();
-    }
-
     initializationComplete = true;
-    ESP_LOGI(TAG, "MQTT manager initialized successfully");
+    ESP_LOGI(TAG, "MQTT manager initialized successfully (network not connected)");
     return true;
 }
 
@@ -82,6 +80,12 @@ void deinit(void) {
 
     // Clear publish queue
     clearPublishQueue();
+
+    // Disable auto-reconnect if we requested it
+    if (networkRequested) {
+        Hardware::Network::enableAutoReconnect(false);
+        networkRequested = false;
+    }
 
     initializationComplete = false;
 }
@@ -119,11 +123,14 @@ void update(void) {
 
         case MQTT_STATUS_FAILED:
         case MQTT_STATUS_DISCONNECTED:
-            // Attempt reconnection if WiFi is connected and enough time has passed
-            if (Hardware::Network::isConnected() &&
-                (now - lastConnectionAttempt) >= MQTT_RECONNECT_INTERVAL_MS) {
-                ESP_LOGI(TAG, "Attempting MQTT reconnection");
-                reconnect();
+            // Attempt reconnection if enough time has passed and network is needed
+            if (networkRequested) {
+                // Check if network just became available
+                if (Hardware::Network::isConnected() &&
+                    (now - lastConnectionAttempt) >= MQTT_RECONNECT_INTERVAL_MS) {
+                    ESP_LOGI(TAG, "Network available, attempting MQTT reconnection");
+                    reconnect();
+                }
             }
             break;
 
@@ -142,8 +149,14 @@ void update(void) {
 }
 
 bool connect(void) {
+    ESP_LOGI(TAG, "MQTT connect requested");
+
+    // Ensure network is available
+    ensureNetworkAvailable();
+
     if (!Hardware::Network::isConnected()) {
-        ESP_LOGW(TAG, "Cannot connect to MQTT: WiFi not connected");
+        ESP_LOGW(TAG, "Cannot connect to MQTT: WiFi not connected, waiting...");
+        currentMqttStatus = MQTT_STATUS_DISCONNECTED;
         return false;
     }
 
@@ -468,6 +481,15 @@ static Handler* findHandlerByTopic(const char* topic) {
     }
 
     return nullptr;
+}
+
+static void ensureNetworkAvailable(void) {
+    if (!networkRequested) {
+        ESP_LOGI(TAG, "MQTT requires network connectivity, requesting WiFi connection");
+        Hardware::Network::connectWifi();
+        Hardware::Network::enableAutoReconnect(true);
+        networkRequested = true;
+    }
 }
 
 }  // namespace Mqtt

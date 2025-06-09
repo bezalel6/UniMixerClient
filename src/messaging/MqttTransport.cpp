@@ -132,8 +132,9 @@ static Transport MqttTransport = {
 
     .Init = []() -> void {
         ESP_LOGI(TAG, "Initializing MQTT transport wrapper");
-        // MQTT manager is initialized by NetworkManager, so we don't call init here
-        // Just ensure our bridge is clean
+        // Initialize MQTT manager now that it's not done by NetworkManager
+        Hardware::Mqtt::init();
+        // Ensure our bridge is clean
         handlerBridge.clear();
     },
 
@@ -149,7 +150,8 @@ static Transport MqttTransport = {
         }
         handlerBridge.clear();
 
-        // Note: We don't deinitialize the MQTT manager itself as it's managed by NetworkManager
+        // Deinitialize the MQTT manager now that we manage it
+        Hardware::Mqtt::deinit();
     }};
 
 Transport* GetMqttTransport() {
