@@ -5,12 +5,13 @@
 
 #include "../ui.h"
 
-lv_obj_t * ui_Panel3;
 lv_obj_t * ui_Screen1;
-lv_obj_t * ui_Panel3;
-lv_obj_t * ui_Dropdown1;
-lv_obj_t * ui_Slider2;
-lv_obj_t * ui_Dropdown2;
+lv_obj_t * ui_TabView3;
+lv_obj_t * ui_TabPage2;
+lv_obj_t * ui_selectPrimaryAudioDevice;
+lv_obj_t * ui_Balance;
+lv_obj_t * ui_selectAudioDevice1;
+lv_obj_t * ui_selectAudioDevice2;
 lv_obj_t * ui_pnlNetwork;
 lv_obj_t * ui_wifiContainer;
 lv_obj_t * ui_lblWifi;
@@ -25,10 +26,22 @@ lv_obj_t * ui_lblIPValue;
 lv_obj_t * ui_mqttContainer;
 lv_obj_t * ui_lblMQTT;
 lv_obj_t * ui_lblMQTTValue;
+lv_obj_t * ui_pnlVolumeSlider;
+lv_obj_t * ui_volumeSliderLbl;
+lv_obj_t * ui_volumeSlider;
 lv_obj_t * ui_btnRequestData;
 lv_obj_t * ui_Label5;
 
 // event funtions
+void ui_event_volumeSlider(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+
+    if(event_code == LV_EVENT_VALUE_CHANGED) {
+        _ui_slider_set_text_value(ui_volumeSliderLbl, target, "", "%");
+    }
+}
 
 // build funtions
 
@@ -37,45 +50,48 @@ void ui_Screen1_screen_init(void)
     ui_Screen1 = lv_obj_create(NULL);
     lv_obj_remove_flag(ui_Screen1, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_Panel3 = lv_obj_create(ui_Screen1);
-    lv_obj_set_height(ui_Panel3, 100);
-    lv_obj_set_width(ui_Panel3, lv_pct(100));
-    lv_obj_set_align(ui_Panel3, LV_ALIGN_CENTER);
-    lv_obj_set_flex_flow(ui_Panel3, LV_FLEX_FLOW_ROW_REVERSE);
-    lv_obj_set_flex_align(ui_Panel3, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-    lv_obj_remove_flag(ui_Panel3, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_obj_set_style_pad_left(ui_Panel3, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui_Panel3, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui_Panel3, 25, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui_Panel3, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
+    ui_TabView3 = lv_tabview_create(ui_Screen1);
+    lv_tabview_set_tab_bar_position(ui_TabView3, LV_DIR_BOTTOM);
+    lv_tabview_set_tab_bar_size(ui_TabView3, 50);
+    lv_obj_set_width(ui_TabView3, 548);
+    lv_obj_set_height(ui_TabView3, 200);
+    lv_obj_set_x(ui_TabView3, 100);
+    lv_obj_set_y(ui_TabView3, -80);
+    lv_obj_set_align(ui_TabView3, LV_ALIGN_CENTER);
+    lv_obj_remove_flag(ui_TabView3, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_Dropdown1 = lv_dropdown_create(ui_Panel3);
-    lv_dropdown_set_options(ui_Dropdown1, "None");
-    lv_obj_set_width(ui_Dropdown1, 150);
-    lv_obj_set_height(ui_Dropdown1, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Dropdown1, LV_ALIGN_RIGHT_MID);
-    lv_obj_add_flag(ui_Dropdown1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    ui_TabPage2 = lv_tabview_add_tab(ui_TabView3, "Primary");
 
-    ui_Slider2 = lv_slider_create(ui_Panel3);
-    lv_slider_set_value(ui_Slider2, 0, LV_ANIM_OFF);
-    if(lv_slider_get_mode(ui_Slider2) == LV_SLIDER_MODE_RANGE) lv_slider_set_left_value(ui_Slider2, 0, LV_ANIM_OFF);
-    lv_obj_set_width(ui_Slider2, 356);
-    lv_obj_set_height(ui_Slider2, 10);
-    lv_obj_set_x(ui_Slider2, 408);
-    lv_obj_set_y(ui_Slider2, -8);
-    lv_obj_set_align(ui_Slider2, LV_ALIGN_TOP_MID);
+    ui_selectPrimaryAudioDevice = lv_dropdown_create(ui_TabPage2);
+    lv_dropdown_set_options(ui_selectPrimaryAudioDevice, "None");
+    lv_obj_set_width(ui_selectPrimaryAudioDevice, 150);
+    lv_obj_set_height(ui_selectPrimaryAudioDevice, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_selectPrimaryAudioDevice, 0);
+    lv_obj_set_y(ui_selectPrimaryAudioDevice, -1);
+    lv_obj_set_align(ui_selectPrimaryAudioDevice, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_selectPrimaryAudioDevice, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
 
-    //Compensating for LVGL9.1 draw crash with bar/slider max value when top-padding is nonzero and right-padding is 0
-    if(lv_obj_get_style_pad_top(ui_Slider2, LV_PART_MAIN) > 0) lv_obj_set_style_pad_right(ui_Slider2,
-                                                                                              lv_obj_get_style_pad_right(ui_Slider2, LV_PART_MAIN) + 1, LV_PART_MAIN);
-    ui_Dropdown2 = lv_dropdown_create(ui_Panel3);
-    lv_dropdown_set_options(ui_Dropdown2, "None");
-    lv_obj_set_width(ui_Dropdown2, 150);
-    lv_obj_set_height(ui_Dropdown2, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_Dropdown2, 0);
-    lv_obj_set_y(ui_Dropdown2, -1);
-    lv_obj_set_align(ui_Dropdown2, LV_ALIGN_LEFT_MID);
-    lv_obj_add_flag(ui_Dropdown2, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    ui_Balance = lv_tabview_add_tab(ui_TabView3, "Balance");
+    lv_obj_set_flex_flow(ui_Balance, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ui_Balance, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    ui_selectAudioDevice1 = lv_dropdown_create(ui_Balance);
+    lv_dropdown_set_options(ui_selectAudioDevice1, "None");
+    lv_obj_set_width(ui_selectAudioDevice1, 150);
+    lv_obj_set_height(ui_selectAudioDevice1, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_selectAudioDevice1, 0);
+    lv_obj_set_y(ui_selectAudioDevice1, -1);
+    lv_obj_set_align(ui_selectAudioDevice1, LV_ALIGN_LEFT_MID);
+    lv_obj_add_flag(ui_selectAudioDevice1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+
+    ui_selectAudioDevice2 = lv_dropdown_create(ui_Balance);
+    lv_dropdown_set_options(ui_selectAudioDevice2, "None");
+    lv_obj_set_width(ui_selectAudioDevice2, 150);
+    lv_obj_set_height(ui_selectAudioDevice2, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_selectAudioDevice2, 0);
+    lv_obj_set_y(ui_selectAudioDevice2, -1);
+    lv_obj_set_align(ui_selectAudioDevice2, LV_ALIGN_RIGHT_MID);
+    lv_obj_add_flag(ui_selectAudioDevice2, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
 
     ui_pnlNetwork = lv_obj_create(ui_Screen1);
     lv_obj_set_width(ui_pnlNetwork, 200);
@@ -165,6 +181,33 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_lblMQTTValue, LV_ALIGN_BOTTOM_RIGHT);
     lv_label_set_text(ui_lblMQTTValue, "-");
 
+    ui_pnlVolumeSlider = lv_obj_create(ui_Screen1);
+    lv_obj_set_height(ui_pnlVolumeSlider, 100);
+    lv_obj_set_width(ui_pnlVolumeSlider, lv_pct(100));
+    lv_obj_set_x(ui_pnlVolumeSlider, 0);
+    lv_obj_set_y(ui_pnlVolumeSlider, 80);
+    lv_obj_set_align(ui_pnlVolumeSlider, LV_ALIGN_CENTER);
+    lv_obj_remove_flag(ui_pnlVolumeSlider, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_volumeSliderLbl = lv_label_create(ui_pnlVolumeSlider);
+    lv_obj_set_width(ui_volumeSliderLbl, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_volumeSliderLbl, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_volumeSliderLbl, LV_ALIGN_TOP_MID);
+    lv_label_set_text(ui_volumeSliderLbl, "0%");
+
+    ui_volumeSlider = lv_slider_create(ui_pnlVolumeSlider);
+    lv_slider_set_value(ui_volumeSlider, 0, LV_ANIM_OFF);
+    if(lv_slider_get_mode(ui_volumeSlider) == LV_SLIDER_MODE_RANGE) lv_slider_set_left_value(ui_volumeSlider, 0,
+                                                                                                 LV_ANIM_OFF);
+    lv_obj_set_height(ui_volumeSlider, 10);
+    lv_obj_set_width(ui_volumeSlider, lv_pct(44));
+    lv_obj_set_x(ui_volumeSlider, 0);
+    lv_obj_set_y(ui_volumeSlider, 1);
+    lv_obj_set_align(ui_volumeSlider, LV_ALIGN_BOTTOM_MID);
+
+    //Compensating for LVGL9.1 draw crash with bar/slider max value when top-padding is nonzero and right-padding is 0
+    if(lv_obj_get_style_pad_top(ui_volumeSlider, LV_PART_MAIN) > 0) lv_obj_set_style_pad_right(ui_volumeSlider,
+                                                                                                   lv_obj_get_style_pad_right(ui_volumeSlider, LV_PART_MAIN) + 1, LV_PART_MAIN);
     ui_btnRequestData = lv_button_create(ui_Screen1);
     lv_obj_set_width(ui_btnRequestData, 132);
     lv_obj_set_height(ui_btnRequestData, 50);
@@ -180,7 +223,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label5, "Request Data");
 
-    ui_Panel3 = ui_Panel3;
+    lv_obj_add_event_cb(ui_volumeSlider, ui_event_volumeSlider, LV_EVENT_ALL, NULL);
 
 }
 
@@ -190,11 +233,12 @@ void ui_Screen1_screen_destroy(void)
 
     // NULL screen variables
     ui_Screen1 = NULL;
-    ui_Panel3 = NULL;
-    ui_Panel3 = NULL;
-    ui_Dropdown1 = NULL;
-    ui_Slider2 = NULL;
-    ui_Dropdown2 = NULL;
+    ui_TabView3 = NULL;
+    ui_TabPage2 = NULL;
+    ui_selectPrimaryAudioDevice = NULL;
+    ui_Balance = NULL;
+    ui_selectAudioDevice1 = NULL;
+    ui_selectAudioDevice2 = NULL;
     ui_pnlNetwork = NULL;
     ui_wifiContainer = NULL;
     ui_lblWifi = NULL;
@@ -209,6 +253,9 @@ void ui_Screen1_screen_destroy(void)
     ui_mqttContainer = NULL;
     ui_lblMQTT = NULL;
     ui_lblMQTTValue = NULL;
+    ui_pnlVolumeSlider = NULL;
+    ui_volumeSliderLbl = NULL;
+    ui_volumeSlider = NULL;
     ui_btnRequestData = NULL;
     ui_Label5 = NULL;
 

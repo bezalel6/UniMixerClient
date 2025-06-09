@@ -6,6 +6,8 @@
 #include "../events/ui_event_handlers.h"
 #include <ui/ui.h>
 #include <esp_log.h>
+#include <ArduinoJson.h>
+#include <vector>
 
 // Private variables
 static unsigned long next_update_millis = 0;
@@ -14,19 +16,76 @@ static const char* TAG = "AppController";
 // Audio status handler
 static mqtt_handler_t audio_status_handler;
 
+// Structure to hold key-value pairs
+struct KeyValuePair {
+    String key;
+    int value;
+};
+
+// JSON parsing function that returns a list of string:number key pairs
+std::vector<KeyValuePair> parse_json_string_number_pairs(const char* json_payload) {
+    std::vector<KeyValuePair> result;
+
+    if (!json_payload) {
+        ESP_LOGE(TAG, "Invalid JSON payload");
+        return result;
+    }
+
+    // Create a JSON document with enough capacity
+    DynamicJsonDocument doc(1024);
+
+    // Parse the JSON
+    DeserializationError error = deserializeJson(doc, json_payload);
+
+    if (error) {
+        ESP_LOGE(TAG, "JSON parsing failed: %s", error.c_str());
+        return result;
+    }
+
+    // Check if the root is an object
+    if (!doc.is<JsonObject>()) {
+        ESP_LOGE(TAG, "JSON root is not an object");
+        return result;
+    }
+
+    JsonObject root = doc.as<JsonObject>();
+
+    // Iterate through all key-value pairs
+    for (JsonPair pair : root) {
+        const char* key = pair.key().c_str();
+
+        // Check if value is a number
+        if (pair.value().is<int>()) {
+            int value = pair.value().as<int>();
+            // ESP_LOGI(TAG, "Parsed: %s = %d", key, value);
+
+            // Add to result vector
+            KeyValuePair kvp;
+            kvp.key = String(key);
+            kvp.value = value;
+            result.push_back(kvp);
+        } else {
+            ESP_LOGW(TAG, "Skipping non-numeric value for key: %s", key);
+        }
+    }
+
+    // ESP_LOGI(TAG, "Successfully parsed %d key-value pairs", result.size());
+    return result;
+}
+
 // Audio status handler callback function
 static void audio_status_message_handler(const char* topic, const char* payload) {
-    ESP_LOGI(TAG, "🎵 AUDIO STATUS RECEIVED! 🎵");
-    ESP_LOGI(TAG, "Topic: %s", topic);
-    ESP_LOGI(TAG, "Payload: %s", payload);
-    ESP_LOGI(TAG, "Payload length: %d", strlen(payload));
+    std::vector<KeyValuePair> audioLevels = parse_json_string_number_pairs(payload);
 
-    // Parse the audio status payload and update UI components
-    // You can add specific handling logic here based on the payload format
-    // For now, just log the received data
+    if (audioLevels.empty()) {
+        ESP_LOGE(TAG, "Failed to parse audio status JSON or no valid data found");
+        return;
+    }
 
-    // Example: Update a UI component if needed
-    // display_update_label_string(ui_lblAudioStatus, payload);
+    // Process each audio level from the returned list
+    for (const auto& level : audioLevels) {
+        ESP_LOGI(TAG, "🔊 Audio Level - Process: %s, Volume: %d", level.key.c_str(), level.value);
+    }
 }
 
 // Initialize audio status handler
