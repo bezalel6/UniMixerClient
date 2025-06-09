@@ -31,8 +31,8 @@ std::vector<KeyValuePair> parse_json_string_number_pairs(const char* json_payloa
         return result;
     }
 
-    // Create a JSON document with enough capacity
-    DynamicJsonDocument doc(1024);
+    // Create a JSON document
+    JsonDocument doc;
 
     // Parse the JSON
     DeserializationError error = deserializeJson(doc, json_payload);
@@ -57,8 +57,6 @@ std::vector<KeyValuePair> parse_json_string_number_pairs(const char* json_payloa
         // Check if value is a number
         if (pair.value().is<int>()) {
             int value = pair.value().as<int>();
-            // ESP_LOGI(TAG, "Parsed: %s = %d", key, value);
-
             // Add to result vector
             KeyValuePair kvp;
             kvp.key = String(key);
@@ -69,7 +67,6 @@ std::vector<KeyValuePair> parse_json_string_number_pairs(const char* json_payloa
         }
     }
 
-    // ESP_LOGI(TAG, "Successfully parsed %d key-value pairs", result.size());
     return result;
 }
 
