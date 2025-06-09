@@ -178,9 +178,6 @@ void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels)
         // Find the updated device and mark it as fresh
         for (auto& existingLevel : audioLevels) {
             if (existingLevel.processName == level.processName) {
-                if (existingLevel.stale) {
-                    ESP_LOGI(TAG, "Refreshing stale device: %s", level.processName.c_str());
-                }
                 existingLevel.stale = false;
                 break;
             }
@@ -230,6 +227,13 @@ void StatusManager::updateAudioDeviceDropdowns(void) {
     Display::updateDropdownOptions(ui_selectAudioDevice, optionsString.c_str());
     Display::updateDropdownOptions(ui_selectAudioDevice1, optionsString.c_str());
     Display::updateDropdownOptions(ui_selectAudioDevice2, optionsString.c_str());
+
+    // Restore the selection to the currently selected device if it still exists
+    if (!selectedDevice.isEmpty()) {
+        restoreDropdownSelection(ui_selectAudioDevice);
+        restoreDropdownSelection(ui_selectAudioDevice1);
+        restoreDropdownSelection(ui_selectAudioDevice2);
+    }
 
     ESP_LOGI(TAG, "Updated audio device dropdowns with %d devices", audioLevels.size());
 }
@@ -285,6 +289,31 @@ String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
     }
 
     return selectedString;
+}
+
+void StatusManager::restoreDropdownSelection(lv_obj_t* dropdown) {
+    if (dropdown == NULL || selectedDevice.isEmpty()) {
+        return;
+    }
+
+    // Find the index of the currently selected device in the audio levels
+    int targetIndex = -1;
+    for (int i = 0; i < audioLevels.size(); i++) {
+        if (audioLevels[i].processName == selectedDevice) {
+            targetIndex = i;
+            break;
+        }
+    }
+
+    // If the device was found, set the dropdown to that index
+    if (targetIndex >= 0) {
+        lv_dropdown_set_selected(dropdown, targetIndex);
+        ESP_LOGI(TAG, "Restored dropdown selection to index %d for device: %s",
+                 targetIndex, selectedDevice.c_str());
+    } else {
+        ESP_LOGW(TAG, "Could not find selected device '%s' in current audio levels",
+                 selectedDevice.c_str());
+    }
 }
 
 // Selected device state management

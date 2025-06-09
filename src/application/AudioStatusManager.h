@@ -39,6 +39,7 @@ class StatusManager {
     static void updateAudioDeviceDropdowns(void);
     static String buildAudioDeviceOptionsString(void);
     static String getSelectedAudioDevice(lv_obj_t* dropdown);
+    static void restoreDropdownSelection(lv_obj_t* dropdown);
 
     // Selected device state management
     static void setSelectedDevice(const String& deviceName);
