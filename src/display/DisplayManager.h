@@ -33,10 +33,6 @@ void setRotation(Rotation rotation);
 Rotation getRotation(void);
 void rotateNext(void);
 
-// QR Code management
-lv_obj_t* createQrCode(lv_obj_t* parent, const char* data, uint16_t size);
-void updateQrCode(lv_obj_t* qr_obj, const char* data);
-
 // UI Component helpers
 void updateLabelUint32(lv_obj_t* label, uint32_t value);
 void updateLabelString(lv_obj_t* label, const char* text);

@@ -8,7 +8,6 @@ static const char* TAG = "DisplayManager";
 namespace Display {
 
 // Private variables
-static lv_obj_t* currentQrCode = nullptr;
 static unsigned long lvLastTick = 0;
 
 bool init(void) {
@@ -25,10 +24,6 @@ bool init(void) {
 }
 
 void deinit(void) {
-    if (currentQrCode) {
-        lv_obj_del(currentQrCode);
-        currentQrCode = nullptr;
-    }
     ui_destroy();
 }
 
@@ -56,33 +51,6 @@ void rotateNext(void) {
     auto current = getRotation();
     auto next = (Rotation)((current + 1) % (ROTATION_270 + 1));
     setRotation(next);
-}
-
-lv_obj_t* createQrCode(lv_obj_t* parent, const char* data, uint16_t size) {
-    if (!parent || !data) return nullptr;
-
-    // Clean up existing QR code if any
-    if (currentQrCode) {
-        lv_obj_del(currentQrCode);
-    }
-
-    // Create new QR code
-    currentQrCode = lv_qrcode_create(parent);
-    if (currentQrCode) {
-        lv_qrcode_set_size(currentQrCode, size);
-        lv_qrcode_set_dark_color(currentQrCode, lv_color_black());
-        lv_qrcode_set_light_color(currentQrCode, lv_color_white());
-        lv_qrcode_update(currentQrCode, data, strlen(data));
-        lv_obj_center(currentQrCode);
-    }
-
-    return currentQrCode;
-}
-
-void updateQrCode(lv_obj_t* qr_obj, const char* data) {
-    if (qr_obj && data) {
-        lv_qrcode_update(qr_obj, data, strlen(data));
-    }
 }
 
 void updateLabelUint32(lv_obj_t* label, uint32_t value) {
