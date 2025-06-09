@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <cinttypes>
+static const char* TAG = "DisplayManager";
 
 namespace Display {
 
@@ -99,11 +100,24 @@ void updateLabelString(lv_obj_t* label, const char* text) {
 }
 
 void updateLabelMillivolts(lv_obj_t* label, uint32_t millivolts) {
-    if (label) {
-        char buffer[32];
-        sprintf(buffer, "%" PRIu32 " mV", millivolts);
-        lv_label_set_text(label, buffer);
+    if (label == NULL) return;
+
+    float volts = millivolts / 1000.0f;
+    char text[32];
+    snprintf(text, sizeof(text), "%.2fV", volts);
+    lv_label_set_text(label, text);
+}
+
+void updateDropdownOptions(lv_obj_t* dropdown, const char* options) {
+    if (dropdown == NULL || options == NULL) {
+        ESP_LOGW(TAG, "updateDropdownOptions: Invalid parameters");
+        return;
     }
+
+    // Update the dropdown options
+    lv_dropdown_set_options(dropdown, options);
+
+    ESP_LOGD(TAG, "Updated dropdown options: %s", options);
 }
 
 void tickUpdate(void) {
@@ -112,11 +126,13 @@ void tickUpdate(void) {
     lvLastTick = now;
 }
 
-void updateWifiStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, bool connected) {
+void updateConnectionStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, ConnectionStatus status) {
+    // Update status text
     if (statusLabel && statusText) {
         lv_label_set_text(statusLabel, statusText);
     }
 
+    // Update indicator if provided
     if (indicatorObj) {
         // Position indicator to the left of the status label
         if (statusLabel) {
@@ -128,17 +144,40 @@ void updateWifiStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char*
         lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
         lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
 
-        if (connected) {
-            // Green background for connected
-            lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00), LV_PART_MAIN);
-        } else if (strcmp(statusText, "Connecting...") == 0) {
-            // Yellow background for connecting
-            lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
-        } else {
-            // Red background for disconnected/failed
-            lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000), LV_PART_MAIN);
+        // Set color based on connection status
+        switch (status) {
+            case CONNECTION_STATUS_CONNECTED:
+                // Green background for connected
+                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00), LV_PART_MAIN);
+                break;
+            case CONNECTION_STATUS_CONNECTING:
+                // Yellow background for connecting
+                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
+                break;
+            case CONNECTION_STATUS_FAILED:
+            case CONNECTION_STATUS_ERROR:
+            case CONNECTION_STATUS_DISCONNECTED:
+            default:
+                // Red background for disconnected/failed/error
+                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000), LV_PART_MAIN);
+                break;
         }
     }
+}
+
+void updateWifiStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, bool connected) {
+    // Convert boolean to ConnectionStatus enum
+    ConnectionStatus status;
+    if (connected) {
+        status = CONNECTION_STATUS_CONNECTED;
+    } else if (statusText && strcmp(statusText, "Connecting...") == 0) {
+        status = CONNECTION_STATUS_CONNECTING;
+    } else {
+        status = CONNECTION_STATUS_DISCONNECTED;
+    }
+
+    // Use the generalized function
+    updateConnectionStatus(statusLabel, indicatorObj, statusText, status);
 }
 
 void updateNetworkInfo(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid, const char* ipAddress) {
@@ -155,10 +194,34 @@ void updateNetworkInfo(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid,
     }
 }
 
+// Helper function to convert status strings to ConnectionStatus enum
+static ConnectionStatus statusStringToConnectionStatus(const char* statusText) {
+    if (!statusText) {
+        return CONNECTION_STATUS_DISCONNECTED;
+    }
+
+    if (strcmp(statusText, "Connected") == 0) {
+        return CONNECTION_STATUS_CONNECTED;
+    } else if (strcmp(statusText, "Connecting...") == 0) {
+        return CONNECTION_STATUS_CONNECTING;
+    } else if (strcmp(statusText, "Failed") == 0) {
+        return CONNECTION_STATUS_FAILED;
+    } else if (strcmp(statusText, "Error") == 0) {
+        return CONNECTION_STATUS_ERROR;
+    } else {
+        return CONNECTION_STATUS_DISCONNECTED;
+    }
+}
+
 void updateMqttStatus(lv_obj_t* mqttLabel, const char* statusText) {
     if (mqttLabel && statusText) {
         lv_label_set_text(mqttLabel, statusText);
     }
+}
+
+void updateMqttStatus(lv_obj_t* mqttLabel, lv_obj_t* indicatorObj, const char* statusText) {
+    ConnectionStatus status = statusStringToConnectionStatus(statusText);
+    updateConnectionStatus(mqttLabel, indicatorObj, statusText, status);
 }
 
 }  // namespace Display

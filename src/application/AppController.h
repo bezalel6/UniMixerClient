@@ -14,6 +14,7 @@ void run(void);
 void setupUiComponents(void);
 void updatePeriodicData(void);
 void updateNetworkStatus(void);
+void updateAudioStatus(void);
 
 // Configuration
 #define APP_UPDATE_INTERVAL_MS 500

@@ -14,6 +14,15 @@ typedef enum {
     ROTATION_270 = LV_DISPLAY_ROTATION_270
 } Rotation;
 
+// Connection status types for indicators
+typedef enum {
+    CONNECTION_STATUS_DISCONNECTED = 0,
+    CONNECTION_STATUS_CONNECTING,
+    CONNECTION_STATUS_CONNECTED,
+    CONNECTION_STATUS_FAILED,
+    CONNECTION_STATUS_ERROR
+} ConnectionStatus;
+
 // Display manager functions
 bool init(void);
 void deinit(void);
@@ -32,10 +41,15 @@ void updateQrCode(lv_obj_t* qr_obj, const char* data);
 void updateLabelUint32(lv_obj_t* label, uint32_t value);
 void updateLabelString(lv_obj_t* label, const char* text);
 void updateLabelMillivolts(lv_obj_t* label, uint32_t millivolts);
+void updateDropdownOptions(lv_obj_t* dropdown, const char* options);
 
-// Network UI update functions
+// Connection status update functions (generalized)
+void updateConnectionStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, ConnectionStatus status);
+
+// Legacy functions for backward compatibility
 void updateWifiStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, bool connected);
 void updateMqttStatus(lv_obj_t* mqttLabel, const char* statusText);
+void updateMqttStatus(lv_obj_t* mqttLabel, lv_obj_t* indicatorObj, const char* statusText);
 void updateNetworkInfo(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid, const char* ipAddress);
 
 // LVGL tick management

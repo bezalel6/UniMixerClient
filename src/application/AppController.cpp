@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "AudioStatusManager.h"
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
@@ -6,118 +7,38 @@
 #include "../events/UiEventHandlers.h"
 #include <ui/ui.h>
 #include <esp_log.h>
-#include <ArduinoJson.h>
-#include <vector>
 
 // Private variables
 static unsigned long nextUpdateMillis = 0;
 static const char* TAG = "AppController";
 
-// Audio status handler
-static Hardware::Mqtt::Handler audioStatusHandler;
-
-// Structure to hold key-value pairs
-struct KeyValuePair {
-    String key;
-    int value;
-};
-
 namespace Application {
 
-// JSON parsing function that returns a list of string:number key pairs
-std::vector<KeyValuePair> parseJsonStringNumberPairs(const char* jsonPayload) {
-    std::vector<KeyValuePair> result;
-
-    if (!jsonPayload) {
-        ESP_LOGE(TAG, "Invalid JSON payload");
-        return result;
-    }
-
-    // Create a JSON document
-    JsonDocument doc;
-
-    // Parse the JSON
-    DeserializationError error = deserializeJson(doc, jsonPayload);
-
-    if (error) {
-        ESP_LOGE(TAG, "JSON parsing failed: %s", error.c_str());
-        return result;
-    }
-
-    // Check if the root is an object
-    if (!doc.is<JsonObject>()) {
-        ESP_LOGE(TAG, "JSON root is not an object");
-        return result;
-    }
-
-    JsonObject root = doc.as<JsonObject>();
-
-    // Iterate through all key-value pairs
-    for (JsonPair pair : root) {
-        const char* key = pair.key().c_str();
-
-        // Check if value is a number
-        if (pair.value().is<int>()) {
-            int value = pair.value().as<int>();
-            // Add to result vector
-            KeyValuePair kvp;
-            kvp.key = String(key);
-            kvp.value = value;
-            result.push_back(kvp);
-        } else {
-            ESP_LOGW(TAG, "Skipping non-numeric value for key: %s", key);
-        }
-    }
-
-    return result;
-}
-
-// Audio status handler callback function
-static void audioStatusMessageHandler(const char* topic, const char* payload) {
-    std::vector<KeyValuePair> audioLevels = parseJsonStringNumberPairs(payload);
-
-    if (audioLevels.empty()) {
-        ESP_LOGE(TAG, "Failed to parse audio status JSON or no valid data found");
-        return;
-    }
-
-    // Process each audio level from the returned list
-    for (const auto& level : audioLevels) {
-        ESP_LOGI(TAG, "🔊 Audio Level - Process: %s, Volume: %d", level.key.c_str(), level.value);
-    }
-}
-
-// Initialize audio status handler
-static void initializeAudioStatusHandler(void) {
-    strcpy(audioStatusHandler.identifier, "AudioStatusHandler");
-    strcpy(audioStatusHandler.subscribeTopic, "homeassistant/unimix/audio_status");
-    strcpy(audioStatusHandler.publishTopic, "homeassistant/unimix/audio/requests");
-    audioStatusHandler.callback = audioStatusMessageHandler;
-    audioStatusHandler.active = true;
-}
-
 bool init(void) {
+    ESP_LOGI(TAG, "Initializing Application Controller");
+
     // Initialize hardware/device manager
     if (!Hardware::Device::init()) {
+        ESP_LOGE(TAG, "Failed to initialize device manager");
         return false;
     }
 
     // Initialize network manager
     if (!Hardware::Network::init()) {
+        ESP_LOGE(TAG, "Failed to initialize network manager");
         return false;
     }
 
     // Initialize display manager
     if (!Display::init()) {
+        ESP_LOGE(TAG, "Failed to initialize display manager");
         return false;
     }
 
-    // Initialize and register audio status handler
-    initializeAudioStatusHandler();
-    if (!Hardware::Mqtt::registerHandler(&audioStatusHandler)) {
-        ESP_LOGE(TAG, "Failed to register audio status handler");
-    } else {
-        ESP_LOGI(TAG, "Audio status handler registered successfully");
+    // Initialize audio status manager
+    if (!Application::Audio::StatusManager::init()) {
+        ESP_LOGE(TAG, "Failed to initialize audio status manager");
+        return false;
     }
 
     // Setup UI components
@@ -126,10 +47,14 @@ bool init(void) {
     // Initialize timing
     nextUpdateMillis = Hardware::Device::getMillis() + APP_UPDATE_INTERVAL_MS;
 
+    ESP_LOGI(TAG, "Application Controller initialized successfully");
     return true;
 }
 
 void deinit(void) {
+    ESP_LOGI(TAG, "Deinitializing Application Controller");
+
+    Application::Audio::StatusManager::deinit();
     Hardware::Network::deinit();
     Display::deinit();
     Hardware::Device::deinit();
@@ -145,6 +70,7 @@ void run(void) {
     if (now >= nextUpdateMillis) {
         updatePeriodicData();
         updateNetworkStatus();
+        updateAudioStatus();
         nextUpdateMillis = now + APP_UPDATE_INTERVAL_MS;
     }
 
@@ -166,8 +92,6 @@ void setupUiComponents(void) {
 }
 
 void updatePeriodicData(void) {
-    // This function can be used for any Screen1-specific periodic data updates
-    // Currently focused on network status updates only
 }
 
 void updateNetworkStatus(void) {
@@ -186,8 +110,27 @@ void updateNetworkStatus(void) {
     // Get MQTT status
     const char* mqttStatus = Hardware::Mqtt::getStatusString();
 
-    // Update MQTT status
-    Display::updateMqttStatus(ui_lblMQTTValue, mqttStatus);
+    // Update MQTT status with indicator support
+    Display::updateMqttStatus(ui_lblMQTTValue, ui_objMQTTIndicator, mqttStatus);
+}
+
+void updateAudioStatus(void) {
+    // Get audio statistics from the AudioStatusManager
+    int activeProcessCount = Application::Audio::StatusManager::getActiveProcessCount();
+    int totalVolume = Application::Audio::StatusManager::getTotalVolume();
+
+    // Log audio status information
+    if (activeProcessCount > 0) {
+        ESP_LOGD(TAG, "Audio Status - Active Processes: %d, Total Volume: %d",
+                 activeProcessCount, totalVolume);
+
+        // Get the process with highest volume
+        Application::Audio::AudioLevel highest = Application::Audio::StatusManager::getHighestVolumeProcess();
+        if (!highest.processName.isEmpty()) {
+            ESP_LOGD(TAG, "Highest Volume Process: %s (%d)",
+                     highest.processName.c_str(), highest.volume);
+        }
+    }
 }
 
 }  // namespace Application

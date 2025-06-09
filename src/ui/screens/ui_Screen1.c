@@ -8,7 +8,7 @@
 lv_obj_t * ui_Screen1;
 lv_obj_t * ui_TabView3;
 lv_obj_t * ui_TabPage2;
-lv_obj_t * ui_selectPrimaryAudioDevice;
+lv_obj_t * ui_selectAudioDevice;
 lv_obj_t * ui_Balance;
 lv_obj_t * ui_selectAudioDevice1;
 lv_obj_t * ui_selectAudioDevice2;
@@ -25,6 +25,7 @@ lv_obj_t * ui_lblIP;
 lv_obj_t * ui_lblIPValue;
 lv_obj_t * ui_mqttContainer;
 lv_obj_t * ui_lblMQTT;
+lv_obj_t * ui_objMQTTIndicator;
 lv_obj_t * ui_lblMQTTValue;
 lv_obj_t * ui_pnlVolumeSlider;
 lv_obj_t * ui_volumeSliderLbl;
@@ -33,15 +34,6 @@ lv_obj_t * ui_btnRequestData;
 lv_obj_t * ui_Label5;
 
 // event funtions
-void ui_event_volumeSlider(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-
-    if(event_code == LV_EVENT_VALUE_CHANGED) {
-        _ui_slider_set_text_value(ui_volumeSliderLbl, target, "", "%");
-    }
-}
 
 // build funtions
 
@@ -62,14 +54,14 @@ void ui_Screen1_screen_init(void)
 
     ui_TabPage2 = lv_tabview_add_tab(ui_TabView3, "Primary");
 
-    ui_selectPrimaryAudioDevice = lv_dropdown_create(ui_TabPage2);
-    lv_dropdown_set_options(ui_selectPrimaryAudioDevice, "None");
-    lv_obj_set_width(ui_selectPrimaryAudioDevice, 150);
-    lv_obj_set_height(ui_selectPrimaryAudioDevice, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_selectPrimaryAudioDevice, 0);
-    lv_obj_set_y(ui_selectPrimaryAudioDevice, -1);
-    lv_obj_set_align(ui_selectPrimaryAudioDevice, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_selectPrimaryAudioDevice, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    ui_selectAudioDevice = lv_dropdown_create(ui_TabPage2);
+    lv_dropdown_set_options(ui_selectAudioDevice, "None");
+    lv_obj_set_width(ui_selectAudioDevice, lv_pct(50));
+    lv_obj_set_height(ui_selectAudioDevice, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_selectAudioDevice, -1);
+    lv_obj_set_y(ui_selectAudioDevice, -1);
+    lv_obj_set_align(ui_selectAudioDevice, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_selectAudioDevice, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
 
     ui_Balance = lv_tabview_add_tab(ui_TabView3, "Balance");
     lv_obj_set_flex_flow(ui_Balance, LV_FLEX_FLOW_ROW);
@@ -77,7 +69,7 @@ void ui_Screen1_screen_init(void)
 
     ui_selectAudioDevice1 = lv_dropdown_create(ui_Balance);
     lv_dropdown_set_options(ui_selectAudioDevice1, "None");
-    lv_obj_set_width(ui_selectAudioDevice1, 150);
+    lv_obj_set_width(ui_selectAudioDevice1, 200);
     lv_obj_set_height(ui_selectAudioDevice1, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_selectAudioDevice1, 0);
     lv_obj_set_y(ui_selectAudioDevice1, -1);
@@ -86,7 +78,7 @@ void ui_Screen1_screen_init(void)
 
     ui_selectAudioDevice2 = lv_dropdown_create(ui_Balance);
     lv_dropdown_set_options(ui_selectAudioDevice2, "None");
-    lv_obj_set_width(ui_selectAudioDevice2, 150);
+    lv_obj_set_width(ui_selectAudioDevice2, 200);
     lv_obj_set_height(ui_selectAudioDevice2, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_selectAudioDevice2, 0);
     lv_obj_set_y(ui_selectAudioDevice2, -1);
@@ -175,6 +167,14 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_lblMQTT, LV_ALIGN_BOTTOM_LEFT);
     lv_label_set_text(ui_lblMQTT, "MQTT:");
 
+    ui_objMQTTIndicator = lv_label_create(ui_mqttContainer);
+    lv_obj_set_width(ui_objMQTTIndicator, 10);
+    lv_obj_set_height(ui_objMQTTIndicator, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_objMQTTIndicator, -1);
+    lv_obj_set_y(ui_objMQTTIndicator, 0);
+    lv_obj_set_align(ui_objMQTTIndicator, LV_ALIGN_TOP_MID);
+    lv_label_set_text(ui_objMQTTIndicator, "");
+
     ui_lblMQTTValue = lv_label_create(ui_mqttContainer);
     lv_obj_set_width(ui_lblMQTTValue, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblMQTTValue, LV_SIZE_CONTENT);    /// 1
@@ -223,8 +223,6 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label5, "Request Data");
 
-    lv_obj_add_event_cb(ui_volumeSlider, ui_event_volumeSlider, LV_EVENT_ALL, NULL);
-
 }
 
 void ui_Screen1_screen_destroy(void)
@@ -235,7 +233,7 @@ void ui_Screen1_screen_destroy(void)
     ui_Screen1 = NULL;
     ui_TabView3 = NULL;
     ui_TabPage2 = NULL;
-    ui_selectPrimaryAudioDevice = NULL;
+    ui_selectAudioDevice = NULL;
     ui_Balance = NULL;
     ui_selectAudioDevice1 = NULL;
     ui_selectAudioDevice2 = NULL;
@@ -252,6 +250,7 @@ void ui_Screen1_screen_destroy(void)
     ui_lblIPValue = NULL;
     ui_mqttContainer = NULL;
     ui_lblMQTT = NULL;
+    ui_objMQTTIndicator = NULL;
     ui_lblMQTTValue = NULL;
     ui_pnlVolumeSlider = NULL;
     ui_volumeSliderLbl = NULL;
