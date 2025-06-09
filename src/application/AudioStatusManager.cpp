@@ -6,6 +6,41 @@
 
 static const char* TAG = "AudioStatusManager";
 
+// Macros to reduce repetition in device actions and MQTT publishing
+#define AUDIO_DEVICE_ACTION_PROLOGUE(action_name)                        \
+    if (!initialized) {                                                  \
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");             \
+        return;                                                          \
+    }                                                                    \
+    if (selectedDevice.isEmpty()) {                                      \
+        ESP_LOGW(TAG, "No device selected for " action_name " control"); \
+        return;                                                          \
+    }
+
+#define AUDIO_MQTT_COMMAND_BASE(mqtt_action)                         \
+    if (!Hardware::Mqtt::isConnected()) {                            \
+        ESP_LOGW(TAG, "Cannot publish command: MQTT not connected"); \
+        return;                                                      \
+    }                                                                \
+    JsonDocument doc;                                                \
+    doc["messageType"] = "audio.mix.update";                         \
+    doc["timestamp"] = String(Hardware::Device::getMillis());        \
+    doc["messageId"] = String(Hardware::Device::getMillis());        \
+    JsonArray updates = doc["updates"].to<JsonArray>();              \
+    JsonObject update = updates.add<JsonObject>();                   \
+    update["processName"] = deviceName;                              \
+    update["action"] = mqtt_action;
+
+#define AUDIO_PUBLISH_COMMAND_FINISH(action_name)                                                         \
+    String jsonPayload;                                                                                   \
+    serializeJson(doc, jsonPayload);                                                                      \
+    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str()); \
+    if (published) {                                                                                      \
+        ESP_LOGI(TAG, "Published " action_name " command for %s", deviceName.c_str());                    \
+    } else {                                                                                              \
+        ESP_LOGE(TAG, "Failed to publish " action_name " command");                                       \
+    }
+
 namespace Application {
 namespace Audio {
 
@@ -35,7 +70,6 @@ bool StatusManager::init(void) {
         ESP_LOGE(TAG, "Failed to register audio status MQTT handler");
         return false;
     }
-
     initialized = true;
     ESP_LOGI(TAG, "AudioStatusManager initialized successfully");
     return true;
@@ -274,7 +308,7 @@ void StatusManager::updateVolumeSliderLabel(int volume) {
 // Volume control
 
 void StatusManager::setSelectedDeviceVolume(int volume) {
-    AUDIO_DEVICE_ACTION_PROLOGUE("volume")
+    AUDIO_DEVICE_ACTION_PROLOGUE("volume control")
 
     // Clamp volume to valid range
     volume = constrain(volume, 0, 100);
@@ -291,6 +325,18 @@ void StatusManager::setSelectedDeviceVolume(int volume) {
     ESP_LOGI(TAG, "Set volume to %d for device: %s", volume, selectedDevice.c_str());
 }
 
+void StatusManager::muteSelectedDevice(void) {
+    AUDIO_DEVICE_ACTION_PROLOGUE("mute")
+    publishMuteCommand(selectedDevice);
+    ESP_LOGI(TAG, "Muted device: %s", selectedDevice.c_str());
+}
+
+void StatusManager::unmuteSelectedDevice(void) {
+    AUDIO_DEVICE_ACTION_PROLOGUE("unmute")
+    publishUnmuteCommand(selectedDevice);
+    ESP_LOGI(TAG, "Unmuted device: %s", selectedDevice.c_str());
+}
+
 // Macro-generated methods for device actions and publish commands are defined in header
 
 void StatusManager::publishVolumeChangeCommand(const String& deviceName, int volume) {
@@ -299,14 +345,24 @@ void StatusManager::publishVolumeChangeCommand(const String& deviceName, int vol
     AUDIO_PUBLISH_COMMAND_FINISH("volume change")
 }
 
+void StatusManager::publishMuteCommand(const String& deviceName) {
+    AUDIO_MQTT_COMMAND_BASE("Mute")
+    AUDIO_PUBLISH_COMMAND_FINISH("mute")
+}
+
+void StatusManager::publishUnmuteCommand(const String& deviceName) {
+    AUDIO_MQTT_COMMAND_BASE("Unmute")
+    AUDIO_PUBLISH_COMMAND_FINISH("unmute")
+}
+
 bool StatusManager::isSuppressingSliderEvents(void) {
     return suppressSliderEvents;
 }
 
 // MQTT publishing methods
 
-void StatusManager::publishAudioStatusRequest(void) {
-    if (!Hardware::Mqtt::isConnected()) {
+void StatusManager::publishAudioStatusRequest(bool delayed) {
+    if (!delayed && !Hardware::Mqtt::isConnected()) {
         ESP_LOGW(TAG, "Cannot publish audio status request: MQTT not connected");
         return;
     }
@@ -321,13 +377,22 @@ void StatusManager::publishAudioStatusRequest(void) {
     String jsonPayload;
     serializeJson(doc, jsonPayload);
 
-    // Publish the message
-    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
-
-    if (published) {
-        ESP_LOGI(TAG, "Published audio status request");
+    // Publish the message (delayed or immediate)
+    bool published;
+    if (delayed) {
+        published = Hardware::Mqtt::publishDelayed("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+        if (published) {
+            ESP_LOGI(TAG, "Queued delayed audio status request");
+        } else {
+            ESP_LOGE(TAG, "Failed to queue delayed audio status request");
+        }
     } else {
-        ESP_LOGE(TAG, "Failed to publish audio status request");
+        published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+        if (published) {
+            ESP_LOGI(TAG, "Published audio status request");
+        } else {
+            ESP_LOGE(TAG, "Failed to publish audio status request");
+        }
     }
 }
 
@@ -390,7 +455,7 @@ std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayl
     for (JsonPair pair : root) {
         const char* key = pair.key().c_str();
 
-        // Check if value is a number
+        // Check if value is a number (int or float)
         if (pair.value().is<int>()) {
             int value = pair.value().as<int>();
 
@@ -402,6 +467,18 @@ std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayl
 
             ESP_LOGD(TAG, "Parsed audio level - Process: %s, Volume: %d",
                      key, value);
+        } else if (pair.value().is<float>()) {
+            float floatValue = pair.value().as<float>();
+            int value = static_cast<int>(round(floatValue));
+
+            AudioLevel level;
+            level.processName = String(key);
+            level.volume = value;
+            level.lastUpdate = now;
+            result.push_back(level);
+
+            ESP_LOGD(TAG, "Parsed audio level - Process: %s, Volume: %d (from float: %.2f)",
+                     key, value, floatValue);
         } else {
             ESP_LOGW(TAG, "Skipping non-numeric value for key: %s", key);
         }
