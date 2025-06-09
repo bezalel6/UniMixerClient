@@ -33,7 +33,6 @@ lv_obj_t * ui_volumeSlider;
 lv_obj_t * ui_btnRequestData;
 lv_obj_t * ui_Label5;
 lv_obj_t * ui_lblFPS;
-lv_obj_t * ui_lblFPS1;
 
 // event funtions
 
@@ -48,9 +47,9 @@ void ui_Screen1_screen_init(void)
     lv_tabview_set_tab_bar_position(ui_TabView3, LV_DIR_BOTTOM);
     lv_tabview_set_tab_bar_size(ui_TabView3, 50);
     lv_obj_set_width(ui_TabView3, 548);
-    lv_obj_set_height(ui_TabView3, 200);
-    lv_obj_set_x(ui_TabView3, 103);
-    lv_obj_set_y(ui_TabView3, -96);
+    lv_obj_set_height(ui_TabView3, 135);
+    lv_obj_set_x(ui_TabView3, 105);
+    lv_obj_set_y(ui_TabView3, -137);
     lv_obj_set_align(ui_TabView3, LV_ALIGN_CENTER);
     lv_obj_remove_flag(ui_TabView3, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
@@ -71,7 +70,7 @@ void ui_Screen1_screen_init(void)
 
     ui_selectAudioDevice1 = lv_dropdown_create(ui_Balance);
     lv_dropdown_set_options(ui_selectAudioDevice1, "None");
-    lv_obj_set_width(ui_selectAudioDevice1, 200);
+    lv_obj_set_width(ui_selectAudioDevice1, lv_pct(49));
     lv_obj_set_height(ui_selectAudioDevice1, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_selectAudioDevice1, 0);
     lv_obj_set_y(ui_selectAudioDevice1, -1);
@@ -80,7 +79,7 @@ void ui_Screen1_screen_init(void)
 
     ui_selectAudioDevice2 = lv_dropdown_create(ui_Balance);
     lv_dropdown_set_options(ui_selectAudioDevice2, "None");
-    lv_obj_set_width(ui_selectAudioDevice2, 200);
+    lv_obj_set_width(ui_selectAudioDevice2, lv_pct(49));
     lv_obj_set_height(ui_selectAudioDevice2, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_selectAudioDevice2, 0);
     lv_obj_set_y(ui_selectAudioDevice2, -1);
@@ -184,7 +183,7 @@ void ui_Screen1_screen_init(void)
     lv_label_set_text(ui_lblMQTTValue, "-");
 
     ui_pnlVolumeSlider = lv_obj_create(ui_Screen1);
-    lv_obj_set_height(ui_pnlVolumeSlider, 200);
+    lv_obj_set_height(ui_pnlVolumeSlider, 250);
     lv_obj_set_width(ui_pnlVolumeSlider, lv_pct(100));
     lv_obj_set_align(ui_pnlVolumeSlider, LV_ALIGN_BOTTOM_MID);
     lv_obj_remove_flag(ui_pnlVolumeSlider, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -197,10 +196,11 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_style_text_align(ui_volumeSliderLbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_volumeSlider = lv_arc_create(ui_pnlVolumeSlider);
-    lv_obj_set_width(ui_volumeSlider, 150);
-    lv_obj_set_height(ui_volumeSlider, 150);
+    lv_obj_set_width(ui_volumeSlider, 200);
+    lv_obj_set_height(ui_volumeSlider, 200);
     lv_obj_set_align(ui_volumeSlider, LV_ALIGN_CENTER);
     lv_arc_set_value(ui_volumeSlider, 50);
+    lv_arc_set_mode(ui_volumeSlider, LV_ARC_MODE_SYMMETRICAL);
 
     ui_btnRequestData = lv_button_create(ui_pnlVolumeSlider);
     lv_obj_set_width(ui_btnRequestData, 132);
@@ -218,18 +218,10 @@ void ui_Screen1_screen_init(void)
     ui_lblFPS = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_lblFPS, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_lblFPS, 382);
-    lv_obj_set_y(ui_lblFPS, -188);
-    lv_obj_set_align(ui_lblFPS, LV_ALIGN_TOP_RIGHT);
-    lv_label_set_text(ui_lblFPS, "text");
-
-    ui_lblFPS1 = lv_label_create(ui_Screen1);
-    lv_obj_set_width(ui_lblFPS1, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblFPS1, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_lblFPS1, 345);
-    lv_obj_set_y(ui_lblFPS1, -164);
-    lv_obj_set_align(ui_lblFPS1, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_lblFPS1, "text");
+    lv_obj_set_x(ui_lblFPS, 341);
+    lv_obj_set_y(ui_lblFPS, 162);
+    lv_obj_set_align(ui_lblFPS, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_lblFPS, "FPS: 1000");
 
 }
 
@@ -266,6 +258,5 @@ void ui_Screen1_screen_destroy(void)
     ui_btnRequestData = NULL;
     ui_Label5 = NULL;
     ui_lblFPS = NULL;
-    ui_lblFPS1 = NULL;
 
 }

@@ -496,10 +496,10 @@
                       },
                       {
                         "nid": 60,
-                        "flags": 49,
+                        "flags": 50,
                         "strtype": "OBJECT/Size",
                         "intarray": [
-                          200,
+                          49,
                           1
                         ],
                         "InheritedType": 7
@@ -677,10 +677,10 @@
                       },
                       {
                         "nid": 60,
-                        "flags": 49,
+                        "flags": 50,
                         "strtype": "OBJECT/Size",
                         "intarray": [
-                          200,
+                          49,
                           1
                         ],
                         "InheritedType": 7
@@ -1099,8 +1099,8 @@
                 "flags": 17,
                 "strtype": "OBJECT/Position",
                 "intarray": [
-                  103,
-                  -96
+                  105,
+                  -137
                 ],
                 "InheritedType": 7
               },
@@ -1110,7 +1110,7 @@
                 "strtype": "OBJECT/Size",
                 "intarray": [
                   548,
-                  200
+                  135
                 ],
                 "InheritedType": 7
               },
@@ -3482,8 +3482,8 @@
                     "flags": 17,
                     "strtype": "OBJECT/Size",
                     "intarray": [
-                      150,
-                      150
+                      200,
+                      200
                     ],
                     "InheritedType": 7
                   },
@@ -3567,7 +3567,7 @@
                   {
                     "nid": 1050,
                     "strtype": "ARC/Mode",
-                    "strval": "NORMAL",
+                    "strval": "SYMMETRICAL",
                     "InheritedType": 3
                   },
                   {
@@ -3917,7 +3917,7 @@
                 "strtype": "OBJECT/Size",
                 "intarray": [
                   100,
-                  200
+                  250
                 ],
                 "InheritedType": 7
               },
@@ -3995,8 +3995,8 @@
             "saved_objtypeKey": "PANEL"
           },
           {
-            "guid": "GUID84651471-856667S8974160",
-            "deepid": 596636586,
+            "guid": "GUID41678568-856670S9634160",
+            "deepid": 1355995121,
             "dont_export": false,
             "locked": false,
             "properties": [
@@ -4034,146 +4034,8 @@
                 "flags": 17,
                 "strtype": "OBJECT/Position",
                 "intarray": [
-                  382,
-                  -188
-                ],
-                "InheritedType": 7
-              },
-              {
-                "nid": 60,
-                "flags": 51,
-                "strtype": "OBJECT/Size",
-                "intarray": [
-                  1,
-                  1
-                ],
-                "InheritedType": 7
-              },
-              {
-                "nid": 70,
-                "strtype": "OBJECT/Align",
-                "strval": "TOP_RIGHT",
-                "InheritedType": 3
-              },
-              {
-                "nid": 90,
-                "flags": 1048576,
-                "strtype": "OBJECT/Flags",
-                "InheritedType": 1
-              },
-              {
-                "nid": 110,
-                "strtype": "OBJECT/Clickable",
-                "strval": "False",
-                "InheritedType": 2
-              },
-              {
-                "nid": 225,
-                "flags": 1048576,
-                "strtype": "OBJECT/Scrolling",
-                "InheritedType": 1
-              },
-              {
-                "nid": 300,
-                "strtype": "OBJECT/Scrollbar_mode",
-                "strval": "AUTO",
-                "InheritedType": 3
-              },
-              {
-                "nid": 310,
-                "strtype": "OBJECT/Scroll_direction",
-                "strval": "ALL",
-                "InheritedType": 3
-              },
-              {
-                "nid": 314,
-                "strtype": "OBJECT/Scroll_snap_x",
-                "strval": "NONE",
-                "InheritedType": 3
-              },
-              {
-                "nid": 315,
-                "strtype": "OBJECT/Scroll_snap_y",
-                "strval": "NONE",
-                "InheritedType": 3
-              },
-              {
-                "nid": 320,
-                "flags": 1048576,
-                "strtype": "OBJECT/States",
-                "InheritedType": 1
-              },
-              {
-                "nid": 1010,
-                "strtype": "LABEL/Label",
-                "InheritedType": 1
-              },
-              {
-                "nid": 1020,
-                "strtype": "LABEL/Long_mode",
-                "strval": "WRAP",
-                "InheritedType": 3
-              },
-              {
-                "nid": 1030,
-                "strtype": "LABEL/Text",
-                "strval": "text",
-                "InheritedType": 10
-              },
-              {
-                "part": "lv.PART.MAIN",
-                "childs": [],
-                "nid": 1040,
-                "strtype": "LABEL/Style_main",
-                "strval": "lv.PART.MAIN, Text, Rectangle, Pad, Transform",
-                "InheritedType": 11
-              }
-            ],
-            "saved_objtypeKey": "LABEL",
-            "tree_closed": true
-          },
-          {
-            "guid": "GUID52072871-856669S7554160",
-            "deepid": 596636586,
-            "dont_export": false,
-            "locked": false,
-            "properties": [
-              {
-                "nid": 10,
-                "strtype": "OBJECT/Name",
-                "strval": "lblFPS1",
-                "InheritedType": 10
-              },
-              {
-                "nid": 20,
-                "strtype": "OBJECT/Layout",
-                "InheritedType": 1
-              },
-              {
-                "Flow": 0,
-                "Wrap": false,
-                "Reversed": false,
-                "MainAlignment": 0,
-                "CrossAlignment": 0,
-                "TrackAlignment": 0,
-                "LayoutType": 0,
-                "nid": 30,
-                "strtype": "OBJECT/Layout_type",
-                "strval": "No_layout",
-                "InheritedType": 13
-              },
-              {
-                "nid": 40,
-                "strtype": "OBJECT/Transform",
-                "InheritedType": 1
-              },
-              {
-                "nid": 50,
-                "flags": 17,
-                "strtype": "OBJECT/Position",
-                "intarray": [
-                  345,
-                  -164
+                  341,
+                  162
                 ],
                 "InheritedType": 7
               },
@@ -4255,7 +4117,7 @@
               {
                 "nid": 1030,
                 "strtype": "LABEL/Text",
-                "strval": "text",
+                "strval": "FPS: 1000",
                 "InheritedType": 10
               },
               {
@@ -4267,8 +4129,7 @@
                 "InheritedType": 11
               }
             ],
-            "saved_objtypeKey": "LABEL",
-            "tree_closed": true
+            "saved_objtypeKey": "LABEL"
           }
         ],
         "isPage": true,
@@ -4427,7 +4288,7 @@
     "uiExportFolderPath": "E:\\SharedCo\\esp32-smartdisplay-demo\\src\\ui",
     "projectExportFolderPath": "C:\\Users\\bezal\\OneDrive\\Documents\\Squareline Studio\\esp32",
     "custom_variable_prefix": "ui",
-    "backup_cnt": 84,
+    "backup_cnt": 85,
     "autosave_cnt": 0,
     "group_color_cnt": 0,
     "lvgl_version": "9.1.0",

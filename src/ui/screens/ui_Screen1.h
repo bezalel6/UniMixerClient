@@ -41,7 +41,6 @@ extern lv_obj_t * ui_volumeSlider;
 extern lv_obj_t * ui_btnRequestData;
 extern lv_obj_t * ui_Label5;
 extern lv_obj_t * ui_lblFPS;
-extern lv_obj_t * ui_lblFPS1;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus
