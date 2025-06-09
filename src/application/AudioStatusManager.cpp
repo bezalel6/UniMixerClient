@@ -112,6 +112,7 @@ void StatusManager::updateAudioLevel(const String& processName, int volume) {
     newLevel.processName = processName;
     newLevel.volume = volume;
     newLevel.lastUpdate = now;
+    newLevel.stale = false;
     audioLevels.push_back(newLevel);
 
     lastUpdateTime = now;
@@ -163,15 +164,46 @@ AudioLevel StatusManager::getHighestVolumeProcess(void) {
 void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels) {
     ESP_LOGI(TAG, "Received audio status update with %d processes", levels.size());
 
-    // Update all levels
-    for (const auto& level : levels) {
-        updateAudioLevel(level.processName, level.volume);
+    // First, mark all existing devices as stale
+    for (auto& level : audioLevels) {
+        if (!level.stale) {
+            ESP_LOGI(TAG, "Marking device as stale: %s", level.processName.c_str());
+        }
+        level.stale = true;
     }
 
-    // Auto-select first device if none is selected and devices are available
+    // Update levels from the received data and mark them as fresh
+    for (const auto& level : levels) {
+        updateAudioLevel(level.processName, level.volume);
+        // Find the updated device and mark it as fresh
+        for (auto& existingLevel : audioLevels) {
+            if (existingLevel.processName == level.processName) {
+                if (existingLevel.stale) {
+                    ESP_LOGI(TAG, "Refreshing stale device: %s", level.processName.c_str());
+                }
+                existingLevel.stale = false;
+                break;
+            }
+        }
+    }
+
+    // Auto-select first non-stale device if none is selected and devices are available
     if (selectedDevice.isEmpty() && !audioLevels.empty()) {
-        setSelectedDevice(audioLevels[0].processName);
-        ESP_LOGI(TAG, "Auto-selected first device: %s", audioLevels[0].processName.c_str());
+        // Find first non-stale device, or fall back to first device if all are stale
+        String deviceToSelect = "";
+        for (const auto& level : audioLevels) {
+            if (!level.stale) {
+                deviceToSelect = level.processName;
+                break;
+            }
+        }
+        if (deviceToSelect.isEmpty() && !audioLevels.empty()) {
+            deviceToSelect = audioLevels[0].processName;
+        }
+        if (!deviceToSelect.isEmpty()) {
+            setSelectedDevice(deviceToSelect);
+            ESP_LOGI(TAG, "Auto-selected device: %s", deviceToSelect.c_str());
+        }
     }
 
     // Update UI dropdowns with new audio device list
@@ -216,11 +248,15 @@ String StatusManager::buildAudioDeviceOptionsString(void) {
             options += "\n";
         }
 
-        // Format: "ProcessName (Volume%)"
+        // Format: "ProcessName (Volume%)" or "ProcessName (Volume%) (Stale)"
         options += level.processName;
         options += " (";
         options += String(level.volume);
         options += "%)";
+
+        if (level.stale) {
+            options += " (Stale)";
+        }
 
         first = false;
     }

@@ -15,6 +15,7 @@ struct AudioLevel {
     String processName;
     int volume;
     unsigned long lastUpdate;
+    bool stale = false;
 };
 
 // Audio Status Manager class
