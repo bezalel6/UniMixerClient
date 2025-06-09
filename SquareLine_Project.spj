@@ -3186,8 +3186,8 @@
                 "flags": 17,
                 "strtype": "OBJECT/Position",
                 "intarray": [
-                  0,
-                  0
+                  8,
+                  8
                 ],
                 "InheritedType": 7
               },
@@ -3272,8 +3272,7 @@
                 "InheritedType": 11
               }
             ],
-            "saved_objtypeKey": "PANEL",
-            "tree_closed": true
+            "saved_objtypeKey": "PANEL"
           },
           {
             "guid": "GUID98690531-856656S80634160",
@@ -3501,7 +3500,6 @@
                   },
                   {
                     "nid": 225,
-                    "flags": 1048576,
                     "strtype": "OBJECT/Scrolling",
                     "InheritedType": 1
                   },
@@ -3531,7 +3529,6 @@
                   },
                   {
                     "nid": 320,
-                    "flags": 1048576,
                     "strtype": "OBJECT/States",
                     "InheritedType": 1
                   },
@@ -3567,7 +3564,7 @@
                   {
                     "nid": 1050,
                     "strtype": "ARC/Mode",
-                    "strval": "SYMMETRICAL",
+                    "strval": "NORMAL",
                     "InheritedType": 3
                   },
                   {
@@ -3730,7 +3727,7 @@
                       {
                         "nid": 1030,
                         "strtype": "LABEL/Text",
-                        "strval": "Request Data",
+                        "strval": "Refresh",
                         "InheritedType": 10
                       },
                       {
@@ -4133,7 +4130,7 @@
           }
         ],
         "isPage": true,
-        "editor_posx": 2000,
+        "editor_posx": 1000,
         "editor_posy": -1000,
         "dont_export": false,
         "locked": false,
@@ -4290,7 +4287,7 @@
     "custom_variable_prefix": "ui",
     "backup_cnt": 86,
     "autosave_cnt": 0,
-    "group_color_cnt": 0,
+    "group_color_cnt": 1,
     "lvgl_version": "9.1.0",
     "callfuncsexport": "CPP_FILE",
     "imageexport": "SOURCE",

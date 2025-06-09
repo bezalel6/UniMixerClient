@@ -202,7 +202,6 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_height(ui_volumeSlider, 200);
     lv_obj_set_align(ui_volumeSlider, LV_ALIGN_CENTER);
     lv_arc_set_value(ui_volumeSlider, 50);
-    lv_arc_set_mode(ui_volumeSlider, LV_ARC_MODE_SYMMETRICAL);
 
     ui_btnRequestData = lv_button_create(ui_pnlVolumeSlider);
     lv_obj_set_width(ui_btnRequestData, 132);
@@ -215,7 +214,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_width(ui_Label5, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Label5, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label5, "Request Data");
+    lv_label_set_text(ui_Label5, "Refresh");
 
     ui_lblFPS = lv_label_create(ui_Screen1);
     lv_obj_set_width(ui_lblFPS, LV_SIZE_CONTENT);   /// 1
