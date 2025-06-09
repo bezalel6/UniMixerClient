@@ -6,6 +6,54 @@
 #include "../hardware/MqttManager.h"
 #include "../display/DisplayManager.h"
 
+// Macros to reduce repetition in device actions and MQTT publishing
+#define AUDIO_DEVICE_ACTION_PROLOGUE(action_name)                        \
+    if (!initialized) {                                                  \
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");             \
+        return;                                                          \
+    }                                                                    \
+    if (selectedDevice.isEmpty()) {                                      \
+        ESP_LOGW(TAG, "No device selected for " action_name " control"); \
+        return;                                                          \
+    }
+
+#define AUDIO_MQTT_COMMAND_BASE(mqtt_action)                         \
+    if (!Hardware::Mqtt::isConnected()) {                            \
+        ESP_LOGW(TAG, "Cannot publish command: MQTT not connected"); \
+        return;                                                      \
+    }                                                                \
+    JsonDocument doc;                                                \
+    doc["messageType"] = "audio.mix.update";                         \
+    doc["timestamp"] = String(Hardware::Device::getMillis());        \
+    doc["messageId"] = String(Hardware::Device::getMillis());        \
+    JsonArray updates = doc.createNestedArray("updates");            \
+    JsonObject update = updates.createNestedObject();                \
+    update["processName"] = deviceName;                              \
+    update["action"] = mqtt_action;
+
+#define AUDIO_PUBLISH_COMMAND_FINISH(action_name)                                                         \
+    String jsonPayload;                                                                                   \
+    serializeJson(doc, jsonPayload);                                                                      \
+    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str()); \
+    if (published) {                                                                                      \
+        ESP_LOGI(TAG, "Published " action_name " command for %s", deviceName.c_str());                    \
+    } else {                                                                                              \
+        ESP_LOGE(TAG, "Failed to publish " action_name " command");                                       \
+    }
+
+#define AUDIO_PUBLISH_SIMPLE_COMMAND(method_name, mqtt_action, action_name) \
+    static void method_name(const String& deviceName) {                     \
+        AUDIO_MQTT_COMMAND_BASE(mqtt_action)                                \
+        AUDIO_PUBLISH_COMMAND_FINISH(action_name)                           \
+    }
+
+#define AUDIO_DEVICE_ACTION_SIMPLE(method_name, action_name, mqtt_action)  \
+    static void method_name(void) {                                        \
+        AUDIO_DEVICE_ACTION_PROLOGUE(action_name)                          \
+        publish##mqtt_action##Command(selectedDevice);                     \
+        ESP_LOGI(TAG, action_name "d device: %s", selectedDevice.c_str()); \
+    }
+
 namespace Application {
 namespace Audio {
 
@@ -46,11 +94,11 @@ class StatusManager {
 
     // Volume control
     static void setSelectedDeviceVolume(int volume);
-    static void muteSelectedDevice(void);
-    static void unmuteSelectedDevice(void);
+    AUDIO_DEVICE_ACTION_SIMPLE(muteSelectedDevice, "mute", Mute)
+    AUDIO_DEVICE_ACTION_SIMPLE(unmuteSelectedDevice, "unmute", Unmute)
     static void publishVolumeChangeCommand(const String& deviceName, int volume);
-    static void publishMuteCommand(const String& deviceName);
-    static void publishUnmuteCommand(const String& deviceName);
+    AUDIO_PUBLISH_SIMPLE_COMMAND(publishMuteCommand, "Mute", "mute")
+    AUDIO_PUBLISH_SIMPLE_COMMAND(publishUnmuteCommand, "Unmute", "unmute")
     static bool isSuppressingSliderEvents(void);
 
     // Status callback
