@@ -3,7 +3,8 @@
 
 #include <Arduino.h>
 #include <vector>
-#include "../hardware/MqttManager.h"
+#include "../messaging/MessageBus.h"
+#include "../../include/MessageProtocol.h"
 #include "../display/DisplayManager.h"
 
 namespace Application {
@@ -67,7 +68,7 @@ class StatusManager {
 
     // Internal state
     static std::vector<AudioLevel> audioLevels;
-    static Hardware::Mqtt::Handler audioStatusHandler;
+    static Messaging::Handler audioStatusHandler;
     static unsigned long lastUpdateTime;
     static bool initialized;
 

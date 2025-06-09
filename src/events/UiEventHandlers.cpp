@@ -3,7 +3,7 @@
 #include <esp32_smartdisplay.h>
 #include <esp_log.h>
 #include <ArduinoJson.h>
-#include "../hardware/MqttManager.h"
+#include "../messaging/MessageBus.h"
 #include "../hardware/DeviceManager.h"
 #include "../application/AudioStatusManager.h"
 

@@ -3,8 +3,9 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
-#include "../hardware/MqttManager.h"
+#include "../messaging/MessageBus.h"
 #include "../events/UiEventHandlers.h"
+#include "../../include/MessagingConfig.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 
@@ -28,6 +29,45 @@ bool init(void) {
         ESP_LOGE(TAG, "Failed to initialize network manager");
         return false;
     }
+
+    // Initialize messaging system
+    if (!Messaging::MessageBus::Init()) {
+        ESP_LOGE(TAG, "Failed to initialize messaging system");
+        return false;
+    }
+
+    // Configure transport based on MessagingConfig.h settings
+#if MESSAGING_DEFAULT_TRANSPORT == 0
+// MQTT only
+#if MESSAGING_ENABLE_MQTT_TRANSPORT
+    ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
+    Messaging::MessageBus::EnableMqttTransport();
+#else
+    ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
+    return false;
+#endif
+#elif MESSAGING_DEFAULT_TRANSPORT == 1
+// Serial only
+#if MESSAGING_ENABLE_SERIAL_TRANSPORT
+    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
+    Messaging::MessageBus::EnableSerialTransport();
+#else
+    ESP_LOGE(TAG, "Serial transport requested but disabled in config");
+    return false;
+#endif
+#elif MESSAGING_DEFAULT_TRANSPORT == 2
+// Both transports
+#if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
+    ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
+    Messaging::MessageBus::EnableBothTransports();
+#else
+    ESP_LOGE(TAG, "Dual transport requested but one or both transports disabled in config");
+    return false;
+#endif
+#else
+    ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d", MESSAGING_DEFAULT_TRANSPORT);
+    return false;
+#endif
 
     // Initialize display manager
     if (!Display::init()) {
@@ -55,6 +95,7 @@ void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing Application Controller");
 
     Application::Audio::StatusManager::deinit();
+    Messaging::MessageBus::Deinit();
     Hardware::Network::deinit();
     Display::deinit();
     Hardware::Device::deinit();
@@ -65,6 +106,9 @@ void run(void) {
 
     // Update network manager
     Hardware::Network::update();
+
+    // Update messaging system
+    Messaging::MessageBus::Update();
 
     // Update periodic data
     if (now >= nextUpdateMillis) {
@@ -116,11 +160,11 @@ void updateNetworkStatus(void) {
     // Update network information
     Display::updateNetworkInfo(ui_lblSSIDValue, ui_lblIPValue, ssid, ipAddress);
 
-    // Get MQTT status
-    const char* mqttStatus = Hardware::Mqtt::getStatusString();
+    // Get messaging status
+    const char* messagingStatus = Messaging::MessageBus::GetStatusString();
 
-    // Update MQTT status with indicator support
-    Display::updateMqttStatus(ui_lblMQTTValue, ui_objMQTTIndicator, mqttStatus);
+    // Update messaging status with indicator support
+    Display::updateMqttStatus(ui_lblMQTTValue, ui_objMQTTIndicator, messagingStatus);
 }
 
 void updateAudioStatus(void) {
