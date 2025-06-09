@@ -41,8 +41,8 @@ class StatusManager {
     // Selected device state management
     static void setSelectedDevice(const String& deviceName);
     static String getSelectedDevice(void);
-    static void syncVolumeSliderWithSelectedDevice(void);
-    static void updateVolumeSliderLabel(int volume);
+    static void syncVolumeArcWithSelectedDevice(void);
+    static void updateVolumeArcLabel(int volume);
 
     // Volume control
     static void setSelectedDeviceVolume(int volume);
@@ -51,7 +51,7 @@ class StatusManager {
     static void publishVolumeChangeCommand(const String& deviceName, int volume);
     static void publishMuteCommand(const String& deviceName);
     static void publishUnmuteCommand(const String& deviceName);
-    static bool isSuppressingSliderEvents(void);
+    static bool isSuppressingArcEvents(void);
 
     // Status callback
     static void onAudioStatusReceived(const std::vector<AudioLevel>& levels);
@@ -73,7 +73,7 @@ class StatusManager {
 
     // Selected device state
     static String selectedDevice;
-    static bool suppressSliderEvents;
+    static bool suppressArcEvents;
 };
 
 }  // namespace Audio

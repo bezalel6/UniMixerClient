@@ -41,22 +41,22 @@ void audioDeviceDropdownChangedHandler(lv_event_t* e) {
     }
 }
 
-// Volume slider change handler
-void volumeSliderChangedHandler(lv_event_t* e) {
+// Volume arc change handler
+void volumeArcChangedHandler(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_VALUE_CHANGED) {
         // Check if events are suppressed to prevent infinite loops
-        if (Application::Audio::StatusManager::isSuppressingSliderEvents()) {
+        if (Application::Audio::StatusManager::isSuppressingArcEvents()) {
             return;
         }
 
-        lv_obj_t* slider = (lv_obj_t*)lv_event_get_target(e);
+        lv_obj_t* arc = (lv_obj_t*)lv_event_get_target(e);
 
-        // Get the slider value
-        int volume = lv_slider_get_value(slider);
+        // Get the arc value
+        int volume = lv_arc_get_value(arc);
 
-        ESP_LOGI(TAG, "Volume slider changed: %d", volume);
+        ESP_LOGI(TAG, "Volume arc changed: %d", volume);
 
         // Set the volume for the selected device
         Application::Audio::StatusManager::setSelectedDeviceVolume(volume);

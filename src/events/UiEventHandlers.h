@@ -13,7 +13,7 @@ void btnRequestDataClickedHandler(lv_event_t* e);
 void audioDeviceDropdownChangedHandler(lv_event_t* e);
 
 // Volume control handlers
-void volumeSliderChangedHandler(lv_event_t* e);
+void volumeArcChangedHandler(lv_event_t* e);
 
 }  // namespace UI
 }  // namespace Events

@@ -95,8 +95,8 @@ void setupUiComponents(void) {
     lv_obj_add_event_cb(ui_selectAudioDevice1, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(ui_selectAudioDevice2, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Register volume slider event handler
-    lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeSliderChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+    // Register volume arc event handler
+    lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
 void updatePeriodicData(void) {

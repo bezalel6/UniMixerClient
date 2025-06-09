@@ -50,7 +50,7 @@ Hardware::Mqtt::Handler StatusManager::audioStatusHandler;
 unsigned long StatusManager::lastUpdateTime = 0;
 bool StatusManager::initialized = false;
 String StatusManager::selectedDevice = "";
-bool StatusManager::suppressSliderEvents = false;
+bool StatusManager::suppressArcEvents = false;
 
 bool StatusManager::init(void) {
     if (initialized) {
@@ -171,9 +171,9 @@ void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels)
     // Update UI dropdowns with new audio device list
     updateAudioDeviceDropdowns();
 
-    // Sync volume slider if a device is selected
+    // Sync volume arc if a device is selected
     if (!selectedDevice.isEmpty()) {
-        syncVolumeSliderWithSelectedDevice();
+        syncVolumeArcWithSelectedDevice();
     }
 }
 
@@ -256,48 +256,48 @@ void StatusManager::setSelectedDevice(const String& deviceName) {
     selectedDevice = deviceName;
     ESP_LOGI(TAG, "Selected device changed to: %s", deviceName.c_str());
 
-    // Sync volume slider with the new selection
-    syncVolumeSliderWithSelectedDevice();
+    // Sync volume arc with the new selection
+    syncVolumeArcWithSelectedDevice();
 }
 
 String StatusManager::getSelectedDevice(void) {
     return selectedDevice;
 }
 
-void StatusManager::syncVolumeSliderWithSelectedDevice(void) {
+void StatusManager::syncVolumeArcWithSelectedDevice(void) {
     if (!initialized) {
         ESP_LOGW(TAG, "AudioStatusManager not initialized");
         return;
     }
 
     if (selectedDevice.isEmpty()) {
-        // No device selected, set slider to 0
-        suppressSliderEvents = true;
-        lv_slider_set_value(ui_volumeSlider, 0, LV_ANIM_OFF);
-        updateVolumeSliderLabel(0);
-        suppressSliderEvents = false;
+        // No device selected, set arc to 0
+        suppressArcEvents = true;
+        lv_arc_set_value(ui_volumeSlider, 0);
+        updateVolumeArcLabel(0);
+        suppressArcEvents = false;
         return;
     }
 
     // Find the selected device and sync its volume
     AudioLevel* level = getAudioLevel(selectedDevice);
     if (level != nullptr) {
-        suppressSliderEvents = true;
-        lv_slider_set_value(ui_volumeSlider, level->volume, LV_ANIM_ON);
-        updateVolumeSliderLabel(level->volume);
-        suppressSliderEvents = false;
-        ESP_LOGI(TAG, "Synced volume slider to %d for device: %s",
+        suppressArcEvents = true;
+        lv_arc_set_value(ui_volumeSlider, level->volume);
+        updateVolumeArcLabel(level->volume);
+        suppressArcEvents = false;
+        ESP_LOGI(TAG, "Synced volume arc to %d for device: %s",
                  level->volume, selectedDevice.c_str());
     } else {
         ESP_LOGW(TAG, "Selected device '%s' not found in audio levels", selectedDevice.c_str());
-        suppressSliderEvents = true;
-        lv_slider_set_value(ui_volumeSlider, 0, LV_ANIM_OFF);
-        updateVolumeSliderLabel(0);
-        suppressSliderEvents = false;
+        suppressArcEvents = true;
+        lv_arc_set_value(ui_volumeSlider, 0);
+        updateVolumeArcLabel(0);
+        suppressArcEvents = false;
     }
 }
 
-void StatusManager::updateVolumeSliderLabel(int volume) {
+void StatusManager::updateVolumeArcLabel(int volume) {
     if (ui_volumeSliderLbl) {
         char labelText[16];
         snprintf(labelText, sizeof(labelText), "%d%%", volume);
@@ -316,8 +316,8 @@ void StatusManager::setSelectedDeviceVolume(int volume) {
     // Update local audio level immediately for responsive UI
     updateAudioLevel(selectedDevice, volume);
 
-    // Update the volume slider label
-    updateVolumeSliderLabel(volume);
+    // Update the volume arc label
+    updateVolumeArcLabel(volume);
 
     // Publish volume change command via MQTT
     publishVolumeChangeCommand(selectedDevice, volume);
@@ -355,8 +355,8 @@ void StatusManager::publishUnmuteCommand(const String& deviceName) {
     AUDIO_PUBLISH_COMMAND_FINISH("unmute")
 }
 
-bool StatusManager::isSuppressingSliderEvents(void) {
-    return suppressSliderEvents;
+bool StatusManager::isSuppressingArcEvents(void) {
+    return suppressArcEvents;
 }
 
 // MQTT publishing methods
