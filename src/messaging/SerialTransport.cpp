@@ -128,8 +128,8 @@ static bool IsSerialAvailable() {
 static void ProcessIncomingSerial() {
     unsigned long now = millis();
 
-    // Check for incoming data on the clean data interface
-    USBCDC& dataSerial = Hardware::Device::getDataSerial();
+    // Check for incoming data on the serial interface
+    HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
     while (dataSerial.available() > 0) {
         char c = dataSerial.read();
 

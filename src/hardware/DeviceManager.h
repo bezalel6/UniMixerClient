@@ -2,8 +2,6 @@
 #define DEVICE_MANAGER_H
 
 #include <Arduino.h>
-#include <USB.h>
-#include <USBCDC.h>
 
 namespace Hardware {
 namespace Device {
@@ -34,17 +32,10 @@ uint32_t readLightSensorMv(void);
 unsigned long getMillis(void);
 void delay(unsigned long ms);
 
-// Dual USB Serial Interface support
-// Note: Use existing 'Serial' for CDC0 (debug), create DataSerial for CDC1 (protocol)
-extern USBCDC DataSerial;  // CDC1 - Clean messaging protocol
-
 // Serial interface management
-bool initDualSerial(void);
-void redirectLogsToDebugSerial(void);
-// HWCDC& getDebugSerial(void);  // Returns existing Serial (CDC0)
-USBCDC& getDataSerial(void);  // Returns DataSerial (CDC1)
+bool initSerial(void);
+HardwareSerial& getDataSerial(void);  // Returns standard Serial interface
 bool isDataSerialAvailable(void);
-void testDualSerial(void);  // Test both interfaces
 
 }  // namespace Device
 }  // namespace Hardware

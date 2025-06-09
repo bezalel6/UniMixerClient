@@ -17,16 +17,11 @@
 // 0 = MQTT only, 1 = Serial only, 2 = Both transports
 #define MESSAGING_DEFAULT_TRANSPORT 1
 
-// Dual USB Serial Configuration (ESP32-S3)
-// CDC0 (DebugSerial): Debug logs, ESP_LOG output, diagnostics
-// CDC1 (DataSerial): Clean messaging protocol only
-#define MESSAGING_DEBUG_SERIAL_BAUD 115200
-#define MESSAGING_DATA_SERIAL_BAUD 115200
+// Serial Configuration (ESP32-S3)
+// Standard Serial: Debug logs, ESP_LOG output, diagnostics, and messaging protocol
+#define MESSAGING_SERIAL_BAUD_RATE 115200
 #define MESSAGING_SERIAL_BUFFER_SIZE 1024
 #define MESSAGING_SERIAL_TIMEOUT_MS 1000
-
-// Legacy Serial Support (single interface fallback)
-#define MESSAGING_SERIAL_BAUD_RATE 115200
 
 // Debug Configuration
 #define MESSAGING_DEBUG_ENABLED 1

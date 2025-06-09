@@ -29,9 +29,8 @@ inline constexpr char SERIAL_DELIMITER = ':';
 inline constexpr char SERIAL_TERMINATOR = '\n';
 inline constexpr int SERIAL_TIMEOUT_MS = 1000;
 
-// USB Serial Interface Configuration
-inline constexpr int DEBUG_SERIAL_BAUD = 115200;  // CDC0 - Debug/logs
-inline constexpr int DATA_SERIAL_BAUD = 115200;   // CDC1 - Clean messaging
+// Serial Interface Configuration
+inline constexpr int SERIAL_BAUD_RATE = 115200;  // Standard Serial - Debug/logs and messaging
 
 }  // namespace Messaging::Protocol
 
