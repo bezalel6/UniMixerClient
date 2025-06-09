@@ -14,6 +14,8 @@ std::vector<AudioLevel> StatusManager::audioLevels;
 Hardware::Mqtt::Handler StatusManager::audioStatusHandler;
 unsigned long StatusManager::lastUpdateTime = 0;
 bool StatusManager::initialized = false;
+String StatusManager::selectedDevice = "";
+bool StatusManager::suppressSliderEvents = false;
 
 bool StatusManager::init(void) {
     if (initialized) {
@@ -134,6 +136,11 @@ void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels)
 
     // Update UI dropdowns with new audio device list
     updateAudioDeviceDropdowns();
+
+    // Sync volume slider if a device is selected
+    if (!selectedDevice.isEmpty()) {
+        syncVolumeSliderWithSelectedDevice();
+    }
 }
 
 // UI Update functions
@@ -202,6 +209,257 @@ String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
     }
 
     return selectedString;
+}
+
+// Selected device state management
+
+void StatusManager::setSelectedDevice(const String& deviceName) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");
+        return;
+    }
+
+    selectedDevice = deviceName;
+    ESP_LOGI(TAG, "Selected device changed to: %s", deviceName.c_str());
+
+    // Sync volume slider with the new selection
+    syncVolumeSliderWithSelectedDevice();
+}
+
+String StatusManager::getSelectedDevice(void) {
+    return selectedDevice;
+}
+
+void StatusManager::syncVolumeSliderWithSelectedDevice(void) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");
+        return;
+    }
+
+    if (selectedDevice.isEmpty()) {
+        // No device selected, set slider to 0
+        suppressSliderEvents = true;
+        lv_slider_set_value(ui_volumeSlider, 0, LV_ANIM_OFF);
+        updateVolumeSliderLabel(0);
+        suppressSliderEvents = false;
+        return;
+    }
+
+    // Find the selected device and sync its volume
+    AudioLevel* level = getAudioLevel(selectedDevice);
+    if (level != nullptr) {
+        suppressSliderEvents = true;
+        lv_slider_set_value(ui_volumeSlider, level->volume, LV_ANIM_ON);
+        updateVolumeSliderLabel(level->volume);
+        suppressSliderEvents = false;
+        ESP_LOGI(TAG, "Synced volume slider to %d for device: %s",
+                 level->volume, selectedDevice.c_str());
+    } else {
+        ESP_LOGW(TAG, "Selected device '%s' not found in audio levels", selectedDevice.c_str());
+        suppressSliderEvents = true;
+        lv_slider_set_value(ui_volumeSlider, 0, LV_ANIM_OFF);
+        updateVolumeSliderLabel(0);
+        suppressSliderEvents = false;
+    }
+}
+
+void StatusManager::updateVolumeSliderLabel(int volume) {
+    if (ui_volumeSliderLbl) {
+        char labelText[16];
+        snprintf(labelText, sizeof(labelText), "%d%%", volume);
+        lv_label_set_text(ui_volumeSliderLbl, labelText);
+    }
+}
+
+// Volume control
+
+void StatusManager::setSelectedDeviceVolume(int volume) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");
+        return;
+    }
+
+    if (selectedDevice.isEmpty()) {
+        ESP_LOGW(TAG, "No device selected for volume control");
+        return;
+    }
+
+    // Clamp volume to valid range
+    volume = constrain(volume, 0, 100);
+
+    // Update local audio level immediately for responsive UI
+    updateAudioLevel(selectedDevice, volume);
+
+    // Update the volume slider label
+    updateVolumeSliderLabel(volume);
+
+    // Publish volume change command via MQTT
+    publishVolumeChangeCommand(selectedDevice, volume);
+
+    ESP_LOGI(TAG, "Set volume to %d for device: %s", volume, selectedDevice.c_str());
+}
+
+void StatusManager::muteSelectedDevice(void) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");
+        return;
+    }
+
+    if (selectedDevice.isEmpty()) {
+        ESP_LOGW(TAG, "No device selected for mute control");
+        return;
+    }
+
+    // Publish mute command via MQTT
+    publishMuteCommand(selectedDevice);
+
+    ESP_LOGI(TAG, "Muted device: %s", selectedDevice.c_str());
+}
+
+void StatusManager::unmuteSelectedDevice(void) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioStatusManager not initialized");
+        return;
+    }
+
+    if (selectedDevice.isEmpty()) {
+        ESP_LOGW(TAG, "No device selected for unmute control");
+        return;
+    }
+
+    // Publish unmute command via MQTT
+    publishUnmuteCommand(selectedDevice);
+
+    ESP_LOGI(TAG, "Unmuted device: %s", selectedDevice.c_str());
+}
+
+void StatusManager::publishVolumeChangeCommand(const String& deviceName, int volume) {
+    if (!Hardware::Mqtt::isConnected()) {
+        ESP_LOGW(TAG, "Cannot publish volume command: MQTT not connected");
+        return;
+    }
+
+    // Create JSON command using AudioMixUpdateMessage format
+    JsonDocument doc;
+    doc["messageType"] = "audio.mix.update";
+    doc["timestamp"] = String(Hardware::Device::getMillis());
+    doc["messageId"] = String(Hardware::Device::getMillis());
+
+    // Create updates array with a single AudioMixUpdate
+    JsonArray updates = doc.createNestedArray("updates");
+    JsonObject update = updates.createNestedObject();
+    update["processName"] = deviceName;
+    update["action"] = "SetVolume";
+    update["volume"] = volume;
+
+    // Serialize to string
+    String jsonPayload;
+    serializeJson(doc, jsonPayload);
+
+    // Publish the command
+    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+
+    if (published) {
+        ESP_LOGI(TAG, "Published AudioMixUpdate command for %s: %d", deviceName.c_str(), volume);
+    } else {
+        ESP_LOGE(TAG, "Failed to publish volume command");
+    }
+}
+
+void StatusManager::publishMuteCommand(const String& deviceName) {
+    if (!Hardware::Mqtt::isConnected()) {
+        ESP_LOGW(TAG, "Cannot publish mute command: MQTT not connected");
+        return;
+    }
+
+    // Create JSON command using AudioMixUpdateMessage format
+    JsonDocument doc;
+    doc["messageType"] = "audio.mix.update";
+    doc["timestamp"] = String(Hardware::Device::getMillis());
+    doc["messageId"] = String(Hardware::Device::getMillis());
+
+    // Create updates array with a single AudioMixUpdate
+    JsonArray updates = doc.createNestedArray("updates");
+    JsonObject update = updates.createNestedObject();
+    update["processName"] = deviceName;
+    update["action"] = "Mute";
+
+    // Serialize to string
+    String jsonPayload;
+    serializeJson(doc, jsonPayload);
+
+    // Publish the command
+    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+
+    if (published) {
+        ESP_LOGI(TAG, "Published mute command for %s", deviceName.c_str());
+    } else {
+        ESP_LOGE(TAG, "Failed to publish mute command");
+    }
+}
+
+void StatusManager::publishUnmuteCommand(const String& deviceName) {
+    if (!Hardware::Mqtt::isConnected()) {
+        ESP_LOGW(TAG, "Cannot publish unmute command: MQTT not connected");
+        return;
+    }
+
+    // Create JSON command using AudioMixUpdateMessage format
+    JsonDocument doc;
+    doc["messageType"] = "audio.mix.update";
+    doc["timestamp"] = String(Hardware::Device::getMillis());
+    doc["messageId"] = String(Hardware::Device::getMillis());
+
+    // Create updates array with a single AudioMixUpdate
+    JsonArray updates = doc.createNestedArray("updates");
+    JsonObject update = updates.createNestedObject();
+    update["processName"] = deviceName;
+    update["action"] = "Unmute";
+
+    // Serialize to string
+    String jsonPayload;
+    serializeJson(doc, jsonPayload);
+
+    // Publish the command
+    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+
+    if (published) {
+        ESP_LOGI(TAG, "Published unmute command for %s", deviceName.c_str());
+    } else {
+        ESP_LOGE(TAG, "Failed to publish unmute command");
+    }
+}
+
+bool StatusManager::isSuppressingSliderEvents(void) {
+    return suppressSliderEvents;
+}
+
+// MQTT publishing methods
+
+void StatusManager::publishAudioStatusRequest(void) {
+    if (!Hardware::Mqtt::isConnected()) {
+        ESP_LOGW(TAG, "Cannot publish audio status request: MQTT not connected");
+        return;
+    }
+
+    // Create JSON message using AudioStatusRequestMessage format
+    JsonDocument doc;
+    doc["messageType"] = "audio.status.request";
+    doc["timestamp"] = String(Hardware::Device::getMillis());
+    doc["messageId"] = String(Hardware::Device::getMillis());  // Simple ID based on millis
+
+    // Serialize to string
+    String jsonPayload;
+    serializeJson(doc, jsonPayload);
+
+    // Publish the message
+    bool published = Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+
+    if (published) {
+        ESP_LOGI(TAG, "Published audio status request");
+    } else {
+        ESP_LOGE(TAG, "Failed to publish audio status request");
+    }
 }
 
 // Private methods

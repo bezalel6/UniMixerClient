@@ -190,10 +190,11 @@ void ui_Screen1_screen_init(void)
     lv_obj_remove_flag(ui_pnlVolumeSlider, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_volumeSliderLbl = lv_label_create(ui_pnlVolumeSlider);
-    lv_obj_set_width(ui_volumeSliderLbl, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_width(ui_volumeSliderLbl, lv_pct(100));
     lv_obj_set_height(ui_volumeSliderLbl, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_volumeSliderLbl, LV_ALIGN_TOP_MID);
     lv_label_set_text(ui_volumeSliderLbl, "0%");
+    lv_obj_set_style_text_align(ui_volumeSliderLbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_volumeSlider = lv_slider_create(ui_pnlVolumeSlider);
     lv_slider_set_value(ui_volumeSlider, 0, LV_ANIM_OFF);

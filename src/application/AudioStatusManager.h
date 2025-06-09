@@ -38,8 +38,26 @@ class StatusManager {
     static String buildAudioDeviceOptionsString(void);
     static String getSelectedAudioDevice(lv_obj_t* dropdown);
 
+    // Selected device state management
+    static void setSelectedDevice(const String& deviceName);
+    static String getSelectedDevice(void);
+    static void syncVolumeSliderWithSelectedDevice(void);
+    static void updateVolumeSliderLabel(int volume);
+
+    // Volume control
+    static void setSelectedDeviceVolume(int volume);
+    static void muteSelectedDevice(void);
+    static void unmuteSelectedDevice(void);
+    static void publishVolumeChangeCommand(const String& deviceName, int volume);
+    static void publishMuteCommand(const String& deviceName);
+    static void publishUnmuteCommand(const String& deviceName);
+    static bool isSuppressingSliderEvents(void);
+
     // Status callback
     static void onAudioStatusReceived(const std::vector<AudioLevel>& levels);
+
+    // MQTT publishing methods
+    static void publishAudioStatusRequest(void);
 
    private:
     // MQTT handler management
@@ -52,6 +70,10 @@ class StatusManager {
     static Hardware::Mqtt::Handler audioStatusHandler;
     static unsigned long lastUpdateTime;
     static bool initialized;
+
+    // Selected device state
+    static String selectedDevice;
+    static bool suppressSliderEvents;
 };
 
 }  // namespace Audio

@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include "../hardware/MqttManager.h"
 #include "../hardware/DeviceManager.h"
+#include "../application/AudioStatusManager.h"
 
 static const char* TAG = "UIEventHandlers";
 
@@ -18,18 +19,47 @@ void btnRequestDataClickedHandler(lv_event_t* e) {
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Button clicked - requesting audio status");
 
-        // Create JSON message
-        JsonDocument doc;
-        doc["messageType"] = "audio.status.request";
-        doc["timestamp"] = String(Hardware::Device::getMillis());
-        doc["messageId"] = String(Hardware::Device::getMillis());  // Simple ID based on millis
+        // Use AudioStatusManager to publish the request
+        Application::Audio::StatusManager::publishAudioStatusRequest();
+    }
+}
 
-        // Serialize to string
-        String jsonPayload;
-        serializeJson(doc, jsonPayload);
+// Audio device dropdown selection change handler
+void audioDeviceDropdownChangedHandler(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
 
-        // Publish the message
-        Hardware::Mqtt::publish("homeassistant/unimix/audio/requests", jsonPayload.c_str());
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t* dropdown = (lv_obj_t*)lv_event_get_target(e);
+
+        // Get the selected audio device name
+        String selectedDevice = Application::Audio::StatusManager::getSelectedAudioDevice(dropdown);
+
+        ESP_LOGI(TAG, "Audio device dropdown changed: %s", selectedDevice.c_str());
+
+        // Update the selected device in the AudioStatusManager
+        Application::Audio::StatusManager::setSelectedDevice(selectedDevice);
+    }
+}
+
+// Volume slider change handler
+void volumeSliderChangedHandler(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        // Check if events are suppressed to prevent infinite loops
+        if (Application::Audio::StatusManager::isSuppressingSliderEvents()) {
+            return;
+        }
+
+        lv_obj_t* slider = (lv_obj_t*)lv_event_get_target(e);
+
+        // Get the slider value
+        int volume = lv_slider_get_value(slider);
+
+        ESP_LOGI(TAG, "Volume slider changed: %d", volume);
+
+        // Set the volume for the selected device
+        Application::Audio::StatusManager::setSelectedDeviceVolume(volume);
     }
 }
 
