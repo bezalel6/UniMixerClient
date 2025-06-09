@@ -89,6 +89,8 @@ void ui_Screen1_screen_init(void)
     ui_pnlNetwork = lv_obj_create(ui_Screen1);
     lv_obj_set_width(ui_pnlNetwork, 200);
     lv_obj_set_height(ui_pnlNetwork, 134);
+    lv_obj_set_x(ui_pnlNetwork, 8);
+    lv_obj_set_y(ui_pnlNetwork, 8);
     lv_obj_set_flex_flow(ui_pnlNetwork, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(ui_pnlNetwork, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_remove_flag(ui_pnlNetwork, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
