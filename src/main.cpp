@@ -1,9 +1,9 @@
 #include <Arduino.h>
-#include "application/app_controller.h"
+#include "application/AppController.h"
 
 void setup() {
     // Initialize the application controller
-    if (!app_controller_init()) {
+    if (!Application::init()) {
         log_e("Failed to initialize application controller");
         while (1) {
             delay(1000);
@@ -15,7 +15,7 @@ void setup() {
 
 void loop() {
     // Run the main application loop
-    app_controller_run();
+    Application::run();
 
     delay(10);
 }

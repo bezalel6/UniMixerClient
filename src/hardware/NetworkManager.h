@@ -3,6 +3,9 @@
 
 #include <WiFi.h>
 
+namespace Hardware {
+namespace Network {
+
 // Network configuration constants
 #define WIFI_SSID "IOT"                   // Replace with your WiFi SSID
 #define WIFI_PASSWORD "0527714039a"       // Replace with your WiFi password
@@ -15,24 +18,27 @@ typedef enum {
     WIFI_STATUS_CONNECTING,
     WIFI_STATUS_CONNECTED,
     WIFI_STATUS_FAILED
-} wifi_connection_status_t;
+} WifiConnectionStatus;
 
 // Network manager functions
-bool network_manager_init(void);
-void network_manager_deinit(void);
-void network_manager_update(void);
+bool init(void);
+void deinit(void);
+void update(void);
 
 // Status query functions
-wifi_connection_status_t network_get_wifi_status(void);
-const char* network_get_wifi_status_string(void);
-const char* network_get_ssid(void);
-const char* network_get_ip_address(void);
-int network_get_signal_strength(void);
-bool network_is_connected(void);
+WifiConnectionStatus getWifiStatus(void);
+const char* getWifiStatusString(void);
+const char* getSsid(void);
+const char* getIpAddress(void);
+int getSignalStrength(void);
+bool isConnected(void);
 
 // Connection control functions
-void network_connect_wifi(void);
-void network_disconnect_wifi(void);
-void network_reconnect_wifi(void);
+void connectWifi(void);
+void disconnectWifi(void);
+void reconnectWifi(void);
+
+}  // namespace Network
+}  // namespace Hardware
 
 #endif  // NETWORK_MANAGER_H

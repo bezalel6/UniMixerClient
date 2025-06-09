@@ -4,9 +4,8 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace Hardware {
+namespace Mqtt {
 
 // MQTT configuration constants
 #define MQTT_SERVER "rndev.local"
@@ -27,7 +26,7 @@ typedef enum {
     MQTT_STATUS_CONNECTED,
     MQTT_STATUS_FAILED,
     MQTT_STATUS_ERROR
-} mqtt_connection_status_t;
+} ConnectionStatus;
 
 // MQTT message structure for delayed publishing
 typedef struct {
@@ -35,53 +34,52 @@ typedef struct {
     char payload[MQTT_MAX_PAYLOAD_LENGTH];
     unsigned long timestamp;
     bool valid;
-} mqtt_message_t;
+} Message;
 
 // MQTT message callback function type
-typedef void (*mqtt_message_callback_t)(const char* topic, const char* payload);
+typedef void (*MessageCallback)(const char* topic, const char* payload);
 
 // MQTT handler structure
 typedef struct {
     char identifier[64];
-    char subscribe_topic[MQTT_MAX_TOPIC_LENGTH];
-    char publish_topic[MQTT_MAX_TOPIC_LENGTH];
-    mqtt_message_callback_t callback;
+    char subscribeTopic[MQTT_MAX_TOPIC_LENGTH];
+    char publishTopic[MQTT_MAX_TOPIC_LENGTH];
+    MessageCallback callback;
     bool active;
-} mqtt_handler_t;
+} Handler;
 
 // MQTT manager initialization and control
-bool mqtt_manager_init(void);
-void mqtt_manager_deinit(void);
-void mqtt_manager_update(void);
+bool init(void);
+void deinit(void);
+void update(void);
 
 // Connection management
-bool mqtt_connect(void);
-void mqtt_disconnect(void);
-void mqtt_reconnect(void);
+bool connect(void);
+void disconnect(void);
+void reconnect(void);
 
 // Status query functions
-mqtt_connection_status_t mqtt_get_status(void);
-const char* mqtt_get_status_string(void);
-bool mqtt_is_connected(void);
-unsigned long mqtt_get_last_activity(void);
+ConnectionStatus getStatus(void);
+const char* getStatusString(void);
+bool isConnected(void);
+unsigned long getLastActivity(void);
 
 // Publishing functions
-bool mqtt_publish(const char* topic, const char* payload);
-bool mqtt_publish_delayed(const char* topic, const char* payload);
-void mqtt_publish_system_status(void);
+bool publish(const char* topic, const char* payload);
+bool publishDelayed(const char* topic, const char* payload);
+void publishSystemStatus(void);
 
 // Subscription and handler management
-bool mqtt_subscribe(const char* topic);
-bool mqtt_unsubscribe(const char* topic);
-bool mqtt_register_handler(const mqtt_handler_t* handler);
-bool mqtt_unregister_handler(const char* identifier);
+bool subscribe(const char* topic);
+bool unsubscribe(const char* topic);
+bool registerHandler(const Handler* handler);
+bool unregisterHandler(const char* identifier);
 
 // Utility functions
-void mqtt_clear_publish_queue(void);
-int mqtt_get_signal_quality(void);
+void clearPublishQueue(void);
+int getSignalQuality(void);
 
-#ifdef __cplusplus
-}
-#endif
+}  // namespace Mqtt
+}  // namespace Hardware
 
 #endif  // MQTT_MANAGER_H

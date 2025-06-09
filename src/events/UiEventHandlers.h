@@ -3,15 +3,13 @@
 
 #include <lvgl.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace Events {
+namespace UI {
 
 // UI Event Handlers
-void ui_btnRequestData_clicked_handler(lv_event_t* e);
+void btnRequestDataClickedHandler(lv_event_t* e);
 
-#ifdef __cplusplus
-}
-#endif
+}  // namespace UI
+}  // namespace Events
 
 #endif  // UI_EVENT_HANDLERS_H
