@@ -22,10 +22,12 @@
             String logEntry = timestamp + message + "\n";                     \
             lv_textarea_add_text(ui_element, logEntry.c_str());               \
             const char* current_text = lv_textarea_get_text(ui_element);      \
-            if (strlen(current_text) > 2000) {                                \
-                String truncated = String(current_text).substring(500);       \
+            if (strlen(current_text) > 5000) {                                \
+                String truncated = String(current_text).substring(1500);      \
                 lv_textarea_set_text(ui_element, truncated.c_str());          \
             }                                                                 \
+            /* Auto-scroll to bottom after adding text */                     \
+            lv_textarea_set_cursor_pos(ui_element, LV_TEXTAREA_CURSOR_LAST);  \
         }                                                                     \
     } while (0)
 

@@ -23,11 +23,24 @@ namespace Messaging::Transports {
 // Handler storage for serial message routing
 static std::vector<Handler> serialHandlers;
 static bool serialInitialized = false;
-static unsigned long lastSerialCheck = 0;
 static String incomingBuffer = "";
 
-// Helper functions
+// Flag to indicate new data is available (set by callback, processed by Update)
+static volatile bool newDataAvailable = false;
+
+// Error tracking for safety
+static int consecutiveErrors = 0;
+static unsigned long lastErrorTime = 0;
+static const int MAX_CONSECUTIVE_ERRORS = 10;
+static const unsigned long ERROR_RESET_INTERVAL = 5000;  // 5 seconds
+
+// Serial receive callback function (lightweight)
+static void onSerialReceive();
+
+// Process incoming serial data (heavy processing)
 static void ProcessIncomingSerial();
+
+// Helper functions
 static void ParseSerialMessage(const String& message);
 static Handler* FindSerialHandler(const String& messageType);
 static bool IsSerialAvailable();
@@ -99,8 +112,11 @@ static Transport SerialTransport = {
             return;
         }
 
-        // Process incoming serial messages
-        ProcessIncomingSerial();
+        // Process any pending serial data flagged by the callback
+        if (newDataAvailable) {
+            newDataAvailable = false;
+            ProcessIncomingSerial();
+        }
     },
 
     .GetStatus = []() -> ConnectionStatus {
@@ -116,9 +132,17 @@ static Transport SerialTransport = {
 
         // Serial is already initialized by DeviceManager, so we just set our flag
         serialInitialized = true;
-        lastSerialCheck = millis();
         incomingBuffer = "";
         serialHandlers.clear();
+        newDataAvailable = false;
+
+        // Reset error tracking
+        consecutiveErrors = 0;
+        lastErrorTime = 0;
+
+        // Register the serial receive callback using ESP32's native onReceive method
+        HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
+        dataSerial.onReceive(onSerialReceive);
 
         // Log configuration
         ESP_LOGI(TAG, "Configuration: Baud=%d, Buffer=%d, Timeout=%dms, PayloadMax=%d",
@@ -127,12 +151,18 @@ static Transport SerialTransport = {
 
         // Check if data serial is available
         bool dataAvailable = IsSerialAvailable();
-        ESP_LOGI(TAG, "Serial transport initialized - Data serial available: %s",
+        ESP_LOGI(TAG, "Serial transport initialized with lightweight callback - Data serial available: %s",
                  dataAvailable ? "true" : "false");
     },
 
     .Deinit = []() -> void {
         ESP_LOGI(TAG, "Deinitializing Serial transport");
+
+        // Unregister the serial receive callback
+        if (serialInitialized) {
+            HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
+            dataSerial.onReceive(nullptr);
+        }
 
         serialInitialized = false;
         serialHandlers.clear();
@@ -146,16 +176,27 @@ static bool IsSerialAvailable() {
     return Hardware::Device::isDataSerialAvailable();
 }
 
-static void ProcessIncomingSerial() {
-    unsigned long now = millis();
+// Lightweight serial receive callback - just signals that data is available
+static void onSerialReceive() {
+    if (serialInitialized) {
+        newDataAvailable = true;
+    }
+}
 
-    // Check for incoming data on the serial interface
+// Process incoming serial data - moved from callback to avoid stack overflow
+static void ProcessIncomingSerial() {
+    if (!IsSerialAvailable()) {
+        return;
+    }
+
     HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
+
+    // Read all available characters
     while (dataSerial.available() > 0) {
         char c = dataSerial.read();
 
         if (c == Protocol::SERIAL_TERMINATOR) {
-            // Complete message received
+            // Complete message received - process it
             if (incomingBuffer.length() > 0) {
                 ParseSerialMessage(incomingBuffer);
                 incomingBuffer = "";
@@ -166,17 +207,37 @@ static void ProcessIncomingSerial() {
             // Prevent buffer overflow - use configured buffer size with margin
             const int maxBufferSize = MESSAGING_SERIAL_BUFFER_SIZE + 50;  // Buffer size + margin
             if (incomingBuffer.length() > maxBufferSize) {
-                ESP_LOGW(TAG, "Serial buffer overflow, clearing (limit: %d)", maxBufferSize);
+                ESP_LOGW(TAG, "Serial buffer overflow, clearing (limit: %d), lost data: '%.50s...'",
+                         maxBufferSize, incomingBuffer.c_str());
+                LOG_TO_UI(ui_txtAreaDebugLog, String("BUFFER OVERFLOW: ") + String(maxBufferSize) + String(" chars"));
+                LOG_TO_UI(ui_txtAreaDebugLog, String("Lost data: ") + incomingBuffer.substring(0, 50) + String("..."));
                 incomingBuffer = "";
+                // Continue processing to recover from overflow
             }
         }
-
-        lastSerialCheck = now;
     }
 }
 
 static void ParseSerialMessage(const String& message) {
     LOG_SERIAL_RX(message.c_str());
+
+    // Reset consecutive error counter if enough time has passed
+    unsigned long currentTime = millis();
+    if (currentTime - lastErrorTime > ERROR_RESET_INTERVAL) {
+        consecutiveErrors = 0;
+    }
+
+    // Safety check: if too many consecutive errors, throttle processing
+    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        if (currentTime - lastErrorTime > ERROR_RESET_INTERVAL) {
+            consecutiveErrors = 0;
+            LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR THROTTLE RESET after ") + String(ERROR_RESET_INTERVAL / 1000) + String("s"));
+        } else {
+            // Skip processing but log throttling
+            ESP_LOGW(TAG, "Error throttling active (%d consecutive errors)", consecutiveErrors);
+            return;
+        }
+    }
 
     // Message is already clean JSON content - no delimiter processing needed
     String jsonContent = message;
@@ -195,7 +256,11 @@ static void ParseSerialMessage(const String& message) {
         if (error) {
             LOG_TO_UI(ui_txtAreaDebugLog, String("JSON ERROR: ") + String(error.c_str()));
             LOG_TO_UI(ui_txtAreaDebugLog, String("Raw JSON: ") + jsonContent);
+            consecutiveErrors++;
+            lastErrorTime = currentTime;
         } else {
+            // Reset error counter on successful parse
+            consecutiveErrors = 0;
             String keysList = "Keys: ";
             int keyCount = 0;
 
@@ -231,59 +296,66 @@ static void ParseSerialMessage(const String& message) {
 
         // Only log critical info to ESP_LOG in debug mode
         ESP_LOGI(TAG, "Debug mode: Msg len=%d, JSON len=%d, Parse=%s", message.length(), jsonContent.length(), error ? "FAIL" : "OK");
-        return;  // Don't process further in debug mode
 
-    } else {
-        // Normal processing mode - Log key info to UI, minimal ESP_LOG
+        // Continue processing even in debug mode (don't return early)
+        // Fall through to normal processing below
+    }
 
-        String messageType = "STATUS";
-        String payload = jsonContent;
+    // Normal processing mode (or debug mode continuing) - Log key info to UI, minimal ESP_LOG
+    String messageType = "STATUS";
+    String payload = jsonContent;
 
-        if (payload.length() == 0) {
-            LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR: Empty JSON content"));
-            ESP_LOGW(TAG, "Empty JSON content");
-            return;
-        }
+    if (payload.length() == 0) {
+        LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR: Empty JSON content"));
+        ESP_LOGW(TAG, "Empty JSON content");
+        consecutiveErrors++;
+        lastErrorTime = currentTime;
+        return;
+    }
 
-        // Log processing info to UI
+    // Log processing info to UI (only if not already done in debug mode)
+    if (!IsDebugModeEnabled()) {
         LOG_TO_UI(ui_txtAreaDebugLog, String("PROC: ") + String(payload.length()) + String(" chars"));
+    }
 
-        // Try to parse JSON for validation
-        ArduinoJson::JsonDocument doc;
-        ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, payload);
+    // Try to parse JSON for validation
+    ArduinoJson::JsonDocument doc;
+    ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, payload);
 
-        if (!error) {
-            int keyCount = doc.as<ArduinoJson::JsonObject>().size();
+    if (!error) {
+        int keyCount = doc.as<ArduinoJson::JsonObject>().size();
 
-            // Log key JSON fields to UI
-            if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
-                int sessionCount = doc["sessions"].size();
-                LOG_TO_UI(ui_txtAreaDebugLog, String("STATUS: ") + String(sessionCount) + String(" sessions"));
-            }
-            if (doc["commandType"].is<const char*>()) {
-                LOG_TO_UI(ui_txtAreaDebugLog, String("CMD: ") + String(doc["commandType"].as<const char*>()));
-            }
-
-            // Minimal ESP_LOG for normal processing
-            ESP_LOGI(TAG, "JSON OK, %d keys", keyCount);
-        } else {
-            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
-            ESP_LOGW(TAG, "JSON parse fail: %s", error.c_str());
+        // Log key JSON fields to UI
+        if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
+            int sessionCount = doc["sessions"].size();
+            LOG_TO_UI(ui_txtAreaDebugLog, String("STATUS: ") + String(sessionCount) + String(" sessions"));
+        }
+        if (doc["commandType"].is<const char*>()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("CMD: ") + String(doc["commandType"].as<const char*>()));
         }
 
-        // Find appropriate handler
-        Handler* handler = FindSerialHandler(messageType);
+        // Minimal ESP_LOG for normal processing
+        ESP_LOGI(TAG, "JSON OK, %d keys", keyCount);
+        consecutiveErrors = 0;  // Reset on successful parse
+    } else {
+        LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
+        LOG_TO_UI(ui_txtAreaDebugLog, payload);
+        ESP_LOGW(TAG, "JSON parse fail: %s", error.c_str());
+        consecutiveErrors++;
+        lastErrorTime = currentTime;
+    }
 
-        if (handler && handler->Callback) {
-            LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER: ") + String(handler->Identifier.c_str()));
-            ESP_LOGI(TAG, "Handler: %s", handler->Identifier.c_str());
-            handler->Callback(messageType.c_str(), payload.c_str());
-        } else {
-            LOG_TO_UI(ui_txtAreaDebugLog, String("NO HANDLER for ") + messageType);
-            ESP_LOGW(TAG, "No handler for: %s", messageType.c_str());
-        }
+    // Find appropriate handler
+    Handler* handler = FindSerialHandler(messageType);
 
-    }  // End of debug mode check
+    if (handler && handler->Callback) {
+        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER: ") + String(handler->Identifier.c_str()));
+        ESP_LOGI(TAG, "Handler: %s", handler->Identifier.c_str());
+        handler->Callback(messageType.c_str(), payload.c_str());
+    } else {
+        LOG_TO_UI(ui_txtAreaDebugLog, String("NO HANDLER for ") + messageType);
+        ESP_LOGW(TAG, "No handler for: %s", messageType.c_str());
+    }
 }
 
 static Handler* FindSerialHandler(const String& messageType) {
