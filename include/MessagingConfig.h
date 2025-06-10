@@ -26,7 +26,7 @@
 // Debug Configuration
 #define MESSAGING_DEBUG_ENABLED 1
 #define MESSAGING_LOG_ALL_MESSAGES 0
-#define MESSAGING_DESERIALIZATION_DEBUG_MODE 1  // 0 = Normal processing, 1 = Log to UI only
+#define MESSAGING_DESERIALIZATION_DEBUG_MODE 0  // 0 = Normal processing, 1 = Log to UI only
 
 // Performance Configuration
 #define MESSAGING_MAX_HANDLERS 10          // Maximum number of message handlers

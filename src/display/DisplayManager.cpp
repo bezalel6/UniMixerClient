@@ -1,5 +1,4 @@
 #include "DisplayManager.h"
-#include "../hardware/TaskManager.h"
 #include <ui/ui.h>
 #include <string.h>
 #include <stdio.h>
@@ -67,34 +66,25 @@ void rotateNext(void) {
 
 void updateLabelUint32(lv_obj_t* label, uint32_t value) {
     if (label) {
-        if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-            char buffer[32];
-            sprintf(buffer, "%" PRIu32, value);
-            lv_label_set_text(label, buffer);
-            Hardware::TaskManager::unlockDisplay();
-        }
+        char buffer[32];
+        sprintf(buffer, "%" PRIu32, value);
+        lv_label_set_text(label, buffer);
     }
 }
 
 void updateLabelString(lv_obj_t* label, const char* text) {
     if (label && text) {
-        if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-            lv_label_set_text(label, text);
-            Hardware::TaskManager::unlockDisplay();
-        }
+        lv_label_set_text(label, text);
     }
 }
 
 void updateLabelMillivolts(lv_obj_t* label, uint32_t millivolts) {
     if (label == NULL) return;
 
-    if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-        float volts = millivolts / 1000.0f;
-        char text[32];
-        snprintf(text, sizeof(text), "%.2fV", volts);
-        lv_label_set_text(label, text);
-        Hardware::TaskManager::unlockDisplay();
-    }
+    float volts = millivolts / 1000.0f;
+    char text[32];
+    snprintf(text, sizeof(text), "%.2fV", volts);
+    lv_label_set_text(label, text);
 }
 
 void updateDropdownOptions(lv_obj_t* dropdown, const char* options) {
@@ -103,13 +93,9 @@ void updateDropdownOptions(lv_obj_t* dropdown, const char* options) {
         return;
     }
 
-    if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-        // Update the dropdown options
-        lv_dropdown_set_options(dropdown, options);
-        Hardware::TaskManager::unlockDisplay();
-
-        ESP_LOGD(TAG, "Updated dropdown options: %s", options);
-    }
+    // Update the dropdown options
+    lv_dropdown_set_options(dropdown, options);
+    ESP_LOGD(TAG, "Updated dropdown options: %s", options);
 }
 
 void tickUpdate(void) {
@@ -119,59 +105,6 @@ void tickUpdate(void) {
 }
 
 void updateConnectionStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, ConnectionStatus status) {
-    if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-        // Update status text
-        if (statusLabel && statusText) {
-            lv_label_set_text(statusLabel, statusText);
-        }
-
-        // Update indicator if provided
-        if (indicatorObj) {
-            // Position indicator to the left of the status label
-            if (statusLabel) {
-                lv_obj_align_to(indicatorObj, statusLabel, LV_ALIGN_OUT_LEFT_MID, -5, 0);
-            }
-
-            // Clear text and style as round background indicator
-            lv_label_set_text(indicatorObj, "");
-            lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
-
-            // Set color based on connection status
-            switch (status) {
-                case CONNECTION_STATUS_CONNECTED:
-                    // Green background for connected
-                    lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00), LV_PART_MAIN);
-                    break;
-                case CONNECTION_STATUS_CONNECTING:
-                    // Yellow background for connecting
-                    lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
-                    break;
-                case CONNECTION_STATUS_FAILED:
-                case CONNECTION_STATUS_ERROR:
-                case CONNECTION_STATUS_DISCONNECTED:
-                default:
-                    // Red background for disconnected/failed/error
-                    lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000), LV_PART_MAIN);
-                    break;
-            }
-        }
-        Hardware::TaskManager::unlockDisplay();
-    }
-}
-
-// Internal function without mutex (for use within display manager task)
-void updateWifiStatusInternal(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, bool connected) {
-    // Convert boolean to ConnectionStatus enum
-    ConnectionStatus status;
-    if (connected) {
-        status = CONNECTION_STATUS_CONNECTED;
-    } else if (statusText && strcmp(statusText, "Connecting...") == 0) {
-        status = CONNECTION_STATUS_CONNECTING;
-    } else {
-        status = CONNECTION_STATUS_DISCONNECTED;
-    }
-
     // Update status text
     if (statusLabel && statusText) {
         lv_label_set_text(statusLabel, statusText);
@@ -221,45 +154,28 @@ void updateWifiStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char*
         status = CONNECTION_STATUS_DISCONNECTED;
     }
 
-    // Use the generalized function
     updateConnectionStatus(statusLabel, indicatorObj, statusText, status);
 }
 
-// Internal function without mutex (for use within display manager task)
-void updateNetworkInfoInternal(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid, const char* ipAddress) {
-    if (ssidLabel && ssid && strlen(ssid) > 0) {
-        lv_label_set_text(ssidLabel, ssid);
-    } else if (ssidLabel) {
-        lv_label_set_text(ssidLabel, "N/A");
-    }
-
-    if (ipLabel && ipAddress && strlen(ipAddress) > 0) {
-        lv_label_set_text(ipLabel, ipAddress);
-    } else if (ipLabel) {
-        lv_label_set_text(ipLabel, "0.0.0.0");
-    }
-}
-
 void updateNetworkInfo(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid, const char* ipAddress) {
-    if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-        updateNetworkInfoInternal(ssidLabel, ipLabel, ssid, ipAddress);
-        Hardware::TaskManager::unlockDisplay();
+    if (ssidLabel && ssid) {
+        lv_label_set_text(ssidLabel, ssid);
+    }
+    if (ipLabel && ipAddress) {
+        lv_label_set_text(ipLabel, ipAddress);
     }
 }
 
-// Helper function to convert status strings to ConnectionStatus enum
 static ConnectionStatus statusStringToConnectionStatus(const char* statusText) {
-    if (!statusText) {
-        return CONNECTION_STATUS_DISCONNECTED;
-    }
+    if (!statusText) return CONNECTION_STATUS_DISCONNECTED;
 
-    if (strcmp(statusText, "Connected") == 0) {
+    if (strstr(statusText, "Connected") != NULL) {
         return CONNECTION_STATUS_CONNECTED;
-    } else if (strcmp(statusText, "Connecting...") == 0) {
+    } else if (strstr(statusText, "Connecting") != NULL) {
         return CONNECTION_STATUS_CONNECTING;
-    } else if (strcmp(statusText, "Failed") == 0) {
+    } else if (strstr(statusText, "Failed") != NULL) {
         return CONNECTION_STATUS_FAILED;
-    } else if (strcmp(statusText, "Error") == 0) {
+    } else if (strstr(statusText, "Error") != NULL) {
         return CONNECTION_STATUS_ERROR;
     } else {
         return CONNECTION_STATUS_DISCONNECTED;
@@ -267,12 +183,7 @@ static ConnectionStatus statusStringToConnectionStatus(const char* statusText) {
 }
 
 void updateMqttStatus(lv_obj_t* mqttLabel, const char* statusText) {
-    if (mqttLabel && statusText) {
-        if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-            lv_label_set_text(mqttLabel, statusText);
-            Hardware::TaskManager::unlockDisplay();
-        }
-    }
+    updateLabelString(mqttLabel, statusText);
 }
 
 void updateMqttStatus(lv_obj_t* mqttLabel, lv_obj_t* indicatorObj, const char* statusText) {
@@ -284,21 +195,11 @@ float getFPS(void) {
     return currentFPS;
 }
 
-// Internal function without mutex (for use within display manager task)
-void updateFpsDisplayInternal(lv_obj_t* fpsLabel) {
-    if (fpsLabel == NULL) return;
-
-    char fpsText[32];
-    snprintf(fpsText, sizeof(fpsText), "FPS: %.1f", currentFPS);
-    lv_label_set_text(fpsLabel, fpsText);
-}
-
 void updateFpsDisplay(lv_obj_t* fpsLabel) {
-    if (fpsLabel == NULL) return;
-
-    if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(100))) {
-        updateFpsDisplayInternal(fpsLabel);
-        Hardware::TaskManager::unlockDisplay();
+    if (fpsLabel) {
+        char fpsText[16];
+        snprintf(fpsText, sizeof(fpsText), "%.1f FPS", currentFPS);
+        lv_label_set_text(fpsLabel, fpsText);
     }
 }
 
