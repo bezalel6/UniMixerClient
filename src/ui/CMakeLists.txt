@@ -1,7 +1,6 @@
-SET(SOURCES components/ui_comp_connectionstatuspnl.c
-    components/ui_comp.c
-    screens/ui_screenMain.c
+SET(SOURCES screens/ui_screenMain.c
     screens/ui_screenOTA.c
+    screens/ui_screenDebug.c
     ui.c
     components/ui_comp_hook.c
     ui_helpers.c)

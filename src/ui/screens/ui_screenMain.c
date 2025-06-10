@@ -32,9 +32,19 @@ lv_obj_t * ui_volumeSliderLbl;
 lv_obj_t * ui_volumeSlider;
 lv_obj_t * ui_btnRequestData;
 lv_obj_t * ui_Label5;
+lv_obj_t * ui_btnGOTOLog;
+lv_obj_t * ui_Label1;
 lv_obj_t * ui_lblFPS;
 
 // event funtions
+void ui_event_btnGOTOLog(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_screenDebug, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_screenDebug_screen_init);
+    }
+}
 
 // build funtions
 
@@ -216,6 +226,19 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label5, "Refresh");
 
+    ui_btnGOTOLog = lv_button_create(ui_pnlVolumeSlider);
+    lv_obj_set_width(ui_btnGOTOLog, 132);
+    lv_obj_set_height(ui_btnGOTOLog, 50);
+    lv_obj_set_align(ui_btnGOTOLog, LV_ALIGN_RIGHT_MID);
+    lv_obj_add_flag(ui_btnGOTOLog, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_remove_flag(ui_btnGOTOLog, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_Label1 = lv_label_create(ui_btnGOTOLog);
+    lv_obj_set_width(ui_Label1, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label1, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_Label1, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label1, "LOG");
+
     ui_lblFPS = lv_label_create(ui_screenMain);
     lv_obj_set_width(ui_lblFPS, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
@@ -223,6 +246,8 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_y(ui_lblFPS, 162);
     lv_obj_set_align(ui_lblFPS, LV_ALIGN_CENTER);
     lv_label_set_text(ui_lblFPS, "FPS: 1000");
+
+    lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
 
 }
 
@@ -258,6 +283,8 @@ void ui_screenMain_screen_destroy(void)
     ui_volumeSlider = NULL;
     ui_btnRequestData = NULL;
     ui_Label5 = NULL;
+    ui_btnGOTOLog = NULL;
+    ui_Label1 = NULL;
     ui_lblFPS = NULL;
 
 }

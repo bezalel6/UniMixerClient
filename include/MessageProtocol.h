@@ -3,10 +3,7 @@
 
 namespace Messaging::Protocol {
 
-// Serial Protocol Commands (updated to match server)
-inline constexpr const char* CMD_PREFIX = "CMD:";
-inline constexpr const char* STATUS_PREFIX = "STATUS:";
-inline constexpr const char* RESULT_PREFIX = "RESULT:";
+// Serial Protocol - Simplified (no prefixes needed)
 
 // Command Types (aligned with server)
 inline constexpr const char* COMMAND_SET_VOLUME = "SetVolume";
@@ -17,7 +14,7 @@ inline constexpr const char* COMMAND_GET_ALL_SESSIONS = "GetAllSessions";
 
 // Configuration Constants
 inline constexpr int MAX_TOPIC_LENGTH = 128;
-inline constexpr int MAX_PAYLOAD_LENGTH = 1024;  // Increased for status messages
+inline constexpr int MAX_PAYLOAD_LENGTH = 2048;  // Increased for status messages
 inline constexpr int MAX_HANDLERS = 10;
 inline constexpr int MAX_IDENTIFIER_LENGTH = 64;
 

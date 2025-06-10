@@ -13,8 +13,6 @@ extern "C" {
 #include "lvgl.h"
 
 #include "ui_helpers.h"
-#include "components/ui_comp.h"
-#include "components/ui_comp_hook.h"
 #include "ui_events.h"
 
 
@@ -22,6 +20,7 @@ extern "C" {
 
 #include "screens/ui_screenMain.h"
 #include "screens/ui_screenOTA.h"
+#include "screens/ui_screenDebug.h"
 
 ///////////////////// VARIABLES ////////////////////
 
