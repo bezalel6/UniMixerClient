@@ -114,6 +114,10 @@ bool init(void) {
         return false;
     }
 
+    // Send initial status request to get current audio information
+    ESP_LOGI(TAG, "Sending initial status request");
+    Application::Audio::StatusManager::publishAudioStatusRequest();
+
     // Setup UI components
     setupUiComponents();
 

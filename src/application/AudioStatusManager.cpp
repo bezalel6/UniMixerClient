@@ -73,7 +73,6 @@ bool StatusManager::init() {
         ESP_LOGE(TAG, "Failed to register command result message handler");
         return false;
     }
-
     initialized = true;
     ESP_LOGI(TAG, "AudioStatusManager initialized successfully");
     return true;

@@ -35,15 +35,16 @@ extern lv_obj_t * ui_mqttContainer;
 extern lv_obj_t * ui_lblMQTT;
 extern lv_obj_t * ui_objMQTTIndicator;
 extern lv_obj_t * ui_lblMQTTValue;
-extern lv_obj_t * ui_pnlVolumeSlider;
-extern lv_obj_t * ui_volumeSliderLbl;
-extern lv_obj_t * ui_volumeSlider;
+extern lv_obj_t * ui_Container3;
 extern lv_obj_t * ui_btnRequestData;
 extern lv_obj_t * ui_Label5;
 extern void ui_event_btnGOTOLog(lv_event_t * e);
 extern lv_obj_t * ui_btnGOTOLog;
 extern lv_obj_t * ui_Label1;
 extern lv_obj_t * ui_lblFPS;
+extern lv_obj_t * ui_containerVolumeSlider;
+extern lv_obj_t * ui_volumeSliderLbl;
+extern lv_obj_t * ui_volumeSlider;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus
