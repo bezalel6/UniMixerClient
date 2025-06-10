@@ -12,7 +12,7 @@ static unsigned long lvLastTick = 0;
 static unsigned long frameCount = 0;
 static unsigned long lastFpsTime = 0;
 static float currentFPS = 0.0f;
-static const unsigned long FPS_UPDATE_INTERVAL = 1000;  // Update FPS every 1 second
+static const unsigned long FPS_UPDATE_INTERVAL = 500;  // Update FPS every 500ms
 
 bool init(void) {
     // Initialize the smart display
@@ -37,7 +37,18 @@ void update(void) {
 
     unsigned long now = millis();
     if (now - lastFpsTime >= FPS_UPDATE_INTERVAL) {
-        currentFPS = (float)frameCount * 1000.0f / (float)(now - lastFpsTime);
+        // Calculate FPS based on actual time difference
+        if (now > lastFpsTime) {  // Prevent division by zero
+            currentFPS = (float)frameCount * 1000.0f / (float)(now - lastFpsTime);
+        } else {
+            currentFPS = 0.0f;
+        }
+
+        // Clamp FPS to reasonable range (0-120 FPS)
+        if (currentFPS > 120.0f) {
+            currentFPS = 120.0f;
+        }
+
         frameCount = 0;
         lastFpsTime = now;
     }

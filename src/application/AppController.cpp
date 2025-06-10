@@ -20,8 +20,8 @@ static unsigned long lastOTAUpdate = 0;
 
 // Update intervals (in milliseconds)
 #define NETWORK_UPDATE_INTERVAL 1000
-#define MESSAGE_BUS_UPDATE_INTERVAL 50
-#define DISPLAY_UPDATE_INTERVAL 100
+#define MESSAGE_BUS_UPDATE_INTERVAL 10
+#define DISPLAY_UPDATE_INTERVAL 200
 #define OTA_UPDATE_INTERVAL 5000
 
 namespace Application {
@@ -181,11 +181,14 @@ void run(void) {
     Hardware::Device::ledCycleColors();
 #endif
 
-    // Update display FPS calculation (non-blocking)
-    Display::update();
+    // Count frames for FPS calculation (only when we actually render)
+    static unsigned long lastFrameTime = 0;
+    if (currentTime - lastFrameTime >= 16) {  // ~60 FPS max
+        Display::update();                    // Count this as a frame
+        lastFrameTime = currentTime;
+    }
 
-    // Small delay to prevent watchdog timeout
-    delay(1);
+    // No delay needed - LVGL handles its own timing
 }
 
 void setupUiComponents(void) {
@@ -221,11 +224,16 @@ static void updateNetworkStatus(void) {
 }
 
 static void updateDisplayElements(void) {
-    // Update FPS display
-    Display::updateFpsDisplay(ui_lblFPS);
-
-    // Update audio status manager UI elements
+    // Update audio status manager UI elements (more important)
     Application::Audio::StatusManager::onAudioLevelsChangedUI();
+
+    // Update FPS display less frequently to reduce overhead
+    static unsigned long lastFpsUpdate = 0;
+    unsigned long currentTime = millis();
+    if (currentTime - lastFpsUpdate >= 500) {  // Update FPS every 500ms
+        Display::updateFpsDisplay(ui_lblFPS);
+        lastFpsUpdate = currentTime;
+    }
 }
 
 static void updateOTA(void) {
