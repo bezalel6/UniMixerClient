@@ -3,34 +3,35 @@
 
 namespace Messaging::Protocol {
 
-// Topics - same for MQTT and Serial
-inline constexpr const char* TOPIC_AUDIO_REQUESTS = "homeassistant/unimix/audio/requests";
-inline constexpr const char* TOPIC_AUDIO_STATUS = "homeassistant/unimix/audio_status";
-inline constexpr const char* TOPIC_SYSTEM_STATUS = "homeassistant/smartdisplay/status";
+// Serial Protocol Commands (updated to match server)
+inline constexpr const char* CMD_PREFIX = "CMD:";
+inline constexpr const char* STATUS_PREFIX = "STATUS:";
+inline constexpr const char* RESULT_PREFIX = "RESULT:";
 
-// Message Types
-inline constexpr const char* MSG_TYPE_AUDIO_STATUS_REQUEST = "audio.status.request";
-inline constexpr const char* MSG_TYPE_AUDIO_MIX_UPDATE = "audio.mix.update";
-inline constexpr const char* MSG_TYPE_SYSTEM_STATUS = "system.status";
-
-// Audio Actions
-inline constexpr const char* AUDIO_ACTION_SET_VOLUME = "SetVolume";
-inline constexpr const char* AUDIO_ACTION_MUTE = "Mute";
-inline constexpr const char* AUDIO_ACTION_UNMUTE = "Unmute";
+// Command Types (aligned with server)
+inline constexpr const char* COMMAND_SET_VOLUME = "SetVolume";
+inline constexpr const char* COMMAND_MUTE = "Mute";
+inline constexpr const char* COMMAND_UNMUTE = "Unmute";
+inline constexpr const char* COMMAND_GET_STATUS = "GetStatus";
+inline constexpr const char* COMMAND_GET_ALL_SESSIONS = "GetAllSessions";
 
 // Configuration Constants
 inline constexpr int MAX_TOPIC_LENGTH = 128;
-inline constexpr int MAX_PAYLOAD_LENGTH = 512;
+inline constexpr int MAX_PAYLOAD_LENGTH = 1024;  // Increased for status messages
 inline constexpr int MAX_HANDLERS = 10;
 inline constexpr int MAX_IDENTIFIER_LENGTH = 64;
 
 // Serial Protocol Constants
-inline constexpr char SERIAL_DELIMITER = ':';
 inline constexpr char SERIAL_TERMINATOR = '\n';
 inline constexpr int SERIAL_TIMEOUT_MS = 1000;
 
 // Serial Interface Configuration
 inline constexpr int SERIAL_BAUD_RATE = 115200;  // Standard Serial - Debug/logs and messaging
+
+// Request ID generation helper
+inline String generateRequestId() {
+    return String("esp32_") + String(millis());
+}
 
 }  // namespace Messaging::Protocol
 

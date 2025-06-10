@@ -3,9 +3,9 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <lvgl.h>
 #include "../messaging/MessageBus.h"
 #include "../../include/MessageProtocol.h"
-#include "../display/DisplayManager.h"
 
 namespace Application {
 namespace Audio {
@@ -36,15 +36,15 @@ class StatusManager {
     static AudioLevel getHighestVolumeProcess(void);
 
     // UI Updates
-    static void updateAudioDeviceDropdowns(void);
+    static void onAudioLevelsChangedUI(void);
+    static void updateDropdownSelection(void);
     static String buildAudioDeviceOptionsString(void);
     static String getSelectedAudioDevice(lv_obj_t* dropdown);
-    static void restoreDropdownSelection(lv_obj_t* dropdown);
 
     // Selected device state management
     static void setSelectedDevice(const String& deviceName);
     static String getSelectedDevice(void);
-    static void syncVolumeArcWithSelectedDevice(void);
+    static void updateVolumeArcFromSelectedDevice(void);
     static void updateVolumeArcLabel(int volume);
 
     // Volume control
@@ -59,18 +59,25 @@ class StatusManager {
     // Status callback
     static void onAudioStatusReceived(const std::vector<AudioLevel>& levels);
 
-    // MQTT publishing methods
+    // Command publishing methods
     static void publishAudioStatusRequest(bool delayed = false);
 
    private:
-    // MQTT handler management
-    static void initializeAudioStatusHandler(void);
-    static void audioStatusMessageHandler(const char* topic, const char* payload);
+    // Helper functions
+    static int getProcessIdForDevice(const String& deviceName);
+    static void updateAllDropdownOptions(void);
+    static void updateSingleDropdownSelection(lv_obj_t* dropdown);
+
+    // Message handler management
+    static void initializeMessageHandlers(void);
+    static void audioStatusMessageHandler(const char* messageType, const char* payload);
+    static void commandResultMessageHandler(const char* messageType, const char* payload);
     static std::vector<AudioLevel> parseAudioStatusJson(const char* jsonPayload);
 
     // Internal state
     static std::vector<AudioLevel> audioLevels;
     static Messaging::Handler audioStatusHandler;
+    static Messaging::Handler commandResultHandler;
     static unsigned long lastUpdateTime;
     static bool initialized;
 

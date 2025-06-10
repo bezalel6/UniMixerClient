@@ -17,28 +17,30 @@ static String incomingBuffer = "";
 // Helper functions
 static void ProcessIncomingSerial();
 static void ParseSerialMessage(const String& message);
-static Handler* FindSerialHandler(const String& topic);
+static Handler* FindSerialHandler(const String& messageType);
 static bool IsSerialAvailable();
 
-// Serial protocol implementation - perfect mapping to MQTT
+// Serial protocol implementation - updated for new CMD/STATUS/RESULT format
 static Transport SerialTransport = {
-    .Publish = [](const char* topic, const char* payload) -> bool {
+    .Publish = [](const char* messageType, const char* payload) -> bool {
         if (!IsSerialAvailable()) {
             ESP_LOGW(TAG, "Serial not available for publishing");
             return false;
         }
 
-        // Format: "TOPIC:PAYLOAD\n" - perfect mapping to MQTT topics
-        Hardware::Device::getDataSerial().printf("%s%c%s%c", topic, Protocol::SERIAL_DELIMITER, payload, Protocol::SERIAL_TERMINATOR);
+        // New format: "CMD:{json}\n" for commands
+        String message = String(Protocol::CMD_PREFIX) + String(payload) + String(Protocol::SERIAL_TERMINATOR);
+
+        Hardware::Device::getDataSerial().print(message);
         Hardware::Device::getDataSerial().flush();
 
-        ESP_LOGI(TAG, "Published to serial - Topic: %s, Payload: %s", topic, payload);
+        ESP_LOGI(TAG, "Published command via serial: %s", payload);
         return true;
     },
 
-    .PublishDelayed = [](const char* topic, const char* payload) -> bool {
+    .PublishDelayed = [](const char* messageType, const char* payload) -> bool {
         // For serial, immediate publishing is fine (no connection state to worry about)
-        return SerialTransport.Publish(topic, payload);
+        return SerialTransport.Publish(messageType, payload);
     },
 
     .IsConnected = []() -> bool {
@@ -46,7 +48,7 @@ static Transport SerialTransport = {
     },
 
     .RegisterHandler = [](const Handler& handler) -> bool {
-        ESP_LOGI(TAG, "Registering serial handler: %s for topic: %s",
+        ESP_LOGI(TAG, "Registering serial handler: %s for type: %s",
                  handler.Identifier.c_str(), handler.SubscribeTopic.c_str());
 
         // Check if handler already exists
@@ -143,7 +145,7 @@ static void ProcessIncomingSerial() {
             incomingBuffer += c;
 
             // Prevent buffer overflow
-            if (incomingBuffer.length() > Protocol::MAX_TOPIC_LENGTH + Protocol::MAX_PAYLOAD_LENGTH + 10) {
+            if (incomingBuffer.length() > Protocol::MAX_PAYLOAD_LENGTH + 20) {
                 ESP_LOGW(TAG, "Serial buffer overflow, clearing");
                 incomingBuffer = "";
             }
@@ -162,45 +164,49 @@ static void ProcessIncomingSerial() {
 static void ParseSerialMessage(const String& message) {
     ESP_LOGI(TAG, "Processing serial message: %s", message.c_str());
 
-    // Find delimiter
-    int delimiterPos = message.indexOf(Protocol::SERIAL_DELIMITER);
+    String messageType = "";
+    String payload = "";
 
-    if (delimiterPos == -1) {
-        ESP_LOGW(TAG, "Invalid serial message format (no delimiter): %s", message.c_str());
+    // Parse message format: PREFIX:JSON
+    if (message.startsWith(Protocol::STATUS_PREFIX)) {
+        messageType = "STATUS";
+        payload = message.substring(strlen(Protocol::STATUS_PREFIX));
+    } else if (message.startsWith(Protocol::RESULT_PREFIX)) {
+        messageType = "RESULT";
+        payload = message.substring(strlen(Protocol::RESULT_PREFIX));
+    } else {
+        ESP_LOGW(TAG, "Unknown message format: %s", message.c_str());
         return;
     }
 
-    // Extract topic and payload
-    String topic = message.substring(0, delimiterPos);
-    String payload = message.substring(delimiterPos + 1);
-
-    if (topic.length() == 0) {
-        ESP_LOGW(TAG, "Empty topic in serial message");
+    if (payload.length() == 0) {
+        ESP_LOGW(TAG, "Empty payload in message");
         return;
     }
 
-    ESP_LOGI(TAG, "Parsed serial message - Topic: %s, Payload: %s", topic.c_str(), payload.c_str());
+    ESP_LOGI(TAG, "Parsed message - Type: %s, Payload: %s", messageType.c_str(), payload.c_str());
 
     // Find appropriate handler
-    Handler* handler = FindSerialHandler(topic);
+    Handler* handler = FindSerialHandler(messageType);
 
     if (handler && handler->Callback) {
-        ESP_LOGI(TAG, "Calling handler %s for topic %s", handler->Identifier.c_str(), topic.c_str());
-        handler->Callback(topic.c_str(), payload.c_str());
+        ESP_LOGI(TAG, "Calling handler %s for message type %s", handler->Identifier.c_str(), messageType.c_str());
+        handler->Callback(messageType.c_str(), payload.c_str());
     } else {
-        ESP_LOGW(TAG, "No handler found for serial topic: %s", topic.c_str());
+        ESP_LOGW(TAG, "No handler found for message type: %s", messageType.c_str());
     }
 }
 
-static Handler* FindSerialHandler(const String& topic) {
+static Handler* FindSerialHandler(const String& messageType) {
     for (auto& handler : serialHandlers) {
-        if (handler.Active && handler.SubscribeTopic == topic) {
+        if (handler.Active && handler.SubscribeTopic == messageType) {
             return &handler;
         }
     }
     return nullptr;
 }
 
+// Transport getter
 Transport* GetSerialTransport() {
     return &SerialTransport;
 }

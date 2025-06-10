@@ -55,6 +55,11 @@ void updateNetworkInfo(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid,
 // LVGL tick management
 void tickUpdate(void);
 
+// Internal functions for use by TaskManager (no mutex protection)
+void updateWifiStatusInternal(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const char* statusText, bool connected);
+void updateNetworkInfoInternal(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid, const char* ipAddress);
+void updateFpsDisplayInternal(lv_obj_t* fpsLabel);
+
 }  // namespace Display
 
 #endif  // DISPLAY_MANAGER_H

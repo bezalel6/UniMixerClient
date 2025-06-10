@@ -4,15 +4,17 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
+#include "../hardware/TaskManager.h"
 #include "../messaging/MessageBus.h"
 #include "../events/UiEventHandlers.h"
 #include "../../include/MessagingConfig.h"
 #include "../../include/OTAConfig.h"
 #include <ui/ui.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Private variables
-static unsigned long nextUpdateMillis = 0;
 static const char* TAG = "AppController";
 
 namespace Application {
@@ -26,139 +28,62 @@ bool init(void) {
         return false;
     }
 
-    // Initialize messaging system
-    if (!Messaging::MessageBus::Init()) {
-        ESP_LOGE(TAG, "Failed to initialize messaging system");
-        return false;
-    }
-
-    // Determine if network manager is needed (for MQTT or OTA)
-    bool networkNeeded = false;
-
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-    networkNeeded = true;  // MQTT transport modes need network
-#endif
-
-#if OTA_ENABLE_UPDATES
-    networkNeeded = true;  // OTA always needs network
-#endif
-
-    // Initialize network manager if needed
-    if (networkNeeded) {
-        ESP_LOGI(TAG, "Network required for MQTT/OTA - initializing network manager");
-        if (!Hardware::Network::init()) {
-            ESP_LOGE(TAG, "Failed to initialize network manager");
-            return false;
-        }
-
-        // Enable auto-reconnect (WiFi connection will be started automatically by NetworkManager)
-        Hardware::Network::enableAutoReconnect(true);
-    }
-
-    // Configure transport based on MessagingConfig.h settings
-#if MESSAGING_DEFAULT_TRANSPORT == 0
-// MQTT only
-#if MESSAGING_ENABLE_MQTT_TRANSPORT
-    ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
-    Messaging::MessageBus::EnableMqttTransport();
-#else
-    ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
-    return false;
-#endif
-#elif MESSAGING_DEFAULT_TRANSPORT == 1
-// Serial only - no additional network configuration needed
-#if MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
-    Messaging::MessageBus::EnableSerialTransport();
-#else
-    ESP_LOGE(TAG, "Serial transport requested but disabled in config");
-    return false;
-#endif
-#elif MESSAGING_DEFAULT_TRANSPORT == 2
-// Both transports
-#if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
-    Messaging::MessageBus::EnableBothTransports();
-#else
-    ESP_LOGE(TAG, "Dual transport requested but one or both transports disabled in config");
-    return false;
-#endif
-#else
-    ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d", MESSAGING_DEFAULT_TRANSPORT);
-    return false;
-#endif
-
     // Initialize display manager
     if (!Display::init()) {
         ESP_LOGE(TAG, "Failed to initialize display manager");
         return false;
     }
 
-    // Initialize audio status manager
+    // Initialize Task Manager first (this initializes MessageBus)
+    if (!Hardware::TaskManager::init()) {
+        ESP_LOGE(TAG, "Failed to initialize task manager");
+        return false;
+    }
+
+    // Initialize audio status manager (requires MessageBus to be initialized)
     if (!Application::Audio::StatusManager::init()) {
         ESP_LOGE(TAG, "Failed to initialize audio status manager");
         return false;
     }
 
-    // OTA manager will be initialized automatically by NetworkManager when connected
-
     // Setup UI components
     setupUiComponents();
 
-    // Initialize timing
-    nextUpdateMillis = Hardware::Device::getMillis() + APP_UPDATE_INTERVAL_MS;
+    // Start all tasks for multi-threaded operation
+    if (!Hardware::TaskManager::startAllTasks()) {
+        ESP_LOGE(TAG, "Failed to start tasks");
+        return false;
+    }
 
-    ESP_LOGI(TAG, "Application Controller initialized successfully");
+    ESP_LOGI(TAG, "Application Controller initialized successfully with multi-threading");
     return true;
 }
 
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing Application Controller");
 
+    // Stop all tasks first (this also handles messaging and network cleanup)
+    Hardware::TaskManager::deinit();
+
     Application::Audio::StatusManager::deinit();
-    Messaging::MessageBus::Deinit();
-
-    // OTA manager is deinitialized automatically by NetworkManager
-
-    // Deinitialize network manager if it was initialized
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
-    Hardware::Network::deinit();
-#endif
-
     Display::deinit();
     Hardware::Device::deinit();
 }
 
 void run(void) {
-    unsigned long now = Hardware::Device::getMillis();
-
-    // Update network manager if it was initialized
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
-    Hardware::Network::update();
-#endif
-
-    // OTA updates are handled automatically by NetworkManager
-
-    // Update messaging system
-    Messaging::MessageBus::Update();
-
-    // Update periodic data
-    if (now >= nextUpdateMillis) {
-        updatePeriodicData();
-        updateNetworkStatus();
-        updateAudioStatus();
-        updateOtaStatus();
-        updateFpsDisplay();
-        nextUpdateMillis = now + APP_UPDATE_INTERVAL_MS;
-    }
+    // In multi-threaded mode, the main loop only handles basic LED updates
+    // All other functionality is handled by dedicated tasks
 
 #ifdef BOARD_HAS_RGB_LED
     // Update LED colors
     Hardware::Device::ledCycleColors();
 #endif
 
-    // Update display
+    // Update display FPS calculation (non-blocking)
     Display::update();
+
+    // Small delay to prevent watchdog timeout and allow task switching
+    vTaskDelay(pdMS_TO_TICKS(10));
 }
 
 void setupUiComponents(void) {
@@ -177,66 +102,6 @@ void setupUiComponents(void) {
     lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
-void updatePeriodicData(void) {
-}
-
-void updateNetworkStatus(void) {
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
-    // Network manager is initialized - show actual network status
-    const char* wifiStatus = Hardware::Network::getWifiStatusString();
-    bool isConnected = Hardware::Network::isConnected();
-    const char* ssid = Hardware::Network::getSsid();
-    const char* ipAddress = Hardware::Network::getIpAddress();
-
-    // Update WiFi status and indicator
-    Display::updateWifiStatus(ui_lblWifiStatus, ui_objWifiIndicator, wifiStatus, isConnected);
-
-    // Update network information
-    Display::updateNetworkInfo(ui_lblSSIDValue, ui_lblIPValue, ssid, ipAddress);
-#else
-    // Network manager not initialized - show "Not Required" status
-    Display::updateWifiStatus(ui_lblWifiStatus, ui_objWifiIndicator, "Not Required", false);
-    Display::updateNetworkInfo(ui_lblSSIDValue, ui_lblIPValue, "N/A", "N/A");
-#endif
-
-    // Get messaging status
-    const char* messagingStatus = Messaging::MessageBus::GetStatusString();
-
-    // Update messaging status with indicator support
-    Display::updateMqttStatus(ui_lblMQTTValue, ui_objMQTTIndicator, messagingStatus);
-}
-
-void updateAudioStatus(void) {
-    // Get audio statistics from the AudioStatusManager
-    int activeProcessCount = Application::Audio::StatusManager::getActiveProcessCount();
-    int totalVolume = Application::Audio::StatusManager::getTotalVolume();
-
-    // Log audio status information
-    if (activeProcessCount > 0) {
-        ESP_LOGD(TAG, "Audio Status - Active Processes: %d, Total Volume: %d",
-                 activeProcessCount, totalVolume);
-
-        // Get the process with highest volume
-        Application::Audio::AudioLevel highest = Application::Audio::StatusManager::getHighestVolumeProcess();
-        if (!highest.processName.isEmpty()) {
-            ESP_LOGD(TAG, "Highest Volume Process: %s (%d)",
-                     highest.processName.c_str(), highest.volume);
-        }
-    }
-}
-
-void updateFpsDisplay(void) {
-    // Update FPS display
-    Display::updateFpsDisplay(ui_lblFPS);
-}
-
-void updateOtaStatus(void) {
-#if OTA_ENABLE_UPDATES
-    // OTA status is handled by NetworkManager
-    if (Hardware::Network::isOtaReady()) {
-        ESP_LOGD(TAG, "OTA ready via NetworkManager");
-    }
-#endif
-}
+// Old update functions removed - now handled by dedicated tasks
 
 }  // namespace Application

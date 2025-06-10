@@ -20,8 +20,6 @@ void setup() {
 }
 
 void loop() {
-    // Run the main application loop
+    // Run the main application loop (now handles task switching internally)
     Application::run();
-
-    delay(10);
 }

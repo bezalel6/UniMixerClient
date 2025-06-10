@@ -17,28 +17,26 @@ static const char* TAG = "AudioStatusManager";
         return;                                                          \
     }
 
-#define AUDIO_MESSAGE_COMMAND_BASE(message_action)                       \
+// Updated macro for new protocol format
+#define AUDIO_COMMAND_BASE(command_type)                                 \
     if (!Messaging::MessageBus::IsConnected()) {                         \
         ESP_LOGW(TAG, "Cannot publish command: No transport connected"); \
         return;                                                          \
     }                                                                    \
     JsonDocument doc;                                                    \
-    doc["messageType"] = Messaging::Protocol::MSG_TYPE_AUDIO_MIX_UPDATE; \
-    doc["timestamp"] = String(Hardware::Device::getMillis());            \
-    doc["messageId"] = String(Hardware::Device::getMillis());            \
-    JsonArray updates = doc["updates"].to<JsonArray>();                  \
-    JsonObject update = updates.add<JsonObject>();                       \
-    update["processName"] = deviceName;                                  \
-    update["action"] = message_action;
+    doc["commandType"] = command_type;                                   \
+    doc["processId"] = getProcessIdForDevice(deviceName);                \
+    doc["processName"] = deviceName;                                     \
+    doc["requestId"] = Messaging::Protocol::generateRequestId();
 
-#define AUDIO_PUBLISH_COMMAND_FINISH(action_name)                                                                    \
-    String jsonPayload;                                                                                              \
-    serializeJson(doc, jsonPayload);                                                                                 \
-    bool published = Messaging::MessageBus::Publish(Messaging::Protocol::TOPIC_AUDIO_REQUESTS, jsonPayload.c_str()); \
-    if (published) {                                                                                                 \
-        ESP_LOGI(TAG, "Published " action_name " command for %s", deviceName.c_str());                               \
-    } else {                                                                                                         \
-        ESP_LOGE(TAG, "Failed to publish " action_name " command");                                                  \
+#define AUDIO_PUBLISH_COMMAND_FINISH(action_name)                                      \
+    String jsonPayload;                                                                \
+    serializeJson(doc, jsonPayload);                                                   \
+    bool published = Messaging::MessageBus::Publish("COMMAND", jsonPayload.c_str());   \
+    if (published) {                                                                   \
+        ESP_LOGI(TAG, "Published " action_name " command for %s", deviceName.c_str()); \
+    } else {                                                                           \
+        ESP_LOGE(TAG, "Failed to publish " action_name " command");                    \
     }
 
 namespace Application {
@@ -47,6 +45,7 @@ namespace Audio {
 // Static member definitions
 std::vector<AudioLevel> StatusManager::audioLevels;
 Messaging::Handler StatusManager::audioStatusHandler;
+Messaging::Handler StatusManager::commandResultHandler;
 unsigned long StatusManager::lastUpdateTime = 0;
 bool StatusManager::initialized = false;
 String StatusManager::selectedDevice = "";
@@ -64,12 +63,17 @@ bool StatusManager::init() {
     audioLevels.clear();
     lastUpdateTime = Hardware::Device::getMillis();
 
-    // Initialize and register message handler
-    initializeAudioStatusHandler();
+    // Initialize and register message handlers
+    initializeMessageHandlers();
     if (!Messaging::MessageBus::RegisterHandler(audioStatusHandler)) {
         ESP_LOGE(TAG, "Failed to register audio status message handler");
         return false;
     }
+    if (!Messaging::MessageBus::RegisterHandler(commandResultHandler)) {
+        ESP_LOGE(TAG, "Failed to register command result message handler");
+        return false;
+    }
+
     initialized = true;
     ESP_LOGI(TAG, "AudioStatusManager initialized successfully");
     return true;
@@ -82,8 +86,9 @@ void StatusManager::deinit() {
 
     ESP_LOGI(TAG, "Deinitializing AudioStatusManager");
 
-    // Unregister message handler
+    // Unregister message handlers
     Messaging::MessageBus::UnregisterHandler(audioStatusHandler.Identifier);
+    Messaging::MessageBus::UnregisterHandler(commandResultHandler.Identifier);
 
     // Clear data
     audioLevels.clear();
@@ -119,6 +124,120 @@ void StatusManager::updateAudioLevel(const String& processName, int volume) {
 
     ESP_LOGI(TAG, "Updated audio level - Process: %s, Volume: %d",
              processName.c_str(), volume);
+}
+
+// Helper function to map process names to IDs (simplified for demo)
+int StatusManager::getProcessIdForDevice(const String& deviceName) {
+    // In a real implementation, maintain a mapping of process names to IDs
+    // For now, use a simple hash of the process name
+    unsigned long hash = 0;
+    for (int i = 0; i < deviceName.length(); i++) {
+        hash = hash * 31 + deviceName.charAt(i);
+    }
+    return (int)(hash % 65536);  // Keep it reasonable
+}
+
+// Helper method to update all dropdown options with the same content
+void StatusManager::updateAllDropdownOptions(void) {
+    // Update all dropdowns
+    if (ui_selectAudioDevice1) {
+        lv_dropdown_clear_options(ui_selectAudioDevice1);
+        if (audioLevels.empty()) {
+            lv_dropdown_add_option(ui_selectAudioDevice1, "No devices", LV_DROPDOWN_POS_LAST);
+        } else {
+            for (const auto& level : audioLevels) {
+                String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
+                lv_dropdown_add_option(ui_selectAudioDevice1, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+            }
+        }
+    }
+
+    if (ui_selectAudioDevice2) {
+        lv_dropdown_clear_options(ui_selectAudioDevice2);
+        if (audioLevels.empty()) {
+            lv_dropdown_add_option(ui_selectAudioDevice2, "No devices", LV_DROPDOWN_POS_LAST);
+        } else {
+            for (const auto& level : audioLevels) {
+                String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
+                lv_dropdown_add_option(ui_selectAudioDevice2, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+            }
+        }
+    }
+}
+
+// Helper method to update a single dropdown selection
+void StatusManager::updateSingleDropdownSelection(lv_obj_t* dropdown) {
+    if (!dropdown) return;
+
+    // Find the index of selectedDevice in the dropdown by comparing with our audio levels
+    uint16_t optionCount = lv_dropdown_get_option_cnt(dropdown);
+    for (uint16_t i = 0; i < optionCount && i < audioLevels.size(); i++) {
+        // Compare with our known audio levels
+        String levelName = audioLevels[i].processName;
+
+        if (levelName == selectedDevice) {
+            lv_dropdown_set_selected(dropdown, i);
+            break;
+        }
+    }
+}
+
+// Build options string for dropdowns (legacy compatibility method)
+String StatusManager::buildAudioDeviceOptionsString(void) {
+    if (audioLevels.empty()) {
+        return "None";
+    }
+
+    String options = "";
+    bool first = true;
+
+    for (const auto& level : audioLevels) {
+        if (!first) {
+            options += "\n";
+        }
+
+        // Format: "ProcessName (Volume%)" or "ProcessName (Volume%) (Stale)"
+        options += level.processName;
+        options += " (";
+        options += String(level.volume);
+        options += "%)";
+
+        if (level.stale) {
+            options += " (Stale)";
+        }
+
+        first = false;
+    }
+
+    return options;
+}
+
+// Get selected audio device from dropdown (for event handlers)
+String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
+    if (dropdown == NULL) {
+        ESP_LOGW(TAG, "getSelectedAudioDevice: Invalid dropdown parameter");
+        return "";
+    }
+
+    // Get the selected text
+    char selectedText[256];
+    lv_dropdown_get_selected_str(dropdown, selectedText, sizeof(selectedText));
+
+    // Extract just the process name (before the volume indicator)
+    String selectedString = String(selectedText);
+
+    // Remove stale prefix if present
+    if (selectedString.startsWith("(!) ")) {
+        selectedString = selectedString.substring(4);
+    }
+
+    // Remove volume indicator if present
+    int volumeStart = selectedString.indexOf(" (");
+    if (volumeStart > 0) {
+        return selectedString.substring(0, volumeStart);
+    }
+
+    return selectedString;
 }
 
 std::vector<AudioLevel> StatusManager::getAllAudioLevels(void) {
@@ -199,150 +318,81 @@ void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels)
         }
         if (!deviceToSelect.isEmpty()) {
             setSelectedDevice(deviceToSelect);
-            ESP_LOGI(TAG, "Auto-selected device: %s", deviceToSelect.c_str());
         }
     }
 
-    // Update UI dropdowns with new audio device list
-    updateAudioDeviceDropdowns();
-
-    // Sync volume arc if a device is selected
-    if (!selectedDevice.isEmpty()) {
-        syncVolumeArcWithSelectedDevice();
-    }
+    // Update the UI
+    onAudioLevelsChangedUI();
 }
 
-// UI Update functions
+void StatusManager::onAudioLevelsChangedUI(void) {
+    // Update device dropdown if available (using the actual UI element names)
+    if (ui_selectAudioDevice && !suppressArcEvents) {
+        // Clear existing options
+        lv_dropdown_clear_options(ui_selectAudioDevice);
 
-void StatusManager::updateAudioDeviceDropdowns(void) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioStatusManager not initialized, cannot update UI");
+        // Add devices from audio levels
+        if (audioLevels.empty()) {
+            lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
+        } else {
+            for (const auto& level : audioLevels) {
+                // Mark stale devices with a prefix
+                String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
+                lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+            }
+        }
+
+        // Update other dropdowns too
+        updateAllDropdownOptions();
+
+        // Update selection to match selectedDevice
+        updateDropdownSelection();
+    }
+
+    // Update volume arc if a device is selected
+    updateVolumeArcFromSelectedDevice();
+}
+
+void StatusManager::updateDropdownSelection(void) {
+    if (!ui_selectAudioDevice || selectedDevice.isEmpty()) {
         return;
     }
 
-    // Build the options string for the dropdowns
-    String optionsString = buildAudioDeviceOptionsString();
+    suppressArcEvents = true;
 
-    // Update all audio device dropdowns
-    Display::updateDropdownOptions(ui_selectAudioDevice, optionsString.c_str());
-    Display::updateDropdownOptions(ui_selectAudioDevice1, optionsString.c_str());
-    Display::updateDropdownOptions(ui_selectAudioDevice2, optionsString.c_str());
+    // Update primary dropdown
+    updateSingleDropdownSelection(ui_selectAudioDevice);
 
-    // Restore the selection to the currently selected device if it still exists
-    if (!selectedDevice.isEmpty()) {
-        restoreDropdownSelection(ui_selectAudioDevice);
-        restoreDropdownSelection(ui_selectAudioDevice1);
-        restoreDropdownSelection(ui_selectAudioDevice2);
+    // Update other dropdowns if they exist
+    if (ui_selectAudioDevice1) {
+        updateSingleDropdownSelection(ui_selectAudioDevice1);
+    }
+    if (ui_selectAudioDevice2) {
+        updateSingleDropdownSelection(ui_selectAudioDevice2);
     }
 
-    ESP_LOGI(TAG, "Updated audio device dropdowns with %d devices", audioLevels.size());
-}
-
-String StatusManager::buildAudioDeviceOptionsString(void) {
-    if (audioLevels.empty()) {
-        return "None";
-    }
-
-    String options = "";
-    bool first = true;
-
-    // Add each audio process as an option
-    for (const auto& level : audioLevels) {
-        if (!first) {
-            options += "\n";
-        }
-
-        // Format: "ProcessName (Volume%)" or "ProcessName (Volume%) (Stale)"
-        options += level.processName;
-        options += " (";
-        options += String(level.volume);
-        options += "%)";
-
-        if (level.stale) {
-            options += " (Stale)";
-        }
-
-        first = false;
-    }
-
-    return options;
-}
-
-String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
-    if (dropdown == NULL) {
-        ESP_LOGW(TAG, "getSelectedAudioDevice: Invalid dropdown parameter");
-        return "";
-    }
-
-    // Get the selected option index
-    uint16_t selectedIndex = lv_dropdown_get_selected(dropdown);
-
-    // Get the selected text
-    char selectedText[256];
-    lv_dropdown_get_selected_str(dropdown, selectedText, sizeof(selectedText));
-
-    // Extract just the process name (before the volume indicator)
-    String selectedString = String(selectedText);
-    int volumeStart = selectedString.indexOf(" (");
-    if (volumeStart > 0) {
-        return selectedString.substring(0, volumeStart);
-    }
-
-    return selectedString;
-}
-
-void StatusManager::restoreDropdownSelection(lv_obj_t* dropdown) {
-    if (dropdown == NULL || selectedDevice.isEmpty()) {
-        return;
-    }
-
-    // Find the index of the currently selected device in the audio levels
-    int targetIndex = -1;
-    for (int i = 0; i < audioLevels.size(); i++) {
-        if (audioLevels[i].processName == selectedDevice) {
-            targetIndex = i;
-            break;
-        }
-    }
-
-    // If the device was found, set the dropdown to that index
-    if (targetIndex >= 0) {
-        lv_dropdown_set_selected(dropdown, targetIndex);
-        ESP_LOGI(TAG, "Restored dropdown selection to index %d for device: %s",
-                 targetIndex, selectedDevice.c_str());
-    } else {
-        ESP_LOGW(TAG, "Could not find selected device '%s' in current audio levels",
-                 selectedDevice.c_str());
-    }
-}
-
-// Selected device state management
-
-void StatusManager::setSelectedDevice(const String& deviceName) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioStatusManager not initialized");
-        return;
-    }
-
-    selectedDevice = deviceName;
-    ESP_LOGI(TAG, "Selected device changed to: %s", deviceName.c_str());
-
-    // Sync volume arc with the new selection
-    syncVolumeArcWithSelectedDevice();
+    suppressArcEvents = false;
 }
 
 String StatusManager::getSelectedDevice(void) {
     return selectedDevice;
 }
 
-void StatusManager::syncVolumeArcWithSelectedDevice(void) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioStatusManager not initialized");
+void StatusManager::setSelectedDevice(const String& deviceName) {
+    selectedDevice = deviceName;
+    ESP_LOGI(TAG, "Selected device: %s", deviceName.c_str());
+
+    // Update UI elements
+    updateDropdownSelection();
+    updateVolumeArcFromSelectedDevice();
+}
+
+void StatusManager::updateVolumeArcFromSelectedDevice(void) {
+    if (!ui_volumeSlider) {
         return;
     }
 
     if (selectedDevice.isEmpty()) {
-        // No device selected, set arc to 0
         suppressArcEvents = true;
         lv_arc_set_value(ui_volumeSlider, 0);
         updateVolumeArcLabel(0);
@@ -350,17 +400,14 @@ void StatusManager::syncVolumeArcWithSelectedDevice(void) {
         return;
     }
 
-    // Find the selected device and sync its volume
+    // Find audio level for selected device
     AudioLevel* level = getAudioLevel(selectedDevice);
-    if (level != nullptr) {
+    if (level) {
         suppressArcEvents = true;
         lv_arc_set_value(ui_volumeSlider, level->volume);
         updateVolumeArcLabel(level->volume);
         suppressArcEvents = false;
-        ESP_LOGI(TAG, "Synced volume arc to %d for device: %s",
-                 level->volume, selectedDevice.c_str());
     } else {
-        ESP_LOGW(TAG, "Selected device '%s' not found in audio levels", selectedDevice.c_str());
         suppressArcEvents = true;
         lv_arc_set_value(ui_volumeSlider, 0);
         updateVolumeArcLabel(0);
@@ -408,21 +455,21 @@ void StatusManager::unmuteSelectedDevice(void) {
     ESP_LOGI(TAG, "Unmuted device: %s", selectedDevice.c_str());
 }
 
-// Message publishing methods using new messaging system
+// Message publishing methods using new protocol format
 
 void StatusManager::publishVolumeChangeCommand(const String& deviceName, int volume) {
-    AUDIO_MESSAGE_COMMAND_BASE(Messaging::Protocol::AUDIO_ACTION_SET_VOLUME)
-    update["volume"] = volume;
+    AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_SET_VOLUME)
+    doc["volume"] = volume / 100.0f;  // Convert to 0.0-1.0 range for server
     AUDIO_PUBLISH_COMMAND_FINISH("volume change")
 }
 
 void StatusManager::publishMuteCommand(const String& deviceName) {
-    AUDIO_MESSAGE_COMMAND_BASE(Messaging::Protocol::AUDIO_ACTION_MUTE)
+    AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_MUTE)
     AUDIO_PUBLISH_COMMAND_FINISH("mute")
 }
 
 void StatusManager::publishUnmuteCommand(const String& deviceName) {
-    AUDIO_MESSAGE_COMMAND_BASE(Messaging::Protocol::AUDIO_ACTION_UNMUTE)
+    AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_UNMUTE)
     AUDIO_PUBLISH_COMMAND_FINISH("unmute")
 }
 
@@ -438,27 +485,26 @@ void StatusManager::publishAudioStatusRequest(bool delayed) {
         return;
     }
 
-    // Create JSON message using AudioStatusRequestMessage format
+    // Create JSON command for getting all sessions
     JsonDocument doc;
-    doc["messageType"] = Messaging::Protocol::MSG_TYPE_AUDIO_STATUS_REQUEST;
-    doc["timestamp"] = String(Hardware::Device::getMillis());
-    doc["messageId"] = String(Hardware::Device::getMillis());  // Simple ID based on millis
+    doc["commandType"] = Messaging::Protocol::COMMAND_GET_ALL_SESSIONS;
+    doc["requestId"] = Messaging::Protocol::generateRequestId();
 
     // Serialize to string
     String jsonPayload;
     serializeJson(doc, jsonPayload);
 
-    // Publish the message (delayed or immediate)
+    // Publish the command (delayed or immediate)
     bool published;
     if (delayed) {
-        published = Messaging::MessageBus::PublishDelayed(Messaging::Protocol::TOPIC_AUDIO_REQUESTS, jsonPayload.c_str());
+        published = Messaging::MessageBus::PublishDelayed("COMMAND", jsonPayload.c_str());
         if (published) {
             ESP_LOGI(TAG, "Queued delayed audio status request");
         } else {
             ESP_LOGE(TAG, "Failed to queue delayed audio status request");
         }
     } else {
-        published = Messaging::MessageBus::Publish(Messaging::Protocol::TOPIC_AUDIO_REQUESTS, jsonPayload.c_str());
+        published = Messaging::MessageBus::Publish("COMMAND", jsonPayload.c_str());
         if (published) {
             ESP_LOGI(TAG, "Published audio status request");
         } else {
@@ -469,15 +515,23 @@ void StatusManager::publishAudioStatusRequest(bool delayed) {
 
 // Private methods
 
-void StatusManager::initializeAudioStatusHandler(void) {
-    audioStatusHandler.Identifier = "AudioStatusManager";
-    audioStatusHandler.SubscribeTopic = Messaging::Protocol::TOPIC_AUDIO_STATUS;
-    audioStatusHandler.PublishTopic = Messaging::Protocol::TOPIC_AUDIO_REQUESTS;
+void StatusManager::initializeMessageHandlers(void) {
+    // Status message handler
+    audioStatusHandler.Identifier = "AudioStatusHandler";
+    audioStatusHandler.SubscribeTopic = "STATUS";
+    audioStatusHandler.PublishTopic = "";
     audioStatusHandler.Callback = audioStatusMessageHandler;
     audioStatusHandler.Active = true;
+
+    // Command result handler
+    commandResultHandler.Identifier = "CommandResultHandler";
+    commandResultHandler.SubscribeTopic = "RESULT";
+    commandResultHandler.PublishTopic = "";
+    commandResultHandler.Callback = commandResultMessageHandler;
+    commandResultHandler.Active = true;
 }
 
-void StatusManager::audioStatusMessageHandler(const char* topic, const char* payload) {
+void StatusManager::audioStatusMessageHandler(const char* messageType, const char* payload) {
     if (!initialized) {
         ESP_LOGW(TAG, "AudioStatusManager not initialized, ignoring message");
         return;
@@ -492,6 +546,34 @@ void StatusManager::audioStatusMessageHandler(const char* topic, const char* pay
 
     // Process the received audio levels
     onAudioStatusReceived(levels);
+}
+
+void StatusManager::commandResultMessageHandler(const char* messageType, const char* payload) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioStatusManager not initialized, ignoring result");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Received command result: %s", payload);
+
+    // Parse result to check if command was successful
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload);
+
+    if (error) {
+        ESP_LOGE(TAG, "Failed to parse command result JSON: %s", error.c_str());
+        return;
+    }
+
+    bool success = doc["success"] | false;
+    String message = doc["message"] | "No message";
+    String requestId = doc["requestId"] | "";
+
+    if (success) {
+        ESP_LOGI(TAG, "Command successful [%s]: %s", requestId.c_str(), message.c_str());
+    } else {
+        ESP_LOGW(TAG, "Command failed [%s]: %s", requestId.c_str(), message.c_str());
+    }
 }
 
 std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayload) {
@@ -522,40 +604,34 @@ std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayl
     JsonObject root = doc.as<JsonObject>();
     unsigned long now = Hardware::Device::getMillis();
 
-    // Iterate through all key-value pairs
-    for (JsonPair kv : root) {
-        const char* processName = kv.key().c_str();
-        JsonVariant value = kv.value();
+    // Parse the new server status format
+    JsonArray sessions = root["sessions"];
+    if (sessions.isNull()) {
+        ESP_LOGW(TAG, "No sessions array in status message");
+        return result;
+    }
 
-        // Skip metadata fields
-        if (strcmp(processName, "timestamp") == 0 ||
-            strcmp(processName, "messageType") == 0 ||
-            strcmp(processName, "messageId") == 0) {
-            continue;
-        }
+    for (JsonObject session : sessions) {
+        String processName = session["processName"] | "";
+        int processId = session["processId"] | 0;
+        float volume = session["volume"] | 0.0f;
+        bool isMuted = session["isMuted"] | false;
+        String state = session["state"] | "";
 
-        // Check if value is a number (volume level)
-        if (value.is<int>()) {
-            int volume = value.as<int>();
+        if (processName.length() > 0) {
+            AudioLevel level;
+            level.processName = processName;
+            level.volume = (int)(volume * 100.0f);  // Convert from 0.0-1.0 to 0-100
+            level.lastUpdate = now;
+            level.stale = false;
 
-            // Validate volume range
-            if (volume >= 0 && volume <= 100) {
-                AudioLevel level;
-                level.processName = String(processName);
-                level.volume = volume;
-                level.lastUpdate = now;
-
-                result.push_back(level);
-                ESP_LOGI(TAG, "Parsed audio level: %s = %d", processName, volume);
-            } else {
-                ESP_LOGW(TAG, "Invalid volume level for %s: %d", processName, volume);
-            }
-        } else {
-            ESP_LOGW(TAG, "Non-numeric value for process %s", processName);
+            result.push_back(level);
+            ESP_LOGI(TAG, "Parsed audio session: %s (PID: %d) = %d%% %s",
+                     processName.c_str(), processId, level.volume, isMuted ? "(muted)" : "");
         }
     }
 
-    ESP_LOGI(TAG, "Parsed %d audio levels from JSON", result.size());
+    ESP_LOGI(TAG, "Parsed %d audio sessions from status message", result.size());
     return result;
 }
 

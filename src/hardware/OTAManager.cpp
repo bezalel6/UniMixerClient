@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <ESPmDNS.h>
 #include <ui/ui.h>
+#include "TaskManager.h"
 
 // Private variables
 static const char* TAG = "OTAManager";
@@ -45,19 +46,36 @@ bool init(void) {
 
         // Navigate to OTA screen
         otaInProgress = true;
-        _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, ui_screenOTA_screen_init);
+        if (Hardware::TaskManager::lockDisplay(pdMS_TO_TICKS(1000))) {
+            _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, ui_screenOTA_screen_init);
+            Hardware::TaskManager::unlockDisplay();
+        }
 
-        // Initialize progress bar
-        lv_bar_set_value(ui_barOTAUpdateProgress, 0, LV_ANIM_OFF);
-        lv_label_set_text(ui_lblOTAUpdateProgress, "Starting update...");
+        // Send OTA start progress message
+        Hardware::TaskManager::ota_progress_msg_t otaMsg;
+        otaMsg.progress = 0;
+        otaMsg.in_progress = true;
+        otaMsg.error = false;
+        strncpy(otaMsg.status, "Starting update...", sizeof(otaMsg.status) - 1);
+        Hardware::TaskManager::sendOTAProgress(&otaMsg);
+
+        // Set system event
+        Hardware::TaskManager::setSystemEvent(Hardware::TaskManager::EVENT_OTA_START);
     });
 
     ArduinoOTA.onEnd([]() {
         ESP_LOGI(TAG, "OTA update completed successfully");
 
-        // Update progress bar to 100% and show completion message
-        lv_bar_set_value(ui_barOTAUpdateProgress, 100, LV_ANIM_ON);
-        lv_label_set_text(ui_lblOTAUpdateProgress, "Update completed! Restarting...");
+        // Send completion message
+        Hardware::TaskManager::ota_progress_msg_t otaMsg;
+        otaMsg.progress = 100;
+        otaMsg.in_progress = false;
+        otaMsg.error = false;
+        strncpy(otaMsg.status, "Update completed! Restarting...", sizeof(otaMsg.status) - 1);
+        Hardware::TaskManager::sendOTAProgress(&otaMsg);
+
+        // Set system event
+        Hardware::TaskManager::setSystemEvent(Hardware::TaskManager::EVENT_OTA_COMPLETE);
 
         otaInProgress = false;
     });
@@ -69,14 +87,14 @@ bool init(void) {
         if (progressPercent >= lastProgressPercent + 1 || progressPercent == 100) {
             ESP_LOGI(TAG, "OTA Progress: %u%%", progressPercent);
 
-            // Update progress bar and label
+            // Send progress update message
             if (otaInProgress) {
-                lv_bar_set_value(ui_barOTAUpdateProgress, progressPercent, LV_ANIM_OFF);
-
-                // Update progress label with percentage
-                char progressText[32];
-                snprintf(progressText, sizeof(progressText), "Progress: %u%%", progressPercent);
-                lv_label_set_text(ui_lblOTAUpdateProgress, progressText);
+                Hardware::TaskManager::ota_progress_msg_t otaMsg;
+                otaMsg.progress = progressPercent;
+                otaMsg.in_progress = true;
+                otaMsg.error = false;
+                snprintf(otaMsg.status, sizeof(otaMsg.status), "Progress: %u%%", progressPercent);
+                Hardware::TaskManager::sendOTAProgress(&otaMsg);
             }
 
             lastProgressPercent = progressPercent;
@@ -104,10 +122,18 @@ bool init(void) {
             errorMsg = "End failed";
         }
 
-        // Update progress bar to show error state
+        // Send error message
         if (otaInProgress) {
-            lv_label_set_text(ui_lblOTAUpdateProgress, errorMsg);
+            Hardware::TaskManager::ota_progress_msg_t otaMsg;
+            otaMsg.progress = 0;
+            otaMsg.in_progress = false;
+            otaMsg.error = true;
+            strncpy(otaMsg.status, errorMsg, sizeof(otaMsg.status) - 1);
+            Hardware::TaskManager::sendOTAProgress(&otaMsg);
         }
+
+        // Set system event
+        Hardware::TaskManager::setSystemEvent(Hardware::TaskManager::EVENT_OTA_ERROR);
 
         otaInProgress = false;
     });
