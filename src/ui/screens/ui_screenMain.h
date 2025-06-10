@@ -20,6 +20,7 @@ extern lv_obj_t * ui_selectAudioDevice;
 extern lv_obj_t * ui_Balance;
 extern lv_obj_t * ui_selectAudioDevice1;
 extern lv_obj_t * ui_selectAudioDevice2;
+extern lv_obj_t * ui_Master;
 extern lv_obj_t * ui_pnlNetwork;
 extern lv_obj_t * ui_wifiContainer;
 extern lv_obj_t * ui_lblWifi;

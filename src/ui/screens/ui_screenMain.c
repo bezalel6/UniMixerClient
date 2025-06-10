@@ -12,6 +12,7 @@ lv_obj_t * ui_selectAudioDevice;
 lv_obj_t * ui_Balance;
 lv_obj_t * ui_selectAudioDevice1;
 lv_obj_t * ui_selectAudioDevice2;
+lv_obj_t * ui_Master;
 lv_obj_t * ui_pnlNetwork;
 lv_obj_t * ui_wifiContainer;
 lv_obj_t * ui_lblWifi;
@@ -61,7 +62,7 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_align(ui_TabView3, LV_ALIGN_BOTTOM_MID);
     lv_obj_remove_flag(ui_TabView3, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_TabPage2 = lv_tabview_add_tab(ui_TabView3, "Primary");
+    ui_TabPage2 = lv_tabview_add_tab(ui_TabView3, "Single");
     lv_obj_set_flex_flow(ui_TabPage2, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(ui_TabPage2, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END);
 
@@ -95,6 +96,8 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_y(ui_selectAudioDevice2, -1);
     lv_obj_set_align(ui_selectAudioDevice2, LV_ALIGN_RIGHT_MID);
     lv_obj_add_flag(ui_selectAudioDevice2, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+
+    ui_Master = lv_tabview_add_tab(ui_TabView3, "Master");
 
     ui_pnlNetwork = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlNetwork, 200);
@@ -243,9 +246,10 @@ void ui_screenMain_screen_init(void)
 
     ui_containerVolumeSlider = lv_obj_create(ui_screenMain);
     lv_obj_remove_style_all(ui_containerVolumeSlider);
-    lv_obj_set_width(ui_containerVolumeSlider, lv_pct(80));
-    lv_obj_set_height(ui_containerVolumeSlider, lv_pct(80));
+    lv_obj_set_width(ui_containerVolumeSlider, 250);
+    lv_obj_set_height(ui_containerVolumeSlider, 250);
     lv_obj_set_align(ui_containerVolumeSlider, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_containerVolumeSlider, LV_OBJ_FLAG_OVERFLOW_VISIBLE);     /// Flags
     lv_obj_remove_flag(ui_containerVolumeSlider, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_volumeSliderLbl = lv_label_create(ui_containerVolumeSlider);
@@ -261,11 +265,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_height(ui_volumeSlider, lv_pct(80));
     lv_obj_set_align(ui_volumeSlider, LV_ALIGN_CENTER);
     lv_arc_set_value(ui_volumeSlider, 0);
-    lv_obj_set_style_arc_color(ui_volumeSlider, lv_color_hex(0xD9D9FF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_arc_opa(ui_volumeSlider, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_arc_width(ui_volumeSlider, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_set_style_arc_width(ui_volumeSlider, 20, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
 
@@ -283,6 +282,7 @@ void ui_screenMain_screen_destroy(void)
     ui_Balance = NULL;
     ui_selectAudioDevice1 = NULL;
     ui_selectAudioDevice2 = NULL;
+    ui_Master = NULL;
     ui_pnlNetwork = NULL;
     ui_wifiContainer = NULL;
     ui_lblWifi = NULL;
