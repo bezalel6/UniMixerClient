@@ -28,12 +28,6 @@ static String incomingBuffer = "";
 // Flag to indicate new data is available (set by callback, processed by Update)
 static volatile bool newDataAvailable = false;
 
-// Error tracking for safety
-static int consecutiveErrors = 0;
-static unsigned long lastErrorTime = 0;
-static const int MAX_CONSECUTIVE_ERRORS = 10;
-static const unsigned long ERROR_RESET_INTERVAL = 5000;  // 5 seconds
-
 // Serial receive callback function (lightweight)
 static void onSerialReceive();
 
@@ -60,7 +54,6 @@ static Transport SerialTransport = {
         Hardware::Device::getDataSerial().flush();
 
         // Always log TX to UI for debugging, minimal ESP_LOG
-        LOG_TO_UI(ui_txtAreaDebugLog, String("TX: ") + String(payload));
         ESP_LOGI(TAG, "TX: %d chars", String(payload).length());
         return true;
     },
@@ -135,10 +128,6 @@ static Transport SerialTransport = {
         incomingBuffer = "";
         serialHandlers.clear();
         newDataAvailable = false;
-
-        // Reset error tracking
-        consecutiveErrors = 0;
-        lastErrorTime = 0;
 
         // Register the serial receive callback using ESP32's native onReceive method
         HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
@@ -221,24 +210,6 @@ static void ProcessIncomingSerial() {
 static void ParseSerialMessage(const String& message) {
     LOG_SERIAL_RX(message.c_str());
 
-    // Reset consecutive error counter if enough time has passed
-    unsigned long currentTime = millis();
-    if (currentTime - lastErrorTime > ERROR_RESET_INTERVAL) {
-        consecutiveErrors = 0;
-    }
-
-    // Safety check: if too many consecutive errors, throttle processing
-    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        if (currentTime - lastErrorTime > ERROR_RESET_INTERVAL) {
-            consecutiveErrors = 0;
-            LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR THROTTLE RESET after ") + String(ERROR_RESET_INTERVAL / 1000) + String("s"));
-        } else {
-            // Skip processing but log throttling
-            ESP_LOGW(TAG, "Error throttling active (%d consecutive errors)", consecutiveErrors);
-            return;
-        }
-    }
-
     // Message is already clean JSON content - no delimiter processing needed
     String jsonContent = message;
     jsonContent.trim();
@@ -246,8 +217,6 @@ static void ParseSerialMessage(const String& message) {
     // Check both compile-time and runtime debug mode flags
     if (IsDebugModeEnabled()) {
         // Debug mode: Comprehensive UI logging with minimal ESP_LOG
-        LOG_TO_UI(ui_txtAreaDebugLog, String("RX: ") + message);
-        LOG_TO_UI(ui_txtAreaDebugLog, String("Length: ") + String(jsonContent.length()) + String(" chars"));
 
         // Try to parse JSON for structure analysis
         ArduinoJson::JsonDocument doc;
@@ -256,11 +225,8 @@ static void ParseSerialMessage(const String& message) {
         if (error) {
             LOG_TO_UI(ui_txtAreaDebugLog, String("JSON ERROR: ") + String(error.c_str()));
             LOG_TO_UI(ui_txtAreaDebugLog, String("Raw JSON: ") + jsonContent);
-            consecutiveErrors++;
-            lastErrorTime = currentTime;
         } else {
             // Reset error counter on successful parse
-            consecutiveErrors = 0;
             String keysList = "Keys: ";
             int keyCount = 0;
 
@@ -271,13 +237,9 @@ static void ParseSerialMessage(const String& message) {
                 keyCount++;
             }
 
-            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON OK: ") + String(keyCount) + String(" keys"));
-            LOG_TO_UI(ui_txtAreaDebugLog, keysList);
-
             // Show specific field values for debugging
             if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
                 int sessionCount = doc["sessions"].size();
-                LOG_TO_UI(ui_txtAreaDebugLog, String("Sessions: ") + String(sessionCount));
 
                 // Show first few session details
                 for (int i = 0; i < min(3, sessionCount); i++) {
@@ -289,7 +251,6 @@ static void ParseSerialMessage(const String& message) {
                     if (session["volume"].is<float>()) {
                         sessionInfo += String(" vol:") + String(session["volume"].as<float>(), 2);
                     }
-                    LOG_TO_UI(ui_txtAreaDebugLog, sessionInfo);
                 }
             }
         }
@@ -308,14 +269,7 @@ static void ParseSerialMessage(const String& message) {
     if (payload.length() == 0) {
         LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR: Empty JSON content"));
         ESP_LOGW(TAG, "Empty JSON content");
-        consecutiveErrors++;
-        lastErrorTime = currentTime;
         return;
-    }
-
-    // Log processing info to UI (only if not already done in debug mode)
-    if (!IsDebugModeEnabled()) {
-        LOG_TO_UI(ui_txtAreaDebugLog, String("PROC: ") + String(payload.length()) + String(" chars"));
     }
 
     // Try to parse JSON for validation
@@ -325,31 +279,18 @@ static void ParseSerialMessage(const String& message) {
     if (!error) {
         int keyCount = doc.as<ArduinoJson::JsonObject>().size();
 
-        // Log key JSON fields to UI
-        if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
-            int sessionCount = doc["sessions"].size();
-            LOG_TO_UI(ui_txtAreaDebugLog, String("STATUS: ") + String(sessionCount) + String(" sessions"));
-        }
-        if (doc["commandType"].is<const char*>()) {
-            LOG_TO_UI(ui_txtAreaDebugLog, String("CMD: ") + String(doc["commandType"].as<const char*>()));
-        }
-
         // Minimal ESP_LOG for normal processing
         ESP_LOGI(TAG, "JSON OK, %d keys", keyCount);
-        consecutiveErrors = 0;  // Reset on successful parse
     } else {
         LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
         LOG_TO_UI(ui_txtAreaDebugLog, payload);
         ESP_LOGW(TAG, "JSON parse fail: %s", error.c_str());
-        consecutiveErrors++;
-        lastErrorTime = currentTime;
     }
 
     // Find appropriate handler
     Handler* handler = FindSerialHandler(messageType);
 
     if (handler && handler->Callback) {
-        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER: ") + String(handler->Identifier.c_str()));
         ESP_LOGI(TAG, "Handler: %s", handler->Identifier.c_str());
         handler->Callback(messageType.c_str(), payload.c_str());
     } else {
