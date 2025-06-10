@@ -42,6 +42,9 @@ void reconnectWifi(void);
 void enableAutoReconnect(bool enable);
 bool isAutoReconnectEnabled(void);
 
+// Network-dependent component status
+bool isOtaReady(void);
+
 }  // namespace Network
 }  // namespace Hardware
 

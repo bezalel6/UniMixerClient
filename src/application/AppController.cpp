@@ -3,9 +3,11 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
+#include "../hardware/OTAManager.h"
 #include "../messaging/MessageBus.h"
 #include "../events/UiEventHandlers.h"
 #include "../../include/MessagingConfig.h"
+#include "../../include/OTAConfig.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 
@@ -30,16 +32,33 @@ bool init(void) {
         return false;
     }
 
-    // Configure transport based on MessagingConfig.h settings
-    // Network manager will only be initialized if MQTT transport is needed
-#if MESSAGING_DEFAULT_TRANSPORT == 0
-// MQTT only - initialize network manager
-#if MESSAGING_ENABLE_MQTT_TRANSPORT
-    ESP_LOGI(TAG, "MQTT transport required - initializing network manager");
-    if (!Hardware::Network::init()) {
-        ESP_LOGE(TAG, "Failed to initialize network manager");
-        return false;
+    // Determine if network manager is needed (for MQTT or OTA)
+    bool networkNeeded = false;
+
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
+    networkNeeded = true;  // MQTT transport modes need network
+#endif
+
+#if OTA_ENABLE_UPDATES
+    networkNeeded = true;  // OTA always needs network
+#endif
+
+    // Initialize network manager if needed
+    if (networkNeeded) {
+        ESP_LOGI(TAG, "Network required for MQTT/OTA - initializing network manager");
+        if (!Hardware::Network::init()) {
+            ESP_LOGE(TAG, "Failed to initialize network manager");
+            return false;
+        }
+
+        // Enable auto-reconnect (WiFi connection will be started automatically by NetworkManager)
+        Hardware::Network::enableAutoReconnect(true);
     }
+
+    // Configure transport based on MessagingConfig.h settings
+#if MESSAGING_DEFAULT_TRANSPORT == 0
+// MQTT only
+#if MESSAGING_ENABLE_MQTT_TRANSPORT
     ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
     Messaging::MessageBus::EnableMqttTransport();
 #else
@@ -47,22 +66,17 @@ bool init(void) {
     return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 1
-// Serial only - no network initialization needed
+// Serial only - no additional network configuration needed
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only, no network required)");
+    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
     Messaging::MessageBus::EnableSerialTransport();
 #else
     ESP_LOGE(TAG, "Serial transport requested but disabled in config");
     return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 2
-// Both transports - initialize network manager for MQTT
+// Both transports
 #if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Dual transport requires network - initializing network manager");
-    if (!Hardware::Network::init()) {
-        ESP_LOGE(TAG, "Failed to initialize network manager");
-        return false;
-    }
     ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
     Messaging::MessageBus::EnableBothTransports();
 #else
@@ -86,6 +100,8 @@ bool init(void) {
         return false;
     }
 
+    // OTA manager will be initialized automatically by NetworkManager when connected
+
     // Setup UI components
     setupUiComponents();
 
@@ -102,8 +118,10 @@ void deinit(void) {
     Application::Audio::StatusManager::deinit();
     Messaging::MessageBus::Deinit();
 
-    // Only deinitialize network manager if it was initialized (MQTT transport used)
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
+    // OTA manager is deinitialized automatically by NetworkManager
+
+    // Deinitialize network manager if it was initialized
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
     Hardware::Network::deinit();
 #endif
 
@@ -114,10 +132,12 @@ void deinit(void) {
 void run(void) {
     unsigned long now = Hardware::Device::getMillis();
 
-    // Update network manager only if it was initialized (MQTT transport used)
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
+    // Update network manager if it was initialized
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
     Hardware::Network::update();
 #endif
+
+    // OTA updates are handled automatically by NetworkManager
 
     // Update messaging system
     Messaging::MessageBus::Update();
@@ -127,6 +147,7 @@ void run(void) {
         updatePeriodicData();
         updateNetworkStatus();
         updateAudioStatus();
+        updateOtaStatus();
         updateFpsDisplay();
         nextUpdateMillis = now + APP_UPDATE_INTERVAL_MS;
     }
@@ -160,7 +181,7 @@ void updatePeriodicData(void) {
 }
 
 void updateNetworkStatus(void) {
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
     // Network manager is initialized - show actual network status
     const char* wifiStatus = Hardware::Network::getWifiStatusString();
     bool isConnected = Hardware::Network::isConnected();
@@ -207,6 +228,15 @@ void updateAudioStatus(void) {
 void updateFpsDisplay(void) {
     // Update FPS display
     Display::updateFpsDisplay(ui_lblFPS);
+}
+
+void updateOtaStatus(void) {
+#if OTA_ENABLE_UPDATES
+    // OTA status is handled by NetworkManager
+    if (Hardware::Network::isOtaReady()) {
+        ESP_LOGD(TAG, "OTA ready via NetworkManager");
+    }
+#endif
 }
 
 }  // namespace Application

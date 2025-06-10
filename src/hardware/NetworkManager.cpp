@@ -1,5 +1,7 @@
 #include "NetworkManager.h"
 #include "DeviceManager.h"
+#include "OTAManager.h"
+#include "../../include/OTAConfig.h"
 #include <esp_log.h>
 
 static const char* TAG = "NetworkManager";
@@ -14,11 +16,14 @@ static unsigned long connectionStartTime = 0;
 static String currentIpAddress = "";
 static String currentSsid = "";
 static bool initializationComplete = false;
-static bool autoReconnectEnabled = false;
+static bool autoReconnectEnabled = true;
+static bool otaInitialized = false;
 
 // Private function declarations
 static void wifiEventHandler(WiFiEvent_t event);
 static void updateConnectionStatus(void);
+static void initializeNetworkComponents(void);
+static void deinitializeNetworkComponents(void);
 
 bool init(void) {
     ESP_LOGI(TAG, "Initializing network manager");
@@ -33,18 +38,21 @@ bool init(void) {
     currentWifiStatus = WIFI_STATUS_DISCONNECTED;
     currentIpAddress = "";
     currentSsid = "";
-    autoReconnectEnabled = false;
+    autoReconnectEnabled = true;
 
-    // Do not automatically start WiFi connection
-    // This will be controlled by components that need network access
+    // Automatically start WiFi connection
+    connectWifi();
 
     initializationComplete = true;
-    ESP_LOGI(TAG, "Network manager initialized (WiFi not connected)");
+    ESP_LOGI(TAG, "Network manager initialized and WiFi connection initiated");
     return true;
 }
 
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing network manager");
+
+    // Deinitialize network components first
+    deinitializeNetworkComponents();
 
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
@@ -58,6 +66,13 @@ void update(void) {
     }
 
     updateConnectionStatus();
+
+#if OTA_ENABLE_UPDATES
+    // Update OTA manager if it's initialized
+    if (otaInitialized) {
+        Hardware::OTA::update();
+    }
+#endif
 
     // Handle reconnection logic only if auto-reconnect is enabled
     if (!autoReconnectEnabled) {
@@ -169,6 +184,10 @@ bool isAutoReconnectEnabled(void) {
     return autoReconnectEnabled;
 }
 
+bool isOtaReady(void) {
+    return otaInitialized;
+}
+
 // Private function implementations
 static void wifiEventHandler(WiFiEvent_t event) {
     switch (event) {
@@ -186,12 +205,18 @@ static void wifiEventHandler(WiFiEvent_t event) {
             currentWifiStatus = WIFI_STATUS_CONNECTED;
             currentIpAddress = WiFi.localIP().toString();
             connectionStartTime = 0;  // Reset connection timer
+
+            // Initialize network components
+            initializeNetworkComponents();
             break;
 
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             ESP_LOGW(TAG, "WiFi disconnected");
             currentWifiStatus = WIFI_STATUS_DISCONNECTED;
             currentIpAddress = "";
+
+            // Deinitialize network components
+            deinitializeNetworkComponents();
             break;
 
         case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:
@@ -237,6 +262,34 @@ static void updateConnectionStatus(void) {
             // WL_IDLE_STATUS and others - keep current status
             break;
     }
+}
+
+static void initializeNetworkComponents(void) {
+    ESP_LOGI(TAG, "Initializing network-dependent components");
+
+#if OTA_ENABLE_UPDATES
+    if (!otaInitialized) {
+        ESP_LOGI(TAG, "Initializing OTA manager");
+        if (Hardware::OTA::init()) {
+            ESP_LOGI(TAG, "OTA manager initialized successfully");
+            otaInitialized = true;
+        } else {
+            ESP_LOGW(TAG, "Failed to initialize OTA manager");
+        }
+    }
+#endif
+}
+
+static void deinitializeNetworkComponents(void) {
+    ESP_LOGI(TAG, "Deinitializing network-dependent components");
+
+#if OTA_ENABLE_UPDATES
+    if (otaInitialized) {
+        ESP_LOGI(TAG, "Deinitializing OTA manager");
+        Hardware::OTA::deinit();
+        otaInitialized = false;
+    }
+#endif
 }
 
 }  // namespace Network

@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t * ui_Screen1;
+lv_obj_t * ui_screenMain;
 lv_obj_t * ui_TabView3;
 lv_obj_t * ui_TabPage2;
 lv_obj_t * ui_selectAudioDevice;
@@ -38,12 +38,12 @@ lv_obj_t * ui_lblFPS;
 
 // build funtions
 
-void ui_Screen1_screen_init(void)
+void ui_screenMain_screen_init(void)
 {
-    ui_Screen1 = lv_obj_create(NULL);
-    lv_obj_remove_flag(ui_Screen1, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    ui_screenMain = lv_obj_create(NULL);
+    lv_obj_remove_flag(ui_screenMain, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_TabView3 = lv_tabview_create(ui_Screen1);
+    ui_TabView3 = lv_tabview_create(ui_screenMain);
     lv_tabview_set_tab_bar_position(ui_TabView3, LV_DIR_BOTTOM);
     lv_tabview_set_tab_bar_size(ui_TabView3, 50);
     lv_obj_set_width(ui_TabView3, 548);
@@ -86,7 +86,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_selectAudioDevice2, LV_ALIGN_RIGHT_MID);
     lv_obj_add_flag(ui_selectAudioDevice2, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
 
-    ui_pnlNetwork = lv_obj_create(ui_Screen1);
+    ui_pnlNetwork = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlNetwork, 200);
     lv_obj_set_height(ui_pnlNetwork, 134);
     lv_obj_set_x(ui_pnlNetwork, 8);
@@ -184,7 +184,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_lblMQTTValue, LV_ALIGN_BOTTOM_RIGHT);
     lv_label_set_text(ui_lblMQTTValue, "-");
 
-    ui_pnlVolumeSlider = lv_obj_create(ui_Screen1);
+    ui_pnlVolumeSlider = lv_obj_create(ui_screenMain);
     lv_obj_set_height(ui_pnlVolumeSlider, 250);
     lv_obj_set_width(ui_pnlVolumeSlider, lv_pct(100));
     lv_obj_set_align(ui_pnlVolumeSlider, LV_ALIGN_BOTTOM_MID);
@@ -216,7 +216,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_align(ui_Label5, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label5, "Refresh");
 
-    ui_lblFPS = lv_label_create(ui_Screen1);
+    ui_lblFPS = lv_label_create(ui_screenMain);
     lv_obj_set_width(ui_lblFPS, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_lblFPS, 341);
@@ -226,12 +226,12 @@ void ui_Screen1_screen_init(void)
 
 }
 
-void ui_Screen1_screen_destroy(void)
+void ui_screenMain_screen_destroy(void)
 {
-    if(ui_Screen1) lv_obj_del(ui_Screen1);
+    if(ui_screenMain) lv_obj_del(ui_screenMain);
 
     // NULL screen variables
-    ui_Screen1 = NULL;
+    ui_screenMain = NULL;
     ui_TabView3 = NULL;
     ui_TabPage2 = NULL;
     ui_selectAudioDevice = NULL;
