@@ -29,7 +29,6 @@ static String incomingBuffer = "";
 // Helper functions
 static void ProcessIncomingSerial();
 static void ParseSerialMessage(const String& message);
-static void LogMessageToUI(const String& message);
 static Handler* FindSerialHandler(const String& messageType);
 static bool IsSerialAvailable();
 
@@ -47,12 +46,9 @@ static Transport SerialTransport = {
         Hardware::Device::getDataSerial().print(message);
         Hardware::Device::getDataSerial().flush();
 
-        LOG_SERIAL_TX(payload);
-
-#if MESSAGING_DESERIALIZATION_DEBUG_MODE
-        // Log outgoing messages to UI in debug mode
+        // Always log TX to UI for debugging, minimal ESP_LOG
         LOG_TO_UI(ui_txtAreaDebugLog, String("TX: ") + String(payload));
-#endif
+        ESP_LOGI(TAG, "TX: %d chars", String(payload).length());
         return true;
     },
 
@@ -124,6 +120,11 @@ static Transport SerialTransport = {
         incomingBuffer = "";
         serialHandlers.clear();
 
+        // Log configuration
+        ESP_LOGI(TAG, "Configuration: Baud=%d, Buffer=%d, Timeout=%dms, PayloadMax=%d",
+                 MESSAGING_SERIAL_BAUD_RATE, MESSAGING_SERIAL_BUFFER_SIZE,
+                 MESSAGING_SERIAL_TIMEOUT_MS, MESSAGING_MAX_PAYLOAD_LENGTH);
+
         // Check if data serial is available
         bool dataAvailable = IsSerialAvailable();
         ESP_LOGI(TAG, "Serial transport initialized - Data serial available: %s",
@@ -162,118 +163,124 @@ static void ProcessIncomingSerial() {
         } else if (c != '\r') {  // Ignore carriage returns
             incomingBuffer += c;
 
-            // Prevent buffer overflow
-            if (incomingBuffer.length() > Protocol::MAX_PAYLOAD_LENGTH + 20) {
-                ESP_LOGW(TAG, "Serial buffer overflow, clearing");
+            // Prevent buffer overflow - use configured buffer size with margin
+            const int maxBufferSize = MESSAGING_SERIAL_BUFFER_SIZE + 50;  // Buffer size + margin
+            if (incomingBuffer.length() > maxBufferSize) {
+                ESP_LOGW(TAG, "Serial buffer overflow, clearing (limit: %d)", maxBufferSize);
                 incomingBuffer = "";
             }
         }
 
         lastSerialCheck = now;
     }
-
-    // // Clear stale buffer data
-    // if (incomingBuffer.length() > 0 && (now - lastSerialCheck) > Protocol::SERIAL_TIMEOUT_MS) {
-    //     ESP_LOGW(TAG, "Serial buffer timeout, clearing stale data");
-    //     incomingBuffer = "";
-    // }
-}
-
-static void LogMessageToUI(const String& message) {
-    LOG_TO_UI(ui_txtAreaDebugLog, String("RX: ") + message);
 }
 
 static void ParseSerialMessage(const String& message) {
     LOG_SERIAL_RX(message.c_str());
 
+    // Message is already clean JSON content - no delimiter processing needed
+    String jsonContent = message;
+    jsonContent.trim();
+
     // Check both compile-time and runtime debug mode flags
     if (IsDebugModeEnabled()) {
-        // Debug mode: Just log to UI and provide detailed analysis
-        ESP_LOGI(TAG, "[DEBUG MODE] Message received - length: %d", message.length());
-
-        // Log to UI
-        LogMessageToUI(message);
+        // Debug mode: Comprehensive UI logging with minimal ESP_LOG
+        LOG_TO_UI(ui_txtAreaDebugLog, String("RX: ") + message);
+        LOG_TO_UI(ui_txtAreaDebugLog, String("Length: ") + String(jsonContent.length()) + String(" chars"));
 
         // Try to parse JSON for structure analysis
         ArduinoJson::JsonDocument doc;
-        ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, message);
+        ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, jsonContent);
 
-        String analysisLog;
         if (error) {
-            analysisLog = String("[") + String(millis()) + String("] JSON Parse Error: ") + String(error.c_str()) + "\n";
-            ESP_LOGW(TAG, "[DEBUG MODE] JSON deserialization failed: %s", error.c_str());
+            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON ERROR: ") + String(error.c_str()));
+            LOG_TO_UI(ui_txtAreaDebugLog, String("Raw JSON: ") + jsonContent);
         } else {
-            analysisLog = String("[") + String(millis()) + String("] JSON Parse OK - Keys: ");
+            String keysList = "Keys: ";
+            int keyCount = 0;
 
             // List all JSON keys
             for (ArduinoJson::JsonPair kv : doc.as<ArduinoJson::JsonObject>()) {
-                analysisLog += String(kv.key().c_str()) + ", ";
+                if (keyCount > 0) keysList += ", ";
+                keysList += String(kv.key().c_str());
+                keyCount++;
             }
-            analysisLog += "\n";
 
-            ESP_LOGI(TAG, "[DEBUG MODE] JSON parsed successfully - %d keys", doc.as<ArduinoJson::JsonObject>().size());
+            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON OK: ") + String(keyCount) + String(" keys"));
+            LOG_TO_UI(ui_txtAreaDebugLog, keysList);
+
+            // Show specific field values for debugging
+            if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
+                int sessionCount = doc["sessions"].size();
+                LOG_TO_UI(ui_txtAreaDebugLog, String("Sessions: ") + String(sessionCount));
+
+                // Show first few session details
+                for (int i = 0; i < min(3, sessionCount); i++) {
+                    auto session = doc["sessions"][i];
+                    String sessionInfo = String("  [") + String(i) + String("] ");
+                    if (session["processName"].is<const char*>()) {
+                        sessionInfo += String(session["processName"].as<const char*>());
+                    }
+                    if (session["volume"].is<float>()) {
+                        sessionInfo += String(" vol:") + String(session["volume"].as<float>(), 2);
+                    }
+                    LOG_TO_UI(ui_txtAreaDebugLog, sessionInfo);
+                }
+            }
         }
 
-        // Add analysis to UI
-        if (ui_txtAreaDebugLog != nullptr) {
-            lv_textarea_add_text(ui_txtAreaDebugLog, analysisLog.c_str());
-        }
-
-        ESP_LOGI(TAG, "[DEBUG MODE] Message processing complete - not forwarded to handlers");
+        // Only log critical info to ESP_LOG in debug mode
+        ESP_LOGI(TAG, "Debug mode: Msg len=%d, JSON len=%d, Parse=%s", message.length(), jsonContent.length(), error ? "FAIL" : "OK");
         return;  // Don't process further in debug mode
 
     } else {
-        // Normal processing mode
+        // Normal processing mode - Log key info to UI, minimal ESP_LOG
 
-        // Simplified: all messages from server are status messages
         String messageType = "STATUS";
-        String payload = message;
+        String payload = jsonContent;
 
         if (payload.length() == 0) {
-            ESP_LOGW(TAG, "Empty payload in message");
+            LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR: Empty JSON content"));
+            ESP_LOGW(TAG, "Empty JSON content");
             return;
         }
 
-        ESP_LOGI(TAG, "Parsed message - Type: %s, Payload length: %d", messageType.c_str(), payload.length());
+        // Log processing info to UI
+        LOG_TO_UI(ui_txtAreaDebugLog, String("PROC: ") + String(payload.length()) + String(" chars"));
 
-#if MESSAGING_LOG_ALL_MESSAGES
-        ESP_LOGI(TAG, "Full payload: %s", payload.c_str());
-#endif
-
-        // Try to parse JSON for validation and enhanced logging
+        // Try to parse JSON for validation
         ArduinoJson::JsonDocument doc;
         ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, payload);
 
         if (!error) {
-            ESP_LOGI(TAG, "JSON structure valid - %d keys detected", doc.as<ArduinoJson::JsonObject>().size());
+            int keyCount = doc.as<ArduinoJson::JsonObject>().size();
 
-            // Log key JSON fields if present
+            // Log key JSON fields to UI
             if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
                 int sessionCount = doc["sessions"].size();
-                ESP_LOGI(TAG, "Status message contains %d sessions", sessionCount);
+                LOG_TO_UI(ui_txtAreaDebugLog, String("STATUS: ") + String(sessionCount) + String(" sessions"));
             }
             if (doc["commandType"].is<const char*>()) {
-                ESP_LOGI(TAG, "Command type: %s", doc["commandType"].as<const char*>());
+                LOG_TO_UI(ui_txtAreaDebugLog, String("CMD: ") + String(doc["commandType"].as<const char*>()));
             }
+
+            // Minimal ESP_LOG for normal processing
+            ESP_LOGI(TAG, "JSON OK, %d keys", keyCount);
         } else {
-            ESP_LOGW(TAG, "JSON parsing failed: %s", error.c_str());
+            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
+            ESP_LOGW(TAG, "JSON parse fail: %s", error.c_str());
         }
 
         // Find appropriate handler
         Handler* handler = FindSerialHandler(messageType);
 
         if (handler && handler->Callback) {
-            ESP_LOGI(TAG, "Calling handler %s for message type %s", handler->Identifier.c_str(), messageType.c_str());
+            LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER: ") + String(handler->Identifier.c_str()));
+            ESP_LOGI(TAG, "Handler: %s", handler->Identifier.c_str());
             handler->Callback(messageType.c_str(), payload.c_str());
-            ESP_LOGI(TAG, "Handler %s completed successfully", handler->Identifier.c_str());
         } else {
-            ESP_LOGW(TAG, "No handler found for message type: %s (available handlers: %d)", messageType.c_str(), serialHandlers.size());
-
-            // List available handlers for debugging
-            for (const auto& h : serialHandlers) {
-                ESP_LOGD(TAG, "Available handler: %s (topic: %s, active: %s)",
-                         h.Identifier.c_str(), h.SubscribeTopic.c_str(), h.Active ? "yes" : "no");
-            }
+            LOG_TO_UI(ui_txtAreaDebugLog, String("NO HANDLER for ") + messageType);
+            ESP_LOGW(TAG, "No handler for: %s", messageType.c_str());
         }
 
     }  // End of debug mode check

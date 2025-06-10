@@ -14,7 +14,12 @@ extern "C" {
 extern void ui_screenDebug_screen_init(void);
 extern void ui_screenDebug_screen_destroy(void);
 extern lv_obj_t * ui_screenDebug;
+extern lv_obj_t * ui_pnlContainerDebugLogs;
+extern lv_obj_t * ui_lblDebugLogs;
 extern lv_obj_t * ui_txtAreaDebugLog;
+extern void ui_event_btnBack(lv_event_t * e);
+extern lv_obj_t * ui_btnBack;
+extern lv_obj_t * ui_Label4;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

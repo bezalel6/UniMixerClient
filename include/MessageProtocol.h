@@ -13,17 +13,17 @@ inline constexpr const char* COMMAND_GET_STATUS = "GetStatus";
 inline constexpr const char* COMMAND_GET_ALL_SESSIONS = "GetAllSessions";
 
 // Configuration Constants
-inline constexpr int MAX_TOPIC_LENGTH = 128;
-inline constexpr int MAX_PAYLOAD_LENGTH = 2048;  // Increased for status messages
-inline constexpr int MAX_HANDLERS = 10;
-inline constexpr int MAX_IDENTIFIER_LENGTH = 64;
+inline constexpr int MAX_TOPIC_LENGTH = 128;      // Maximum topic name length
+inline constexpr int MAX_PAYLOAD_LENGTH = 2048;   // Maximum payload size to match server
+inline constexpr int MAX_HANDLERS = 10;           // Maximum number of message handlers
+inline constexpr int MAX_IDENTIFIER_LENGTH = 64;  // Maximum handler identifier length
 
 // Serial Protocol Constants
-inline constexpr char SERIAL_TERMINATOR = '\n';
-inline constexpr int SERIAL_TIMEOUT_MS = 1000;
+inline constexpr char SERIAL_TERMINATOR = '\n';  // Message terminator character
+inline constexpr int SERIAL_TIMEOUT_MS = 1000;   // Serial communication timeout
 
 // Serial Interface Configuration
-inline constexpr int SERIAL_BAUD_RATE = 115200;  // Standard Serial - Debug/logs and messaging
+inline constexpr int SERIAL_BAUD_RATE = 115200;  // Serial baud rate to match server
 
 // Request ID generation helper
 inline String generateRequestId() {
