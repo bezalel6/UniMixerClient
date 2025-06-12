@@ -264,7 +264,9 @@ static void ParseSerialMessage(const String& message) {
 
     // Normal processing mode (or debug mode continuing) - Log key info to UI, minimal ESP_LOG
     String messageType = "STATUS";
-    String payload = jsonContent;
+    auto i = jsonContent.indexOf('{');
+    if (i < 0) i = 0;
+    String payload = jsonContent.substring(i);
 
     if (payload.length() == 0) {
         LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR: Empty JSON content"));
