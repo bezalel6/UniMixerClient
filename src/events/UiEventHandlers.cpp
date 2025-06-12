@@ -142,17 +142,8 @@ void tabSwitchHandler(lv_event_t* e) {
 
     UI_LOG(TAG, "Tab event received: %s (%d) on target: %p", getEventName(code), code, target);
 
-    // Simply get the currently active tab from the tabview
     uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
-
-    // Update current tab state
-    currentTab = static_cast<TabState>(activeTab);
-
-    // Update the tab label with current tab name
-    const char* tabName = getTabName(currentTab);
-    lv_label_set_text(ui_lblCurrentTab, tabName);
-
-    UI_LOG(TAG, "Tab switched to: %s (index: %d)", tabName, activeTab);
+    setCurrentTab(static_cast<TabState>(activeTab));
 }
 
 // Get current tab state
