@@ -61,8 +61,8 @@ void ui_screenMain_screen_init(void)
     ui_tabsModeSwitch = lv_tabview_create(ui_screenMain);
     lv_tabview_set_tab_bar_position(ui_tabsModeSwitch, LV_DIR_BOTTOM);
     lv_tabview_set_tab_bar_size(ui_tabsModeSwitch, 40);
-    lv_obj_set_height(ui_tabsModeSwitch, 120);
     lv_obj_set_width(ui_tabsModeSwitch, lv_pct(100));
+    lv_obj_set_height(ui_tabsModeSwitch, lv_pct(100));
     lv_obj_set_align(ui_tabsModeSwitch, LV_ALIGN_BOTTOM_MID);
     lv_obj_remove_flag(ui_tabsModeSwitch, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
@@ -72,7 +72,7 @@ void ui_screenMain_screen_init(void)
     ui_Panel1 = lv_obj_create(ui_Master);
     lv_obj_set_width(ui_Panel1, 350);
     lv_obj_set_height(ui_Panel1, 42);
-    lv_obj_set_align(ui_Panel1, LV_ALIGN_CENTER);
+    lv_obj_set_align(ui_Panel1, LV_ALIGN_BOTTOM_MID);
     lv_obj_set_flex_flow(ui_Panel1, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(ui_Panel1, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(ui_Panel1, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
