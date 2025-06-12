@@ -50,6 +50,7 @@ unsigned long StatusManager::lastUpdateTime = 0;
 bool StatusManager::initialized = false;
 String StatusManager::selectedDevice = "";
 bool StatusManager::suppressArcEvents = false;
+Events::UI::TabState StatusManager::currentTab = Events::UI::TabState::MASTER;
 
 bool StatusManager::init() {
     if (initialized) {
@@ -260,33 +261,6 @@ AudioStatus StatusManager::getCurrentAudioStatus(void) {
     return currentAudioStatus;
 }
 
-int StatusManager::getActiveProcessCount(void) {
-    return currentAudioStatus.audioLevels.size();
-}
-
-int StatusManager::getTotalVolume(void) {
-    int total = 0;
-    for (const auto& level : currentAudioStatus.audioLevels) {
-        total += level.volume;
-    }
-    return total;
-}
-
-AudioLevel StatusManager::getHighestVolumeProcess(void) {
-    AudioLevel highest;
-    highest.processName = "";
-    highest.volume = 0;
-    highest.lastUpdate = 0;
-
-    for (const auto& level : currentAudioStatus.audioLevels) {
-        if (level.volume > highest.volume) {
-            highest = level;
-        }
-    }
-
-    return highest;
-}
-
 void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
     ESP_LOGI(TAG, "Received audio status update with %d processes and %s default device",
              status.audioLevels.size(), status.hasDefaultDevice ? "a" : "no");
@@ -357,16 +331,28 @@ void StatusManager::onAudioLevelsChangedUI(void) {
         // Clear existing options
         lv_dropdown_clear_options(ui_selectAudioDevice);
 
-        // Add devices from audio levels
-        if (currentAudioStatus.audioLevels.empty()) {
-            lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
+        // If in MASTER tab, show default device in dropdown
+        if (currentTab == Events::UI::TabState::MASTER) {
+            if (currentAudioStatus.hasDefaultDevice) {
+                lv_dropdown_add_option(ui_selectAudioDevice,
+                                       currentAudioStatus.defaultDevice.friendlyName.c_str(),
+                                       LV_DROPDOWN_POS_LAST);
+            } else {
+                lv_dropdown_add_option(ui_selectAudioDevice, "No default device", LV_DROPDOWN_POS_LAST);
+            }
         } else {
-            for (const auto& level : currentAudioStatus.audioLevels) {
-                // Mark stale devices with a prefix
-                String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
-                lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+            // For other tabs, add devices from audio levels
+            if (currentAudioStatus.audioLevels.empty()) {
+                lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
+            } else {
+                for (const auto& level : currentAudioStatus.audioLevels) {
+                    // Mark stale devices with a prefix
+                    String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
+                    lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+                }
             }
         }
+
         if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
             lv_label_set_text(ui_lblPrimaryAudioDeviceValue, currentAudioStatus.defaultDevice.friendlyName.c_str());
         }
@@ -377,7 +363,7 @@ void StatusManager::onAudioLevelsChangedUI(void) {
         updateDropdownSelection();
     }
 
-    // Update volume arc if a device is selected
+    // Update volume arc based on current tab
     updateVolumeArcFromSelectedDevice();
 }
 
@@ -420,27 +406,37 @@ void StatusManager::updateVolumeArcFromSelectedDevice(void) {
         return;
     }
 
-    if (selectedDevice.isEmpty()) {
-        suppressArcEvents = true;
-        lv_arc_set_value(ui_volumeSlider, 0);
-        updateVolumeArcLabel(0);
-        suppressArcEvents = false;
-        return;
+    suppressArcEvents = true;
+
+    // If in MASTER tab, show default device volume
+    if (currentTab == Events::UI::TabState::MASTER) {
+        if (currentAudioStatus.hasDefaultDevice) {
+            int volume = (int)(currentAudioStatus.defaultDevice.volume * 100.0f);
+            lv_arc_set_value(ui_volumeSlider, volume);
+            updateVolumeArcLabel(volume);
+        } else {
+            lv_arc_set_value(ui_volumeSlider, 0);
+            updateVolumeArcLabel(0);
+        }
+    } else {
+        // For other tabs, show selected device volume
+        if (selectedDevice.isEmpty()) {
+            lv_arc_set_value(ui_volumeSlider, 0);
+            updateVolumeArcLabel(0);
+        } else {
+            // Find audio level for selected device
+            AudioLevel* level = getAudioLevel(selectedDevice);
+            if (level) {
+                lv_arc_set_value(ui_volumeSlider, level->volume);
+                updateVolumeArcLabel(level->volume);
+            } else {
+                lv_arc_set_value(ui_volumeSlider, 0);
+                updateVolumeArcLabel(0);
+            }
+        }
     }
 
-    // Find audio level for selected device
-    AudioLevel* level = getAudioLevel(selectedDevice);
-    if (level) {
-        suppressArcEvents = true;
-        lv_arc_set_value(ui_volumeSlider, level->volume);
-        updateVolumeArcLabel(level->volume);
-        suppressArcEvents = false;
-    } else {
-        suppressArcEvents = true;
-        lv_arc_set_value(ui_volumeSlider, 0);
-        updateVolumeArcLabel(0);
-        suppressArcEvents = false;
-    }
+    suppressArcEvents = false;
 }
 
 void StatusManager::updateVolumeArcLabel(int volume) {
@@ -459,105 +455,159 @@ void StatusManager::setSelectedDeviceVolume(int volume) {
     // Clamp volume to valid range
     volume = constrain(volume, 0, 100);
 
-    // Update local audio level immediately for responsive UI
-    updateAudioLevel(selectedDevice, volume);
-
     // Update the volume arc label
     updateVolumeArcLabel(volume);
 
-    // Publish volume change command via messaging
-    publishVolumeChangeCommand(selectedDevice, volume);
+    // If in MASTER tab, control the default device
+    if (currentTab == Events::UI::TabState::MASTER) {
+        if (currentAudioStatus.hasDefaultDevice) {
+            // Update local default device volume for responsive UI
+            currentAudioStatus.defaultDevice.volume = volume / 100.0f;
+            ESP_LOGI(TAG, "Set default device volume to %d", volume);
+        } else {
+            ESP_LOGW(TAG, "No default device available for master volume control");
+            return;
+        }
+    } else {
+        // Update local audio level immediately for responsive UI
+        updateAudioLevel(selectedDevice, volume);
+        ESP_LOGI(TAG, "Set volume to %d for device: %s", volume, selectedDevice.c_str());
+    }
 
-    ESP_LOGI(TAG, "Set volume to %d for device: %s", volume, selectedDevice.c_str());
+    // Publish the updated status to server
+    publishStatusUpdate();
 }
 
 void StatusManager::muteSelectedDevice(void) {
     AUDIO_DEVICE_ACTION_PROLOGUE("mute")
-    publishMuteCommand(selectedDevice);
-    ESP_LOGI(TAG, "Muted device: %s", selectedDevice.c_str());
+
+    // If in MASTER tab, control the default device
+    if (currentTab == Events::UI::TabState::MASTER) {
+        if (currentAudioStatus.hasDefaultDevice) {
+            currentAudioStatus.defaultDevice.isMuted = true;
+            ESP_LOGI(TAG, "Muted default device");
+        } else {
+            ESP_LOGW(TAG, "No default device available for master mute control");
+            return;
+        }
+    } else {
+        // Find and update the selected device's mute state
+        AudioLevel* level = getAudioLevel(selectedDevice);
+        if (level) {
+            level->isMuted = true;
+        }
+        ESP_LOGI(TAG, "Muted device: %s", selectedDevice.c_str());
+    }
+
+    // Publish the updated status to server
+    publishStatusUpdate();
 }
 
 void StatusManager::unmuteSelectedDevice(void) {
     AUDIO_DEVICE_ACTION_PROLOGUE("unmute")
-    publishUnmuteCommand(selectedDevice);
-    ESP_LOGI(TAG, "Unmuted device: %s", selectedDevice.c_str());
-}
 
-// Message publishing methods using new protocol format
-
-void StatusManager::publishVolumeChangeCommand(const String& deviceName, int volume) {
-    // Check if this is a device or a session
-    bool isDevice = deviceName.endsWith("(Default Device)");
-
-    if (isDevice) {
-        // Extract the actual device friendly name (remove the "(Default Device)" suffix)
-        String actualDeviceName = deviceName;
-        int suffixIndex = actualDeviceName.lastIndexOf(" (Default Device)");
-        if (suffixIndex > 0) {
-            actualDeviceName = actualDeviceName.substring(0, suffixIndex);
+    // If in MASTER tab, control the default device
+    if (currentTab == Events::UI::TabState::MASTER) {
+        if (currentAudioStatus.hasDefaultDevice) {
+            currentAudioStatus.defaultDevice.isMuted = false;
+            ESP_LOGI(TAG, "Unmuted default device");
+        } else {
+            ESP_LOGW(TAG, "No default device available for master unmute control");
+            return;
         }
-
-        // Use device command
-        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_SET_DEVICE_VOLUME)
-        doc["deviceFriendlyName"] = actualDeviceName;
-        doc["volume"] = volume / 100.0f;  // Convert to 0.0-1.0 range for server
-        AUDIO_PUBLISH_COMMAND_FINISH("device volume change")
     } else {
-        // Use session command
-        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_SET_VOLUME)
-        doc["volume"] = volume / 100.0f;  // Convert to 0.0-1.0 range for server
-        AUDIO_PUBLISH_COMMAND_FINISH("volume change")
+        // Find and update the selected device's mute state
+        AudioLevel* level = getAudioLevel(selectedDevice);
+        if (level) {
+            level->isMuted = false;
+        }
+        ESP_LOGI(TAG, "Unmuted device: %s", selectedDevice.c_str());
     }
+
+    // Publish the updated status to server
+    publishStatusUpdate();
 }
 
-void StatusManager::publishMuteCommand(const String& deviceName) {
-    // Check if this is a device or a session
-    bool isDevice = deviceName.endsWith("(Default Device)");
-
-    if (isDevice) {
-        // Extract the actual device friendly name (remove the "(Default Device)" suffix)
-        String actualDeviceName = deviceName;
-        int suffixIndex = actualDeviceName.lastIndexOf(" (Default Device)");
-        if (suffixIndex > 0) {
-            actualDeviceName = actualDeviceName.substring(0, suffixIndex);
-        }
-
-        // Use device command
-        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_MUTE_DEVICE)
-        doc["deviceFriendlyName"] = actualDeviceName;
-        AUDIO_PUBLISH_COMMAND_FINISH("device mute")
-    } else {
-        // Use session command
-        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_MUTE)
-        AUDIO_PUBLISH_COMMAND_FINISH("mute")
+void StatusManager::publishStatusUpdate(void) {
+    if (!Messaging::MessageBus::IsConnected()) {
+        ESP_LOGW(TAG, "Cannot publish status update: No transport connected");
+        return;
     }
-}
 
-void StatusManager::publishUnmuteCommand(const String& deviceName) {
-    // Check if this is a device or a session
-    bool isDevice = deviceName.endsWith("(Default Device)");
+    JsonDocument doc;
+    doc["messageType"] = Messaging::Protocol::MESSAGE_STATUS_UPDATE;
+    doc["requestId"] = Messaging::Protocol::generateRequestId();
+    doc["timestamp"] = Hardware::Device::getMillis();
 
-    if (isDevice) {
-        // Extract the actual device friendly name (remove the "(Default Device)" suffix)
-        String actualDeviceName = deviceName;
-        int suffixIndex = actualDeviceName.lastIndexOf(" (Default Device)");
-        if (suffixIndex > 0) {
-            actualDeviceName = actualDeviceName.substring(0, suffixIndex);
-        }
+    // Add sessions array
+    JsonArray sessions = doc.createNestedArray("sessions");
+    for (const auto& level : currentAudioStatus.audioLevels) {
+        JsonObject session = sessions.createNestedObject();
+        session["processName"] = level.processName;
+        session["volume"] = level.volume / 100.0f;  // Convert to 0.0-1.0 range
+        session["isMuted"] = level.isMuted;
+        session["state"] = "Active";
+    }
 
-        // Use device command
-        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_UNMUTE_DEVICE)
-        doc["deviceFriendlyName"] = actualDeviceName;
-        AUDIO_PUBLISH_COMMAND_FINISH("device unmute")
+    // Add default device if available
+    if (currentAudioStatus.hasDefaultDevice) {
+        JsonObject defaultDevice = doc.createNestedObject("defaultDevice");
+        defaultDevice["friendlyName"] = currentAudioStatus.defaultDevice.friendlyName;
+        defaultDevice["volume"] = currentAudioStatus.defaultDevice.volume;
+        defaultDevice["isMuted"] = currentAudioStatus.defaultDevice.isMuted;
+        defaultDevice["dataFlow"] = currentAudioStatus.defaultDevice.state;
+        defaultDevice["deviceRole"] = "Console";
+    }
+
+    String jsonPayload;
+    serializeJson(doc, jsonPayload);
+    bool published = Messaging::MessageBus::Publish("STATUS_UPDATE", jsonPayload.c_str());
+    if (published) {
+        ESP_LOGI(TAG, "Published status update with %d sessions", currentAudioStatus.audioLevels.size());
     } else {
-        // Use session command
-        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_UNMUTE)
-        AUDIO_PUBLISH_COMMAND_FINISH("unmute")
+        ESP_LOGE(TAG, "Failed to publish status update");
     }
 }
 
 bool StatusManager::isSuppressingArcEvents(void) {
     return suppressArcEvents;
+}
+
+// Tab state management methods
+Events::UI::TabState StatusManager::getCurrentTab(void) {
+    return currentTab;
+}
+
+void StatusManager::setCurrentTab(Events::UI::TabState tab) {
+    currentTab = tab;
+
+    // Update the tab label with current tab name
+    const char* tabName = getTabName(tab);
+    lv_label_set_text(ui_lblCurrentTab, tabName);
+
+    // Update UI elements based on tab state
+    if (tab == Events::UI::TabState::MASTER) {
+        // When switching to MASTER tab, update volume arc to show default device
+        updateVolumeArcFromSelectedDevice();
+        ESP_LOGI(TAG, "Tab state set to: %s (now controlling default device)", tabName);
+    } else {
+        // For other tabs, ensure the volume arc shows the selected device
+        updateVolumeArcFromSelectedDevice();
+        ESP_LOGI(TAG, "Tab state set to: %s (now controlling individual devices)", tabName);
+    }
+}
+
+const char* StatusManager::getTabName(Events::UI::TabState tab) {
+    switch (tab) {
+        case Events::UI::TabState::MASTER:
+            return "Master";
+        case Events::UI::TabState::SINGLE:
+            return "Single";
+        case Events::UI::TabState::BALANCE:
+            return "Balance";
+        default:
+            return "Unknown";
+    }
 }
 
 // Message publishing methods
@@ -568,26 +618,26 @@ void StatusManager::publishAudioStatusRequest(bool delayed) {
         return;
     }
 
-    // Create JSON command for getting all sessions
+    // Create JSON request for getting status
     JsonDocument doc;
-    doc["commandType"] = Messaging::Protocol::COMMAND_GET_ALL_SESSIONS;
+    doc["messageType"] = Messaging::Protocol::MESSAGE_GET_STATUS;
     doc["requestId"] = Messaging::Protocol::generateRequestId();
 
     // Serialize to string
     String jsonPayload;
     serializeJson(doc, jsonPayload);
 
-    // Publish the command (delayed or immediate)
+    // Publish the request (delayed or immediate)
     bool published;
     if (delayed) {
-        published = Messaging::MessageBus::PublishDelayed("COMMAND", jsonPayload.c_str());
+        published = Messaging::MessageBus::PublishDelayed("STATUS_REQUEST", jsonPayload.c_str());
         if (published) {
             ESP_LOGI(TAG, "Queued delayed audio status request");
         } else {
             ESP_LOGE(TAG, "Failed to queue delayed audio status request");
         }
     } else {
-        published = Messaging::MessageBus::Publish("COMMAND", jsonPayload.c_str());
+        published = Messaging::MessageBus::Publish("STATUS_REQUEST", jsonPayload.c_str());
         if (published) {
             ESP_LOGI(TAG, "Published audio status request");
         } else {

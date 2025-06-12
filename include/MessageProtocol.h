@@ -5,20 +5,9 @@ namespace Messaging::Protocol {
 
 // Serial Protocol - Simplified (no prefixes needed)
 
-// Command Types (aligned with server)
-// Session (process) commands
-inline constexpr const char* COMMAND_SET_VOLUME = "SetVolume";
-inline constexpr const char* COMMAND_MUTE = "Mute";
-inline constexpr const char* COMMAND_UNMUTE = "Unmute";
-
-// Device commands
-inline constexpr const char* COMMAND_SET_DEVICE_VOLUME = "SetDeviceVolume";
-inline constexpr const char* COMMAND_MUTE_DEVICE = "MuteDevice";
-inline constexpr const char* COMMAND_UNMUTE_DEVICE = "UnmuteDevice";
-
-// General commands
-inline constexpr const char* COMMAND_GET_STATUS = "GetStatus";
-inline constexpr const char* COMMAND_GET_ALL_SESSIONS = "GetAllSessions";
+// Message Types (simplified protocol)
+inline constexpr const char* MESSAGE_STATUS_UPDATE = "StatusUpdate";
+inline constexpr const char* MESSAGE_GET_STATUS = "GetStatus";
 
 // Configuration Constants
 inline constexpr int MAX_TOPIC_LENGTH = 128;      // Maximum topic name length

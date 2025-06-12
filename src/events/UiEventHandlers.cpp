@@ -9,9 +9,6 @@
 
 static const char* TAG = "UIEventHandlers";
 
-// Tab state management
-static Events::UI::TabState currentTab = Events::UI::TabState::MASTER;
-
 // Helper function to get event name for debugging
 static const char* getEventName(lv_event_code_t code) {
     switch (code) {
@@ -114,6 +111,7 @@ void audioDeviceDropdownChangedHandler(lv_event_t* e) {
 
     // Update the selected device in the AudioStatusManager
     Application::Audio::StatusManager::setSelectedDevice(selectedDevice);
+    auto status = Application::Audio::StatusManager::getCurrentAudioStatus();
 }
 
 // Volume arc change handler
@@ -143,37 +141,22 @@ void tabSwitchHandler(lv_event_t* e) {
     UI_LOG(TAG, "Tab event received: %s (%d) on target: %p", getEventName(code), code, target);
 
     uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
-    setCurrentTab(static_cast<TabState>(activeTab));
+    Application::Audio::StatusManager::setCurrentTab(static_cast<TabState>(activeTab));
 }
 
 // Get current tab state
 TabState getCurrentTab(void) {
-    return currentTab;
+    return Application::Audio::StatusManager::getCurrentTab();
 }
 
 // Set current tab state
 void setCurrentTab(TabState tab) {
-    currentTab = tab;
-
-    // Update the tab label with current tab name
-    const char* tabName = getTabName(tab);
-    lv_label_set_text(ui_lblCurrentTab, tabName);
-
-    ESP_LOGI(TAG, "Tab state set to: %s", tabName);
+    Application::Audio::StatusManager::setCurrentTab(tab);
 }
 
 // Get tab name string
 const char* getTabName(TabState tab) {
-    switch (tab) {
-        case TabState::MASTER:
-            return "Master";
-        case TabState::SINGLE:
-            return "Single";
-        case TabState::BALANCE:
-            return "Balance";
-        default:
-            return "Unknown";
-    }
+    return Application::Audio::StatusManager::getTabName(tab);
 }
 
 }  // namespace UI

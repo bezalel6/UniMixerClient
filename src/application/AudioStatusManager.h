@@ -6,6 +6,7 @@
 #include <lvgl.h>
 #include "../messaging/MessageBus.h"
 #include "../../include/MessageProtocol.h"
+#include "../events/UiEventHandlers.h"
 
 namespace Application {
 namespace Audio {
@@ -14,6 +15,7 @@ namespace Audio {
 struct AudioLevel {
     String processName;
     int volume;
+    bool isMuted = false;
     unsigned long lastUpdate;
     bool stale = false;
 };
@@ -45,11 +47,6 @@ class StatusManager {
     static AudioLevel* getAudioLevel(const String& processName);
     static AudioStatus getCurrentAudioStatus(void);
 
-    // Statistics
-    static int getActiveProcessCount(void);
-    static int getTotalVolume(void);
-    static AudioLevel getHighestVolumeProcess(void);
-
     // UI Updates
     static void onAudioLevelsChangedUI(void);
     static void updateDropdownSelection(void);
@@ -66,10 +63,13 @@ class StatusManager {
     static void setSelectedDeviceVolume(int volume);
     static void muteSelectedDevice(void);
     static void unmuteSelectedDevice(void);
-    static void publishVolumeChangeCommand(const String& deviceName, int volume);
-    static void publishMuteCommand(const String& deviceName);
-    static void publishUnmuteCommand(const String& deviceName);
+    static void publishStatusUpdate(void);
     static bool isSuppressingArcEvents(void);
+
+    // Tab state management
+    static Events::UI::TabState getCurrentTab(void);
+    static void setCurrentTab(Events::UI::TabState tab);
+    static const char* getTabName(Events::UI::TabState tab);
 
     // Status callback
     static void onAudioStatusReceived(const AudioStatus& status);
@@ -99,6 +99,9 @@ class StatusManager {
     // Selected device state
     static String selectedDevice;
     static bool suppressArcEvents;
+
+    // Tab state
+    static Events::UI::TabState currentTab;
 };
 
 }  // namespace Audio
