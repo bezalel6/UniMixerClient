@@ -14,8 +14,11 @@ extern "C" {
 extern void ui_screenMain_screen_init(void);
 extern void ui_screenMain_screen_destroy(void);
 extern lv_obj_t * ui_screenMain;
-extern lv_obj_t * ui_TabView3;
+extern lv_obj_t * ui_tabsModeSwitch;
 extern lv_obj_t * ui_Master;
+extern lv_obj_t * ui_Panel1;
+extern lv_obj_t * ui_lblPrimaryAudioDevice;
+extern lv_obj_t * ui_lblPrimaryAudioDeviceValue;
 extern lv_obj_t * ui_TabPage2;
 extern lv_obj_t * ui_selectAudioDevice;
 extern lv_obj_t * ui_Balance;

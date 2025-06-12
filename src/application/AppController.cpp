@@ -199,6 +199,10 @@ void setupUiComponents(void) {
     // Set display to 180 degrees rotation
     Display::setRotation(Display::ROTATION_180);
 
+    // Set UI layer positioning
+    // lv_obj_move_background(ui_containerVolumeSlider);
+    // lv_obj_move_foreground(ui_tabsModeSwitch);
+    //
     // Register button click event handler
     lv_obj_add_event_cb(ui_btnRequestData, Events::UI::btnRequestDataClickedHandler, LV_EVENT_CLICKED, NULL);
 

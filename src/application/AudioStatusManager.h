@@ -18,6 +18,20 @@ struct AudioLevel {
     bool stale = false;
 };
 
+struct AudioDevice {
+    String friendlyName;
+    float volume;
+    bool isMuted;
+    String state;
+};
+// Structure to hold complete audio status
+struct AudioStatus {
+    std::vector<AudioLevel> audioLevels;
+    AudioDevice defaultDevice;
+    unsigned long timestamp;
+    bool hasDefaultDevice = false;
+};
+
 // Audio Status Manager class
 class StatusManager {
    public:
@@ -57,7 +71,7 @@ class StatusManager {
     static bool isSuppressingArcEvents(void);
 
     // Status callback
-    static void onAudioStatusReceived(const std::vector<AudioLevel>& levels);
+    static void onAudioStatusReceived(const AudioStatus& status);
 
     // Command publishing methods
     static void publishAudioStatusRequest(bool delayed = false);
@@ -72,7 +86,7 @@ class StatusManager {
     static void initializeMessageHandlers(void);
     static void audioStatusMessageHandler(const char* messageType, const char* payload);
     static void commandResultMessageHandler(const char* messageType, const char* payload);
-    static std::vector<AudioLevel> parseAudioStatusJson(const char* jsonPayload);
+    static AudioStatus parseAudioStatusJson(const char* jsonPayload);
 
     // Internal state
     static std::vector<AudioLevel> audioLevels;

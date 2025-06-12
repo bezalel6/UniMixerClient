@@ -279,8 +279,9 @@ AudioLevel StatusManager::getHighestVolumeProcess(void) {
     return highest;
 }
 
-void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels) {
-    ESP_LOGI(TAG, "Received audio status update with %d processes", levels.size());
+void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
+    ESP_LOGI(TAG, "Received audio status update with %d processes and %s default device",
+             status.audioLevels.size(), status.hasDefaultDevice ? "a" : "no");
 
     // First, mark all existing devices as stale
     for (auto& level : audioLevels) {
@@ -291,11 +292,25 @@ void StatusManager::onAudioStatusReceived(const std::vector<AudioLevel>& levels)
     }
 
     // Update levels from the received data and mark them as fresh
-    for (const auto& level : levels) {
+    for (const auto& level : status.audioLevels) {
         updateAudioLevel(level.processName, level.volume);
         // Find the updated device and mark it as fresh
         for (auto& existingLevel : audioLevels) {
             if (existingLevel.processName == level.processName) {
+                existingLevel.stale = false;
+                break;
+            }
+        }
+    }
+
+    // Add default device as a special audio level if present
+    if (status.hasDefaultDevice) {
+        String defaultDeviceName = status.defaultDevice.friendlyName + " (Default Device)";
+        int defaultDeviceVolume = (int)(status.defaultDevice.volume * 100.0f);
+        updateAudioLevel(defaultDeviceName, defaultDeviceVolume);
+        // Mark default device as fresh
+        for (auto& existingLevel : audioLevels) {
+            if (existingLevel.processName == defaultDeviceName) {
                 existingLevel.stale = false;
                 break;
             }
@@ -457,19 +472,74 @@ void StatusManager::unmuteSelectedDevice(void) {
 // Message publishing methods using new protocol format
 
 void StatusManager::publishVolumeChangeCommand(const String& deviceName, int volume) {
-    AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_SET_VOLUME)
-    doc["volume"] = volume / 100.0f;  // Convert to 0.0-1.0 range for server
-    AUDIO_PUBLISH_COMMAND_FINISH("volume change")
+    // Check if this is a device or a session
+    bool isDevice = deviceName.endsWith("(Default Device)");
+
+    if (isDevice) {
+        // Extract the actual device friendly name (remove the "(Default Device)" suffix)
+        String actualDeviceName = deviceName;
+        int suffixIndex = actualDeviceName.lastIndexOf(" (Default Device)");
+        if (suffixIndex > 0) {
+            actualDeviceName = actualDeviceName.substring(0, suffixIndex);
+        }
+
+        // Use device command
+        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_SET_DEVICE_VOLUME)
+        doc["deviceFriendlyName"] = actualDeviceName;
+        doc["volume"] = volume / 100.0f;  // Convert to 0.0-1.0 range for server
+        AUDIO_PUBLISH_COMMAND_FINISH("device volume change")
+    } else {
+        // Use session command
+        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_SET_VOLUME)
+        doc["volume"] = volume / 100.0f;  // Convert to 0.0-1.0 range for server
+        AUDIO_PUBLISH_COMMAND_FINISH("volume change")
+    }
 }
 
 void StatusManager::publishMuteCommand(const String& deviceName) {
-    AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_MUTE)
-    AUDIO_PUBLISH_COMMAND_FINISH("mute")
+    // Check if this is a device or a session
+    bool isDevice = deviceName.endsWith("(Default Device)");
+
+    if (isDevice) {
+        // Extract the actual device friendly name (remove the "(Default Device)" suffix)
+        String actualDeviceName = deviceName;
+        int suffixIndex = actualDeviceName.lastIndexOf(" (Default Device)");
+        if (suffixIndex > 0) {
+            actualDeviceName = actualDeviceName.substring(0, suffixIndex);
+        }
+
+        // Use device command
+        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_MUTE_DEVICE)
+        doc["deviceFriendlyName"] = actualDeviceName;
+        AUDIO_PUBLISH_COMMAND_FINISH("device mute")
+    } else {
+        // Use session command
+        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_MUTE)
+        AUDIO_PUBLISH_COMMAND_FINISH("mute")
+    }
 }
 
 void StatusManager::publishUnmuteCommand(const String& deviceName) {
-    AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_UNMUTE)
-    AUDIO_PUBLISH_COMMAND_FINISH("unmute")
+    // Check if this is a device or a session
+    bool isDevice = deviceName.endsWith("(Default Device)");
+
+    if (isDevice) {
+        // Extract the actual device friendly name (remove the "(Default Device)" suffix)
+        String actualDeviceName = deviceName;
+        int suffixIndex = actualDeviceName.lastIndexOf(" (Default Device)");
+        if (suffixIndex > 0) {
+            actualDeviceName = actualDeviceName.substring(0, suffixIndex);
+        }
+
+        // Use device command
+        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_UNMUTE_DEVICE)
+        doc["deviceFriendlyName"] = actualDeviceName;
+        AUDIO_PUBLISH_COMMAND_FINISH("device unmute")
+    } else {
+        // Use session command
+        AUDIO_COMMAND_BASE(Messaging::Protocol::COMMAND_UNMUTE)
+        AUDIO_PUBLISH_COMMAND_FINISH("unmute")
+    }
 }
 
 bool StatusManager::isSuppressingArcEvents(void) {
@@ -536,15 +606,17 @@ void StatusManager::audioStatusMessageHandler(const char* messageType, const cha
         return;
     }
 
-    std::vector<AudioLevel> levels = parseAudioStatusJson(payload);
+    AudioStatus status = parseAudioStatusJson(payload);
 
-    if (levels.empty()) {
+    if (status.audioLevels.empty() && !status.hasDefaultDevice) {
         ESP_LOGE(TAG, "Failed to parse audio status JSON or no valid data found");
+        // LOG_TO_UI(ui_txtAreaDebugLog, String("AUDIO PARSE FAIL: No data found"));
+        // LOG_TO_UI(ui_txtAreaDebugLog, String("Payload: ") + String(payload));
         return;
     }
 
-    // Process the received audio levels
-    onAudioStatusReceived(levels);
+    // Process the received audio status
+    onAudioStatusReceived(status);
 }
 
 void StatusManager::commandResultMessageHandler(const char* messageType, const char* payload) {
@@ -575,8 +647,8 @@ void StatusManager::commandResultMessageHandler(const char* messageType, const c
     }
 }
 
-std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayload) {
-    std::vector<AudioLevel> result;
+AudioStatus StatusManager::parseAudioStatusJson(const char* jsonPayload) {
+    AudioStatus result;
 
     if (!jsonPayload) {
         ESP_LOGE(TAG, "Invalid JSON payload");
@@ -602,6 +674,29 @@ std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayl
 
     JsonObject root = doc.as<JsonObject>();
     unsigned long now = Hardware::Device::getMillis();
+    result.timestamp = now;
+
+    // Parse default device if present
+    JsonObject defaultDevice = root["defaultDevice"];
+    if (!defaultDevice.isNull()) {
+        String friendlyName = defaultDevice["friendlyName"] | "";
+        float volume = defaultDevice["volume"] | 0.0f;
+        bool isMuted = defaultDevice["isMuted"] | false;
+        String dataFlow = defaultDevice["dataFlow"] | "";
+        String deviceRole = defaultDevice["deviceRole"] | "";
+
+        if (friendlyName.length() > 0) {
+            result.defaultDevice.friendlyName = friendlyName;
+            result.defaultDevice.volume = volume;
+            result.defaultDevice.isMuted = isMuted;
+            result.defaultDevice.state = dataFlow + "/" + deviceRole;
+            result.hasDefaultDevice = true;
+
+            ESP_LOGI(TAG, "Parsed default device: %s = %.1f%% %s [%s]",
+                     friendlyName.c_str(), volume * 100.0f, isMuted ? "(muted)" : "",
+                     result.defaultDevice.state.c_str());
+        }
+    }
 
     // Parse the new server status format
     JsonArray sessions = root["sessions"];
@@ -612,6 +707,7 @@ std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayl
 
     for (JsonObject session : sessions) {
         String processName = session["processName"] | "";
+        String displayName = session["displayName"] | "";
         int processId = session["processId"] | 0;
         float volume = session["volume"] | 0.0f;
         bool isMuted = session["isMuted"] | false;
@@ -624,13 +720,13 @@ std::vector<AudioLevel> StatusManager::parseAudioStatusJson(const char* jsonPayl
             level.lastUpdate = now;
             level.stale = false;
 
-            result.push_back(level);
+            result.audioLevels.push_back(level);
             ESP_LOGI(TAG, "Parsed audio session: %s (PID: %d) = %d%% %s",
                      processName.c_str(), processId, level.volume, isMuted ? "(muted)" : "");
         }
     }
 
-    ESP_LOGI(TAG, "Parsed %d audio sessions from status message", result.size());
+    ESP_LOGI(TAG, "Parsed %d audio sessions from status message", result.audioLevels.size());
     return result;
 }
 
