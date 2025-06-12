@@ -82,6 +82,7 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_height(ui_lblPrimaryAudioDevice, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_lblPrimaryAudioDevice, LV_ALIGN_CENTER);
     lv_label_set_text(ui_lblPrimaryAudioDevice, "Primary Audio Device: ");
+    lv_obj_add_flag(ui_lblPrimaryAudioDevice, LV_OBJ_FLAG_HIDDEN);     /// Flags
 
     ui_lblPrimaryAudioDeviceValue = lv_label_create(ui_Panel1);
     lv_obj_set_width(ui_lblPrimaryAudioDeviceValue, LV_SIZE_CONTENT);   /// 1

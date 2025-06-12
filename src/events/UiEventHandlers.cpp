@@ -109,9 +109,8 @@ void audioDeviceDropdownChangedHandler(lv_event_t* e) {
 
     UI_LOG(TAG, "Audio device dropdown changed: %s", selectedDevice.c_str());
 
-    // Update the selected device in the AudioStatusManager
-    Application::Audio::StatusManager::setSelectedDevice(selectedDevice);
-    auto status = Application::Audio::StatusManager::getCurrentAudioStatus();
+    // Update the selection using the clean centralized interface
+    Application::Audio::StatusManager::setDropdownSelection(dropdown, selectedDevice);
 }
 
 // Volume arc change handler

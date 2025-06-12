@@ -8,11 +8,12 @@ static const char* TAG = "AudioStatusManager";
 
 // Macros to reduce repetition in device actions and messaging publishing
 #define AUDIO_DEVICE_ACTION_PROLOGUE(action_name)                        \
+    String currentDevice = SelectionManager::getMainSelection();         \
     if (!initialized) {                                                  \
         ESP_LOGW(TAG, "AudioStatusManager not initialized");             \
         return;                                                          \
     }                                                                    \
-    if (selectedDevice.isEmpty()) {                                      \
+    if (currentDevice.isEmpty()) {                                       \
         ESP_LOGW(TAG, "No device selected for " action_name " control"); \
         return;                                                          \
     }
@@ -42,13 +43,136 @@ static const char* TAG = "AudioStatusManager";
 namespace Application {
 namespace Audio {
 
-// Static member definitions
+// SelectionManager implementation
+String SelectionManager::mainDevice = "";
+String SelectionManager::balanceLeft = "";
+String SelectionManager::balanceRight = "";
+
+void SelectionManager::setSelection(lv_obj_t* dropdown, const String& deviceName) {
+    if (dropdown == ui_selectAudioDevice) {
+        mainDevice = deviceName;
+        ESP_LOGI(TAG, "Main device selected: %s", deviceName.c_str());
+    } else if (dropdown == ui_selectAudioDevice1) {
+        balanceLeft = deviceName;
+        ESP_LOGI(TAG, "Balance left device selected: %s", deviceName.c_str());
+    } else if (dropdown == ui_selectAudioDevice2) {
+        balanceRight = deviceName;
+        ESP_LOGI(TAG, "Balance right device selected: %s", deviceName.c_str());
+    }
+
+    // Note: UI updates will be handled by the calling code to avoid loops and resource drain
+}
+
+String SelectionManager::getSelection(lv_obj_t* dropdown) {
+    if (dropdown == ui_selectAudioDevice) {
+        return mainDevice;
+    } else if (dropdown == ui_selectAudioDevice1) {
+        return balanceLeft;
+    } else if (dropdown == ui_selectAudioDevice2) {
+        return balanceRight;
+    }
+    return "";
+}
+
+String SelectionManager::getMainSelection() {
+    return mainDevice;
+}
+
+void SelectionManager::clearAll() {
+    mainDevice = "";
+    balanceLeft = "";
+    balanceRight = "";
+    ESP_LOGI(TAG, "All device selections cleared");
+}
+
+bool SelectionManager::isAvailableFor(const String& deviceName, lv_obj_t* dropdown) {
+    if (deviceName.isEmpty()) return false;
+
+    // Main dropdown can select any device
+    if (dropdown == ui_selectAudioDevice) {
+        return true;
+    }
+
+    // Balance dropdowns are mutually exclusive
+    if (dropdown == ui_selectAudioDevice1) {
+        return (balanceRight != deviceName);
+    } else if (dropdown == ui_selectAudioDevice2) {
+        return (balanceLeft != deviceName);
+    }
+
+    return false;
+}
+
+void SelectionManager::refreshDropdown(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels) {
+    if (!dropdown) return;
+
+    updateDropdownOptions(dropdown, audioLevels);
+    updateDropdownSelection(dropdown);
+}
+
+void SelectionManager::refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels) {
+    if (ui_selectAudioDevice) {
+        refreshDropdown(ui_selectAudioDevice, audioLevels);
+    }
+    if (ui_selectAudioDevice1) {
+        refreshDropdown(ui_selectAudioDevice1, audioLevels);
+    }
+    if (ui_selectAudioDevice2) {
+        refreshDropdown(ui_selectAudioDevice2, audioLevels);
+    }
+}
+
+void SelectionManager::updateDropdownOptions(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels) {
+    if (!dropdown) return;
+
+    lv_dropdown_clear_options(dropdown);
+
+    if (audioLevels.empty()) {
+        lv_dropdown_add_option(dropdown, "No devices", LV_DROPDOWN_POS_LAST);
+        return;
+    }
+
+    bool hasAvailableOptions = false;
+    for (const auto& level : audioLevels) {
+        if (isAvailableFor(level.processName, dropdown)) {
+            String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
+            lv_dropdown_add_option(dropdown, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+            hasAvailableOptions = true;
+        }
+    }
+
+    // For balance dropdowns, show message if no devices available due to mutual exclusivity
+    if (!hasAvailableOptions && (dropdown == ui_selectAudioDevice1 || dropdown == ui_selectAudioDevice2)) {
+        lv_dropdown_add_option(dropdown, "No devices", LV_DROPDOWN_POS_LAST);
+    }
+}
+
+void SelectionManager::updateDropdownSelection(lv_obj_t* dropdown) {
+    if (!dropdown) return;
+
+    String targetDevice = getSelection(dropdown);
+    if (targetDevice.isEmpty()) return;
+
+    // Find the correct index by checking which option matches our target device
+    const std::vector<AudioLevel>& audioLevels = StatusManager::getAllAudioLevels();
+    int targetIndex = 0;
+
+    for (const auto& level : audioLevels) {
+        if (isAvailableFor(level.processName, dropdown)) {
+            if (level.processName == targetDevice) {
+                lv_dropdown_set_selected(dropdown, targetIndex);
+                return;
+            }
+            targetIndex++;
+        }
+    }
+}
+
+// StatusManager implementation
 AudioStatus StatusManager::currentAudioStatus;
 Messaging::Handler StatusManager::audioStatusHandler;
-Messaging::Handler StatusManager::commandResultHandler;
 unsigned long StatusManager::lastUpdateTime = 0;
 bool StatusManager::initialized = false;
-String StatusManager::selectedDevice = "";
 bool StatusManager::suppressArcEvents = false;
 Events::UI::TabState StatusManager::currentTab = Events::UI::TabState::MASTER;
 
@@ -66,14 +190,13 @@ bool StatusManager::init() {
     currentAudioStatus.timestamp = 0;
     lastUpdateTime = Hardware::Device::getMillis();
 
+    // Clear all selections
+    SelectionManager::clearAll();
+
     // Initialize and register message handlers
     initializeMessageHandlers();
     if (!Messaging::MessageBus::RegisterHandler(audioStatusHandler)) {
         ESP_LOGE(TAG, "Failed to register audio status message handler");
-        return false;
-    }
-    if (!Messaging::MessageBus::RegisterHandler(commandResultHandler)) {
-        ESP_LOGE(TAG, "Failed to register command result message handler");
         return false;
     }
     initialized = true;
@@ -90,12 +213,12 @@ void StatusManager::deinit() {
 
     // Unregister message handlers
     Messaging::MessageBus::UnregisterHandler(audioStatusHandler.Identifier);
-    Messaging::MessageBus::UnregisterHandler(commandResultHandler.Identifier);
 
     // Clear data
     currentAudioStatus.audioLevels.clear();
     currentAudioStatus.hasDefaultDevice = false;
     currentAudioStatus.timestamp = 0;
+    SelectionManager::clearAll();
     initialized = false;
 }
 
@@ -130,7 +253,6 @@ void StatusManager::updateAudioLevel(const String& processName, int volume) {
              processName.c_str(), volume);
 }
 
-// Helper function to map process names to IDs (simplified for demo)
 int StatusManager::getProcessIdForDevice(const String& deviceName) {
     // In a real implementation, maintain a mapping of process names to IDs
     // For now, use a simple hash of the process name
@@ -141,52 +263,75 @@ int StatusManager::getProcessIdForDevice(const String& deviceName) {
     return (int)(hash % 65536);  // Keep it reasonable
 }
 
-// Helper method to update all dropdown options with the same content
-void StatusManager::updateAllDropdownOptions(void) {
-    // Update all dropdowns
-    if (ui_selectAudioDevice1) {
-        lv_dropdown_clear_options(ui_selectAudioDevice1);
-        if (currentAudioStatus.audioLevels.empty()) {
-            lv_dropdown_add_option(ui_selectAudioDevice1, "No devices", LV_DROPDOWN_POS_LAST);
-        } else {
-            for (const auto& level : currentAudioStatus.audioLevels) {
-                String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
-                lv_dropdown_add_option(ui_selectAudioDevice1, displayName.c_str(), LV_DROPDOWN_POS_LAST);
-            }
-        }
+void StatusManager::initializeBalanceDropdownSelections(void) {
+    // Only initialize if we have devices and balance dropdowns exist
+    if (currentAudioStatus.audioLevels.empty() || !ui_selectAudioDevice1 || !ui_selectAudioDevice2) {
+        return;
     }
 
-    if (ui_selectAudioDevice2) {
-        lv_dropdown_clear_options(ui_selectAudioDevice2);
-        if (currentAudioStatus.audioLevels.empty()) {
-            lv_dropdown_add_option(ui_selectAudioDevice2, "No devices", LV_DROPDOWN_POS_LAST);
-        } else {
-            for (const auto& level : currentAudioStatus.audioLevels) {
-                String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
-                lv_dropdown_add_option(ui_selectAudioDevice2, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+    // Check if both balance dropdowns are currently unselected
+    String balanceLeft = SelectionManager::getSelection(ui_selectAudioDevice1);
+    String balanceRight = SelectionManager::getSelection(ui_selectAudioDevice2);
+
+    // If both are empty or both have the same selection, initialize them with different devices
+    if ((balanceLeft.isEmpty() && balanceRight.isEmpty()) ||
+        (!balanceLeft.isEmpty() && balanceLeft == balanceRight)) {
+        ESP_LOGI(TAG, "Initializing balance dropdown selections to ensure mutual exclusivity");
+
+        // Find two different non-stale devices
+        String firstDevice = "";
+        String secondDevice = "";
+
+        for (const auto& level : currentAudioStatus.audioLevels) {
+            if (!level.stale) {
+                if (firstDevice.isEmpty()) {
+                    firstDevice = level.processName;
+                } else if (secondDevice.isEmpty() && level.processName != firstDevice) {
+                    secondDevice = level.processName;
+                    break;
+                }
             }
+        }
+
+        // If we couldn't find two non-stale devices, try with all devices
+        if (secondDevice.isEmpty() && currentAudioStatus.audioLevels.size() >= 2) {
+            firstDevice = currentAudioStatus.audioLevels[0].processName;
+            secondDevice = currentAudioStatus.audioLevels[1].processName;
+        }
+
+        // Set the selections if we found different devices
+        if (!firstDevice.isEmpty() && !secondDevice.isEmpty()) {
+            suppressArcEvents = true;
+
+            SelectionManager::setSelection(ui_selectAudioDevice1, firstDevice);
+            SelectionManager::setSelection(ui_selectAudioDevice2, secondDevice);
+
+            // Update the UI to reflect these selections
+            SelectionManager::refreshDropdown(ui_selectAudioDevice1, currentAudioStatus.audioLevels);
+            SelectionManager::refreshDropdown(ui_selectAudioDevice2, currentAudioStatus.audioLevels);
+
+            suppressArcEvents = false;
+
+            ESP_LOGI(TAG, "Initialized balance selections: Left=%s, Right=%s",
+                     firstDevice.c_str(), secondDevice.c_str());
+        } else if (!firstDevice.isEmpty()) {
+            // Only one device available - set one dropdown and leave the other empty
+            suppressArcEvents = true;
+
+            SelectionManager::setSelection(ui_selectAudioDevice1, firstDevice);
+            SelectionManager::setSelection(ui_selectAudioDevice2, "");
+
+            SelectionManager::refreshDropdown(ui_selectAudioDevice1, currentAudioStatus.audioLevels);
+            SelectionManager::refreshDropdown(ui_selectAudioDevice2, currentAudioStatus.audioLevels);
+
+            suppressArcEvents = false;
+
+            ESP_LOGI(TAG, "Only one device available - initialized left balance selection: %s",
+                     firstDevice.c_str());
         }
     }
 }
 
-// Helper method to update a single dropdown selection
-void StatusManager::updateSingleDropdownSelection(lv_obj_t* dropdown) {
-    if (!dropdown) return;
-
-    // Find the index of selectedDevice in the dropdown by comparing with our audio levels
-    uint16_t optionCount = lv_dropdown_get_option_cnt(dropdown);
-    for (uint16_t i = 0; i < optionCount && i < currentAudioStatus.audioLevels.size(); i++) {
-        // Compare with our known audio levels
-        String levelName = currentAudioStatus.audioLevels[i].processName;
-
-        if (levelName == selectedDevice) {
-            lv_dropdown_set_selected(dropdown, i);
-            break;
-        }
-    }
-}
-
-// Build options string for dropdowns (legacy compatibility method)
 String StatusManager::buildAudioDeviceOptionsString(void) {
     if (currentAudioStatus.audioLevels.empty()) {
         return "None";
@@ -216,7 +361,6 @@ String StatusManager::buildAudioDeviceOptionsString(void) {
     return options;
 }
 
-// Get selected audio device from dropdown (for event handlers)
 String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
     if (dropdown == NULL) {
         ESP_LOGW(TAG, "getSelectedAudioDevice: Invalid dropdown parameter");
@@ -290,7 +434,7 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
     }
 
     // Auto-select first non-stale device if none is selected and devices are available
-    if (selectedDevice.isEmpty() && !currentAudioStatus.audioLevels.empty()) {
+    if (SelectionManager::getMainSelection().isEmpty() && !currentAudioStatus.audioLevels.empty()) {
         // Find first non-stale device, or fall back to first device if all are stale
         String deviceToSelect = "";
         for (const auto& level : currentAudioStatus.audioLevels) {
@@ -303,9 +447,12 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
             deviceToSelect = currentAudioStatus.audioLevels[0].processName;
         }
         if (!deviceToSelect.isEmpty()) {
-            setSelectedDevice(deviceToSelect);
+            SelectionManager::setSelection(ui_selectAudioDevice, deviceToSelect);
         }
     }
+
+    // Initialize balance dropdown selections to ensure mutual exclusivity from the start
+    initializeBalanceDropdownSelections();
 
     // Update the UI
     onAudioLevelsChangedUI();
@@ -345,49 +492,44 @@ void StatusManager::onAudioLevelsChangedUI(void) {
         if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
             lv_label_set_text(ui_lblPrimaryAudioDeviceValue, currentAudioStatus.defaultDevice.friendlyName.c_str());
         }
-        // Update other dropdowns too
-        updateAllDropdownOptions();
-
-        // Update selection to match selectedDevice
-        updateDropdownSelection();
     }
+
+    // Update all dropdowns through the SelectionManager
+    SelectionManager::refreshAllDropdowns(currentAudioStatus.audioLevels);
 
     // Update volume arc based on current tab
     updateVolumeArcFromSelectedDevice();
 }
 
-void StatusManager::updateDropdownSelection(void) {
-    if (!ui_selectAudioDevice || selectedDevice.isEmpty()) {
-        return;
-    }
-
-    suppressArcEvents = true;
-
-    // Update primary dropdown
-    updateSingleDropdownSelection(ui_selectAudioDevice);
-
-    // Update other dropdowns if they exist
-    if (ui_selectAudioDevice1) {
-        updateSingleDropdownSelection(ui_selectAudioDevice1);
-    }
-    if (ui_selectAudioDevice2) {
-        updateSingleDropdownSelection(ui_selectAudioDevice2);
-    }
-
-    suppressArcEvents = false;
-}
-
 String StatusManager::getSelectedDevice(void) {
-    return selectedDevice;
+    return SelectionManager::getMainSelection();
 }
 
-void StatusManager::setSelectedDevice(const String& deviceName) {
-    selectedDevice = deviceName;
-    ESP_LOGI(TAG, "Selected device: %s", deviceName.c_str());
+void StatusManager::setDropdownSelection(lv_obj_t* dropdown, const String& deviceName) {
+    SelectionManager::setSelection(dropdown, deviceName);
 
-    // Update UI elements
-    updateDropdownSelection();
+    // If this is a balance dropdown selection, refresh the other balance dropdown
+    // to update mutual exclusivity without causing loops
+    if (dropdown == ui_selectAudioDevice1 || dropdown == ui_selectAudioDevice2) {
+        // Use suppressArcEvents to prevent UI update loops
+        bool wasSupressed = suppressArcEvents;
+        suppressArcEvents = true;
+
+        // Refresh the other balance dropdown
+        if (dropdown == ui_selectAudioDevice1 && ui_selectAudioDevice2) {
+            SelectionManager::refreshDropdown(ui_selectAudioDevice2, currentAudioStatus.audioLevels);
+        } else if (dropdown == ui_selectAudioDevice2 && ui_selectAudioDevice1) {
+            SelectionManager::refreshDropdown(ui_selectAudioDevice1, currentAudioStatus.audioLevels);
+        }
+
+        suppressArcEvents = wasSupressed;
+    }
+
     updateVolumeArcFromSelectedDevice();
+}
+
+String StatusManager::getDropdownSelection(lv_obj_t* dropdown) {
+    return SelectionManager::getSelection(dropdown);
 }
 
 void StatusManager::updateVolumeArcFromSelectedDevice(void) {
@@ -409,6 +551,7 @@ void StatusManager::updateVolumeArcFromSelectedDevice(void) {
         }
     } else {
         // For other tabs, show selected device volume
+        String selectedDevice = SelectionManager::getMainSelection();
         if (selectedDevice.isEmpty()) {
             lv_arc_set_value(ui_volumeSlider, 0);
             updateVolumeArcLabel(0);
@@ -459,8 +602,8 @@ void StatusManager::setSelectedDeviceVolume(int volume) {
         }
     } else {
         // Update local audio level immediately for responsive UI
-        updateAudioLevel(selectedDevice, volume);
-        ESP_LOGI(TAG, "Set volume to %d for device: %s", volume, selectedDevice.c_str());
+        updateAudioLevel(currentDevice, volume);
+        ESP_LOGI(TAG, "Set volume to %d for device: %s", volume, currentDevice.c_str());
     }
 
     // Publish the updated status to server
@@ -481,11 +624,11 @@ void StatusManager::muteSelectedDevice(void) {
         }
     } else {
         // Find and update the selected device's mute state
-        AudioLevel* level = getAudioLevel(selectedDevice);
+        AudioLevel* level = getAudioLevel(currentDevice);
         if (level) {
             level->isMuted = true;
         }
-        ESP_LOGI(TAG, "Muted device: %s", selectedDevice.c_str());
+        ESP_LOGI(TAG, "Muted device: %s", currentDevice.c_str());
     }
 
     // Publish the updated status to server
@@ -506,11 +649,11 @@ void StatusManager::unmuteSelectedDevice(void) {
         }
     } else {
         // Find and update the selected device's mute state
-        AudioLevel* level = getAudioLevel(selectedDevice);
+        AudioLevel* level = getAudioLevel(currentDevice);
         if (level) {
             level->isMuted = false;
         }
-        ESP_LOGI(TAG, "Unmuted device: %s", selectedDevice.c_str());
+        ESP_LOGI(TAG, "Unmuted device: %s", currentDevice.c_str());
     }
 
     // Publish the updated status to server
@@ -631,13 +774,6 @@ void StatusManager::initializeMessageHandlers(void) {
     audioStatusHandler.PublishTopic = "";
     audioStatusHandler.Callback = audioStatusMessageHandler;
     audioStatusHandler.Active = true;
-
-    // Command result handler
-    commandResultHandler.Identifier = "CommandResultHandler";
-    commandResultHandler.SubscribeTopic = "RESULT";
-    commandResultHandler.PublishTopic = "";
-    commandResultHandler.Callback = commandResultMessageHandler;
-    commandResultHandler.Active = true;
 }
 
 void StatusManager::audioStatusMessageHandler(const char* messageType, const char* payload) {
@@ -650,41 +786,11 @@ void StatusManager::audioStatusMessageHandler(const char* messageType, const cha
 
     if (status.audioLevels.empty() && !status.hasDefaultDevice) {
         ESP_LOGE(TAG, "Failed to parse audio status JSON or no valid data found");
-        // LOG_TO_UI(ui_txtAreaDebugLog, String("AUDIO PARSE FAIL: No data found"));
-        // LOG_TO_UI(ui_txtAreaDebugLog, String("Payload: ") + String(payload));
         return;
     }
 
     // Process the received audio status
     onAudioStatusReceived(status);
-}
-
-void StatusManager::commandResultMessageHandler(const char* messageType, const char* payload) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioStatusManager not initialized, ignoring result");
-        return;
-    }
-
-    ESP_LOGI(TAG, "Received command result: %s", payload);
-
-    // Parse result to check if command was successful
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, payload);
-
-    if (error) {
-        ESP_LOGE(TAG, "Failed to parse command result JSON: %s", error.c_str());
-        return;
-    }
-
-    bool success = doc["success"] | false;
-    String message = doc["message"] | "No message";
-    String requestId = doc["requestId"] | "";
-
-    if (success) {
-        ESP_LOGI(TAG, "Command successful [%s]: %s", requestId.c_str(), message.c_str());
-    } else {
-        ESP_LOGW(TAG, "Command failed [%s]: %s", requestId.c_str(), message.c_str());
-    }
 }
 
 AudioStatus StatusManager::parseAudioStatusJson(const char* jsonPayload) {

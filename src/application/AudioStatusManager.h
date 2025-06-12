@@ -11,6 +11,33 @@
 namespace Application {
 namespace Audio {
 
+// Forward declarations
+struct AudioLevel;
+struct AudioStatus;
+
+// Centralized dropdown selection management
+class SelectionManager {
+   public:
+    static void setSelection(lv_obj_t* dropdown, const String& deviceName);
+    static String getSelection(lv_obj_t* dropdown);
+    static String getMainSelection();  // For volume control and backward compatibility
+
+    static void clearAll();
+    static bool isAvailableFor(const String& deviceName, lv_obj_t* dropdown);
+
+    static void refreshDropdown(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
+    static void refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels);
+
+   private:
+    static String mainDevice;    // ui_selectAudioDevice
+    static String balanceLeft;   // ui_selectAudioDevice1
+    static String balanceRight;  // ui_selectAudioDevice2
+
+    static void updateDropdownOptions(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
+    static void updateDropdownSelection(lv_obj_t* dropdown);
+    static lv_obj_t* getDropdownFromDevice(const String& deviceName);
+};
+
 // Structure to hold audio level data
 struct AudioLevel {
     String processName;
@@ -26,6 +53,7 @@ struct AudioDevice {
     bool isMuted;
     String state;
 };
+
 // Structure to hold complete audio status
 struct AudioStatus {
     std::vector<AudioLevel> audioLevels;
@@ -49,13 +77,13 @@ class StatusManager {
 
     // UI Updates
     static void onAudioLevelsChangedUI(void);
-    static void updateDropdownSelection(void);
     static String buildAudioDeviceOptionsString(void);
     static String getSelectedAudioDevice(lv_obj_t* dropdown);
 
-    // Selected device state management
-    static void setSelectedDevice(const String& deviceName);
-    static String getSelectedDevice(void);
+    // Device selection management
+    static void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
+    static String getDropdownSelection(lv_obj_t* dropdown);
+    static String getSelectedDevice(void);  // For backward compatibility
     static void updateVolumeArcFromSelectedDevice(void);
     static void updateVolumeArcLabel(int volume);
 
@@ -80,27 +108,21 @@ class StatusManager {
    private:
     // Helper functions
     static int getProcessIdForDevice(const String& deviceName);
-    static void updateAllDropdownOptions(void);
-    static void updateSingleDropdownSelection(lv_obj_t* dropdown);
+    static void initializeBalanceDropdownSelections(void);
 
     // Message handler management
     static void initializeMessageHandlers(void);
     static void audioStatusMessageHandler(const char* messageType, const char* payload);
-    static void commandResultMessageHandler(const char* messageType, const char* payload);
     static AudioStatus parseAudioStatusJson(const char* jsonPayload);
 
     // Internal state
     static AudioStatus currentAudioStatus;
     static Messaging::Handler audioStatusHandler;
-    static Messaging::Handler commandResultHandler;
     static unsigned long lastUpdateTime;
     static bool initialized;
 
-    // Selected device state
-    static String selectedDevice;
+    // UI state
     static bool suppressArcEvents;
-
-    // Tab state
     static Events::UI::TabState currentTab;
 };
 

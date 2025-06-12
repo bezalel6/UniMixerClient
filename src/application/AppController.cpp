@@ -197,7 +197,7 @@ void run(void) {
 
 void setupUiComponents(void) {
     // Set display to 180 degrees rotation
-    Display::setRotation(Display::ROTATION_180);
+    Display::setRotation(Display::ROTATION_0);
 
     // Register button click event handler
     lv_obj_add_event_cb(ui_btnRequestData, Events::UI::btnRequestDataClickedHandler, LV_EVENT_CLICKED, NULL);
