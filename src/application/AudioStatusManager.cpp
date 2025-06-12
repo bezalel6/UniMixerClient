@@ -43,7 +43,7 @@ namespace Application {
 namespace Audio {
 
 // Static member definitions
-std::vector<AudioLevel> StatusManager::audioLevels;
+AudioStatus StatusManager::currentAudioStatus;
 Messaging::Handler StatusManager::audioStatusHandler;
 Messaging::Handler StatusManager::commandResultHandler;
 unsigned long StatusManager::lastUpdateTime = 0;
@@ -60,7 +60,9 @@ bool StatusManager::init() {
     ESP_LOGI(TAG, "Initializing AudioStatusManager");
 
     // Clear existing data
-    audioLevels.clear();
+    currentAudioStatus.audioLevels.clear();
+    currentAudioStatus.hasDefaultDevice = false;
+    currentAudioStatus.timestamp = 0;
     lastUpdateTime = Hardware::Device::getMillis();
 
     // Initialize and register message handlers
@@ -90,7 +92,9 @@ void StatusManager::deinit() {
     Messaging::MessageBus::UnregisterHandler(commandResultHandler.Identifier);
 
     // Clear data
-    audioLevels.clear();
+    currentAudioStatus.audioLevels.clear();
+    currentAudioStatus.hasDefaultDevice = false;
+    currentAudioStatus.timestamp = 0;
     initialized = false;
 }
 
@@ -103,7 +107,7 @@ void StatusManager::updateAudioLevel(const String& processName, int volume) {
     unsigned long now = Hardware::Device::getMillis();
 
     // Find existing process or create new entry
-    for (auto& level : audioLevels) {
+    for (auto& level : currentAudioStatus.audioLevels) {
         if (level.processName == processName) {
             level.volume = volume;
             level.lastUpdate = now;
@@ -117,7 +121,7 @@ void StatusManager::updateAudioLevel(const String& processName, int volume) {
     newLevel.volume = volume;
     newLevel.lastUpdate = now;
     newLevel.stale = false;
-    audioLevels.push_back(newLevel);
+    currentAudioStatus.audioLevels.push_back(newLevel);
 
     lastUpdateTime = now;
 
@@ -141,10 +145,10 @@ void StatusManager::updateAllDropdownOptions(void) {
     // Update all dropdowns
     if (ui_selectAudioDevice1) {
         lv_dropdown_clear_options(ui_selectAudioDevice1);
-        if (audioLevels.empty()) {
+        if (currentAudioStatus.audioLevels.empty()) {
             lv_dropdown_add_option(ui_selectAudioDevice1, "No devices", LV_DROPDOWN_POS_LAST);
         } else {
-            for (const auto& level : audioLevels) {
+            for (const auto& level : currentAudioStatus.audioLevels) {
                 String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
                 lv_dropdown_add_option(ui_selectAudioDevice1, displayName.c_str(), LV_DROPDOWN_POS_LAST);
             }
@@ -153,10 +157,10 @@ void StatusManager::updateAllDropdownOptions(void) {
 
     if (ui_selectAudioDevice2) {
         lv_dropdown_clear_options(ui_selectAudioDevice2);
-        if (audioLevels.empty()) {
+        if (currentAudioStatus.audioLevels.empty()) {
             lv_dropdown_add_option(ui_selectAudioDevice2, "No devices", LV_DROPDOWN_POS_LAST);
         } else {
-            for (const auto& level : audioLevels) {
+            for (const auto& level : currentAudioStatus.audioLevels) {
                 String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
                 lv_dropdown_add_option(ui_selectAudioDevice2, displayName.c_str(), LV_DROPDOWN_POS_LAST);
             }
@@ -170,9 +174,9 @@ void StatusManager::updateSingleDropdownSelection(lv_obj_t* dropdown) {
 
     // Find the index of selectedDevice in the dropdown by comparing with our audio levels
     uint16_t optionCount = lv_dropdown_get_option_cnt(dropdown);
-    for (uint16_t i = 0; i < optionCount && i < audioLevels.size(); i++) {
+    for (uint16_t i = 0; i < optionCount && i < currentAudioStatus.audioLevels.size(); i++) {
         // Compare with our known audio levels
-        String levelName = audioLevels[i].processName;
+        String levelName = currentAudioStatus.audioLevels[i].processName;
 
         if (levelName == selectedDevice) {
             lv_dropdown_set_selected(dropdown, i);
@@ -183,14 +187,14 @@ void StatusManager::updateSingleDropdownSelection(lv_obj_t* dropdown) {
 
 // Build options string for dropdowns (legacy compatibility method)
 String StatusManager::buildAudioDeviceOptionsString(void) {
-    if (audioLevels.empty()) {
+    if (currentAudioStatus.audioLevels.empty()) {
         return "None";
     }
 
     String options = "";
     bool first = true;
 
-    for (const auto& level : audioLevels) {
+    for (const auto& level : currentAudioStatus.audioLevels) {
         if (!first) {
             options += "\n";
         }
@@ -240,11 +244,11 @@ String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
 }
 
 std::vector<AudioLevel> StatusManager::getAllAudioLevels(void) {
-    return audioLevels;
+    return currentAudioStatus.audioLevels;
 }
 
 AudioLevel* StatusManager::getAudioLevel(const String& processName) {
-    for (auto& level : audioLevels) {
+    for (auto& level : currentAudioStatus.audioLevels) {
         if (level.processName == processName) {
             return &level;
         }
@@ -252,13 +256,17 @@ AudioLevel* StatusManager::getAudioLevel(const String& processName) {
     return nullptr;
 }
 
+AudioStatus StatusManager::getCurrentAudioStatus(void) {
+    return currentAudioStatus;
+}
+
 int StatusManager::getActiveProcessCount(void) {
-    return audioLevels.size();
+    return currentAudioStatus.audioLevels.size();
 }
 
 int StatusManager::getTotalVolume(void) {
     int total = 0;
-    for (const auto& level : audioLevels) {
+    for (const auto& level : currentAudioStatus.audioLevels) {
         total += level.volume;
     }
     return total;
@@ -270,7 +278,7 @@ AudioLevel StatusManager::getHighestVolumeProcess(void) {
     highest.volume = 0;
     highest.lastUpdate = 0;
 
-    for (const auto& level : audioLevels) {
+    for (const auto& level : currentAudioStatus.audioLevels) {
         if (level.volume > highest.volume) {
             highest = level;
         }
@@ -283,8 +291,12 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
     ESP_LOGI(TAG, "Received audio status update with %d processes and %s default device",
              status.audioLevels.size(), status.hasDefaultDevice ? "a" : "no");
 
+    // Update the current audio status with the received data
+    currentAudioStatus = status;
+    currentAudioStatus.timestamp = Hardware::Device::getMillis();
+
     // First, mark all existing devices as stale
-    for (auto& level : audioLevels) {
+    for (auto& level : currentAudioStatus.audioLevels) {
         if (!level.stale) {
             ESP_LOGI(TAG, "Marking device as stale: %s", level.processName.c_str());
         }
@@ -295,7 +307,7 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
     for (const auto& level : status.audioLevels) {
         updateAudioLevel(level.processName, level.volume);
         // Find the updated device and mark it as fresh
-        for (auto& existingLevel : audioLevels) {
+        for (auto& existingLevel : currentAudioStatus.audioLevels) {
             if (existingLevel.processName == level.processName) {
                 existingLevel.stale = false;
                 break;
@@ -304,31 +316,31 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
     }
 
     // Add default device as a special audio level if present
-    if (status.hasDefaultDevice) {
-        String defaultDeviceName = status.defaultDevice.friendlyName + " (Default Device)";
-        int defaultDeviceVolume = (int)(status.defaultDevice.volume * 100.0f);
-        updateAudioLevel(defaultDeviceName, defaultDeviceVolume);
-        // Mark default device as fresh
-        for (auto& existingLevel : audioLevels) {
-            if (existingLevel.processName == defaultDeviceName) {
-                existingLevel.stale = false;
-                break;
-            }
-        }
-    }
+    // if (status.hasDefaultDevice) {
+    //     String defaultDeviceName = status.defaultDevice.friendlyName;  // + " (Default Device)";
+    //     int defaultDeviceVolume = (int)(status.defaultDevice.volume * 100.0f);
+    //     updateAudioLevel(defaultDeviceName, defaultDeviceVolume);
+    //     // Mark default device as fresh
+    //     for (auto& existingLevel : currentAudioStatus.audioLevels) {
+    //         if (existingLevel.processName == defaultDeviceName) {
+    //             existingLevel.stale = false;
+    //             break;
+    //         }
+    //     }
+    // }
 
     // Auto-select first non-stale device if none is selected and devices are available
-    if (selectedDevice.isEmpty() && !audioLevels.empty()) {
+    if (selectedDevice.isEmpty() && !currentAudioStatus.audioLevels.empty()) {
         // Find first non-stale device, or fall back to first device if all are stale
         String deviceToSelect = "";
-        for (const auto& level : audioLevels) {
+        for (const auto& level : currentAudioStatus.audioLevels) {
             if (!level.stale) {
                 deviceToSelect = level.processName;
                 break;
             }
         }
-        if (deviceToSelect.isEmpty() && !audioLevels.empty()) {
-            deviceToSelect = audioLevels[0].processName;
+        if (deviceToSelect.isEmpty() && !currentAudioStatus.audioLevels.empty()) {
+            deviceToSelect = currentAudioStatus.audioLevels[0].processName;
         }
         if (!deviceToSelect.isEmpty()) {
             setSelectedDevice(deviceToSelect);
@@ -346,16 +358,18 @@ void StatusManager::onAudioLevelsChangedUI(void) {
         lv_dropdown_clear_options(ui_selectAudioDevice);
 
         // Add devices from audio levels
-        if (audioLevels.empty()) {
+        if (currentAudioStatus.audioLevels.empty()) {
             lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
         } else {
-            for (const auto& level : audioLevels) {
+            for (const auto& level : currentAudioStatus.audioLevels) {
                 // Mark stale devices with a prefix
                 String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
                 lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
             }
         }
-
+        if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
+            lv_label_set_text(ui_lblPrimaryAudioDeviceValue, currentAudioStatus.defaultDevice.friendlyName.c_str());
+        }
         // Update other dropdowns too
         updateAllDropdownOptions();
 

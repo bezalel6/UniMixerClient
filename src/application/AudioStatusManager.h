@@ -43,6 +43,7 @@ class StatusManager {
     static void updateAudioLevel(const String& processName, int volume);
     static std::vector<AudioLevel> getAllAudioLevels(void);
     static AudioLevel* getAudioLevel(const String& processName);
+    static AudioStatus getCurrentAudioStatus(void);
 
     // Statistics
     static int getActiveProcessCount(void);
@@ -89,7 +90,7 @@ class StatusManager {
     static AudioStatus parseAudioStatusJson(const char* jsonPayload);
 
     // Internal state
-    static std::vector<AudioLevel> audioLevels;
+    static AudioStatus currentAudioStatus;
     static Messaging::Handler audioStatusHandler;
     static Messaging::Handler commandResultHandler;
     static unsigned long lastUpdateTime;
