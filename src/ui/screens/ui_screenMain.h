@@ -19,7 +19,7 @@ extern lv_obj_t * ui_Master;
 extern lv_obj_t * ui_Panel1;
 extern lv_obj_t * ui_lblPrimaryAudioDevice;
 extern lv_obj_t * ui_lblPrimaryAudioDeviceValue;
-extern lv_obj_t * ui_TabPage2;
+extern lv_obj_t * ui_Single;
 extern lv_obj_t * ui_selectAudioDevice;
 extern lv_obj_t * ui_Balance;
 extern lv_obj_t * ui_selectAudioDevice1;
@@ -49,6 +49,7 @@ extern lv_obj_t * ui_lblFPS;
 extern lv_obj_t * ui_containerVolumeSlider;
 extern lv_obj_t * ui_volumeSliderLbl;
 extern lv_obj_t * ui_volumeSlider;
+extern lv_obj_t * ui_lblCurrentTab;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

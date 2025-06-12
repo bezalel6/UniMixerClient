@@ -199,10 +199,6 @@ void setupUiComponents(void) {
     // Set display to 180 degrees rotation
     Display::setRotation(Display::ROTATION_180);
 
-    // Set UI layer positioning
-    // lv_obj_move_background(ui_containerVolumeSlider);
-    // lv_obj_move_foreground(ui_tabsModeSwitch);
-    //
     // Register button click event handler
     lv_obj_add_event_cb(ui_btnRequestData, Events::UI::btnRequestDataClickedHandler, LV_EVENT_CLICKED, NULL);
 
@@ -213,6 +209,33 @@ void setupUiComponents(void) {
 
     // Register volume arc event handler
     lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Register tab switch event handler
+    ESP_LOGI(TAG, "Registering tab switch event handler for ui_tabsModeSwitch: %p", ui_tabsModeSwitch);
+    lv_obj_add_event_cb(ui_tabsModeSwitch, Events::UI::tabSwitchHandler, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Alternative approach: Register on individual tab buttons (for newer LVGL versions)
+    lv_obj_t* tab_buttons = lv_tabview_get_tab_bar(ui_tabsModeSwitch);
+    if (tab_buttons) {
+        ESP_LOGI(TAG, "Registering tab button events on tab bar: %p", tab_buttons);
+
+        // Get the number of tabs and register event on each button
+        uint32_t tab_count = lv_obj_get_child_count(tab_buttons);
+        ESP_LOGI(TAG, "Found %d tab buttons", tab_count);
+
+        for (uint32_t i = 0; i < tab_count; i++) {
+            lv_obj_t* tab_button = lv_obj_get_child(tab_buttons, i);
+            if (tab_button) {
+                ESP_LOGI(TAG, "Registering event on tab button %d: %p", i, tab_button);
+                lv_obj_add_event_cb(tab_button, Events::UI::tabSwitchHandler, LV_EVENT_CLICKED, NULL);
+            }
+        }
+    }
+
+    // Initialize current tab state by reading the actual active tab from the UI
+    uint32_t activeTabIndex = lv_tabview_get_tab_active(ui_tabsModeSwitch);
+    Events::UI::setCurrentTab(static_cast<Events::UI::TabState>(activeTabIndex));
+    ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex, Events::UI::getTabName(Events::UI::getCurrentTab()));
 }
 
 // Private helper functions for single-threaded operation
