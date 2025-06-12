@@ -49,7 +49,6 @@ extern lv_obj_t * ui_lblFPS;
 extern lv_obj_t * ui_containerVolumeSlider;
 extern lv_obj_t * ui_volumeSliderLbl;
 extern lv_obj_t * ui_volumeSlider;
-extern lv_obj_t * ui_lblCurrentTab;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

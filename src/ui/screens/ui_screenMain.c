@@ -40,7 +40,6 @@ lv_obj_t * ui_lblFPS;
 lv_obj_t * ui_containerVolumeSlider;
 lv_obj_t * ui_volumeSliderLbl;
 lv_obj_t * ui_volumeSlider;
-lv_obj_t * ui_lblCurrentTab;
 
 // event funtions
 void ui_event_btnGOTOLog(lv_event_t * e)
@@ -299,12 +298,6 @@ void ui_screenMain_screen_init(void)
 
     lv_obj_set_style_arc_width(ui_volumeSlider, 20, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 
-    ui_lblCurrentTab = lv_label_create(ui_screenMain);
-    lv_obj_set_width(ui_lblCurrentTab, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblCurrentTab, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblCurrentTab, LV_ALIGN_RIGHT_MID);
-    lv_label_set_text(ui_lblCurrentTab, "text");
-
     lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
 
 }
@@ -349,6 +342,5 @@ void ui_screenMain_screen_destroy(void)
     ui_containerVolumeSlider = NULL;
     ui_volumeSliderLbl = NULL;
     ui_volumeSlider = NULL;
-    ui_lblCurrentTab = NULL;
 
 }

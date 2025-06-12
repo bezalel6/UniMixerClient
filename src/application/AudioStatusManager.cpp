@@ -289,20 +289,6 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
         }
     }
 
-    // Add default device as a special audio level if present
-    // if (status.hasDefaultDevice) {
-    //     String defaultDeviceName = status.defaultDevice.friendlyName;  // + " (Default Device)";
-    //     int defaultDeviceVolume = (int)(status.defaultDevice.volume * 100.0f);
-    //     updateAudioLevel(defaultDeviceName, defaultDeviceVolume);
-    //     // Mark default device as fresh
-    //     for (auto& existingLevel : currentAudioStatus.audioLevels) {
-    //         if (existingLevel.processName == defaultDeviceName) {
-    //             existingLevel.stale = false;
-    //             break;
-    //         }
-    //     }
-    // }
-
     // Auto-select first non-stale device if none is selected and devices are available
     if (selectedDevice.isEmpty() && !currentAudioStatus.audioLevels.empty()) {
         // Find first non-stale device, or fall back to first device if all are stale
@@ -333,12 +319,15 @@ void StatusManager::onAudioLevelsChangedUI(void) {
 
         // If in MASTER tab, show default device in dropdown
         if (currentTab == Events::UI::TabState::MASTER) {
-            if (currentAudioStatus.hasDefaultDevice) {
-                lv_dropdown_add_option(ui_selectAudioDevice,
-                                       currentAudioStatus.defaultDevice.friendlyName.c_str(),
-                                       LV_DROPDOWN_POS_LAST);
+            // For MASTER tab, still show all available devices
+            if (currentAudioStatus.audioLevels.empty()) {
+                lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
             } else {
-                lv_dropdown_add_option(ui_selectAudioDevice, "No default device", LV_DROPDOWN_POS_LAST);
+                for (const auto& level : currentAudioStatus.audioLevels) {
+                    // Mark stale devices with a prefix
+                    String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
+                    lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
+                }
             }
         } else {
             // For other tabs, add devices from audio levels
@@ -540,9 +529,9 @@ void StatusManager::publishStatusUpdate(void) {
     doc["timestamp"] = Hardware::Device::getMillis();
 
     // Add sessions array
-    JsonArray sessions = doc.createNestedArray("sessions");
+    JsonArray sessions = doc["sessions"].to<JsonArray>();
     for (const auto& level : currentAudioStatus.audioLevels) {
-        JsonObject session = sessions.createNestedObject();
+        JsonObject session = sessions.add<JsonObject>();
         session["processName"] = level.processName;
         session["volume"] = level.volume / 100.0f;  // Convert to 0.0-1.0 range
         session["isMuted"] = level.isMuted;
@@ -551,7 +540,7 @@ void StatusManager::publishStatusUpdate(void) {
 
     // Add default device if available
     if (currentAudioStatus.hasDefaultDevice) {
-        JsonObject defaultDevice = doc.createNestedObject("defaultDevice");
+        JsonObject defaultDevice = doc["defaultDevice"].to<JsonObject>();
         defaultDevice["friendlyName"] = currentAudioStatus.defaultDevice.friendlyName;
         defaultDevice["volume"] = currentAudioStatus.defaultDevice.volume;
         defaultDevice["isMuted"] = currentAudioStatus.defaultDevice.isMuted;
@@ -580,21 +569,8 @@ Events::UI::TabState StatusManager::getCurrentTab(void) {
 
 void StatusManager::setCurrentTab(Events::UI::TabState tab) {
     currentTab = tab;
-
-    // Update the tab label with current tab name
-    const char* tabName = getTabName(tab);
-    lv_label_set_text(ui_lblCurrentTab, tabName);
-
-    // Update UI elements based on tab state
-    if (tab == Events::UI::TabState::MASTER) {
-        // When switching to MASTER tab, update volume arc to show default device
-        updateVolumeArcFromSelectedDevice();
-        ESP_LOGI(TAG, "Tab state set to: %s (now controlling default device)", tabName);
-    } else {
-        // For other tabs, ensure the volume arc shows the selected device
-        updateVolumeArcFromSelectedDevice();
-        ESP_LOGI(TAG, "Tab state set to: %s (now controlling individual devices)", tabName);
-    }
+    // Update UI elements for the new tab
+    onAudioLevelsChangedUI();
 }
 
 const char* StatusManager::getTabName(Events::UI::TabState tab) {
@@ -772,7 +748,6 @@ AudioStatus StatusManager::parseAudioStatusJson(const char* jsonPayload) {
     for (JsonObject session : sessions) {
         String processName = session["processName"] | "";
         String displayName = session["displayName"] | "";
-        int processId = session["processId"] | 0;
         float volume = session["volume"] | 0.0f;
         bool isMuted = session["isMuted"] | false;
         String state = session["state"] | "";
@@ -781,12 +756,13 @@ AudioStatus StatusManager::parseAudioStatusJson(const char* jsonPayload) {
             AudioLevel level;
             level.processName = processName;
             level.volume = (int)(volume * 100.0f);  // Convert from 0.0-1.0 to 0-100
+            level.isMuted = isMuted;
             level.lastUpdate = now;
             level.stale = false;
 
             result.audioLevels.push_back(level);
-            ESP_LOGI(TAG, "Parsed audio session: %s (PID: %d) = %d%% %s",
-                     processName.c_str(), processId, level.volume, isMuted ? "(muted)" : "");
+            ESP_LOGI(TAG, "Parsed audio session: %s = %d%% %s",
+                     processName.c_str(), level.volume, isMuted ? "(muted)" : "");
         }
     }
 
