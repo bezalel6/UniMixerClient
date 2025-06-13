@@ -7,6 +7,8 @@
 #include "../messaging/MessageBus.h"
 #include "../../include/MessageProtocol.h"
 #include "../events/UiEventHandlers.h"
+#include "../ui/components/DeviceSelectorManager.h"
+#include "AudioTypes.h"
 
 namespace Application {
 namespace Audio {
@@ -14,53 +16,6 @@ namespace Audio {
 // Forward declarations
 struct AudioLevel;
 struct AudioStatus;
-
-// Centralized dropdown selection management
-class SelectionManager {
-   public:
-    static void setSelection(lv_obj_t* dropdown, const String& deviceName);
-    static String getSelection(lv_obj_t* dropdown);
-    static String getMainSelection();  // For volume control and backward compatibility
-
-    static void clearAll();
-    static bool isAvailableFor(const String& deviceName, lv_obj_t* dropdown);
-
-    static void refreshDropdown(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
-    static void refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels);
-
-   private:
-    static String mainDevice;    // ui_selectAudioDevice
-    static String balanceLeft;   // ui_selectAudioDevice1
-    static String balanceRight;  // ui_selectAudioDevice2
-
-    static void updateDropdownOptions(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
-    static void updateDropdownSelection(lv_obj_t* dropdown);
-    static lv_obj_t* getDropdownFromDevice(const String& deviceName);
-};
-
-// Structure to hold audio level data
-struct AudioLevel {
-    String processName;
-    int volume;
-    bool isMuted = false;
-    unsigned long lastUpdate;
-    bool stale = false;
-};
-
-struct AudioDevice {
-    String friendlyName;
-    float volume;
-    bool isMuted;
-    String state;
-};
-
-// Structure to hold complete audio status
-struct AudioStatus {
-    std::vector<AudioLevel> audioLevels;
-    AudioDevice defaultDevice;
-    unsigned long timestamp;
-    bool hasDefaultDevice = false;
-};
 
 // Audio Status Manager class
 class StatusManager {
@@ -124,6 +79,9 @@ class StatusManager {
     // UI state
     static bool suppressArcEvents;
     static Events::UI::TabState currentTab;
+
+    // Device selector management
+    static std::unique_ptr<UI::Components::DeviceSelectorManager> deviceSelectorManager;
 };
 
 }  // namespace Audio

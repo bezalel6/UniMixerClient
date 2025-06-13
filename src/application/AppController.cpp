@@ -207,8 +207,10 @@ void setupUiComponents(void) {
     lv_obj_add_event_cb(ui_selectAudioDevice1, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(ui_selectAudioDevice2, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Register volume arc event handler
-    lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+    // Register volume arc event handlers for each tab
+    lv_obj_add_event_cb(ui_primaryVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_singleVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_balanceVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
 
     // Register tab switch event handler
     ESP_LOGI(TAG, "Registering tab switch event handler for ui_tabsModeSwitch: %p", ui_tabsModeSwitch);
