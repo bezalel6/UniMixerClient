@@ -26,9 +26,10 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
 
     lv_obj_t * cui_lblPrimaryVolumeSlider;
     cui_lblPrimaryVolumeSlider = lv_label_create(cui_VolumeSlider);
-    lv_obj_set_width(cui_lblPrimaryVolumeSlider, 314);
+    lv_obj_set_width(cui_lblPrimaryVolumeSlider, 200);
     lv_obj_set_height(cui_lblPrimaryVolumeSlider, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(cui_lblPrimaryVolumeSlider, LV_ALIGN_CENTER);
+    lv_label_set_long_mode(cui_lblPrimaryVolumeSlider, LV_LABEL_LONG_CLIP);
     lv_label_set_text(cui_lblPrimaryVolumeSlider, "0%");
     lv_obj_set_style_text_align(cui_lblPrimaryVolumeSlider, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(cui_lblPrimaryVolumeSlider, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
