@@ -28,6 +28,10 @@ class DeviceSelectorManager {
     String getBalanceSelection1() const;
     String getBalanceSelection2() const;
 
+    // Tab-aware device selection
+    String getSelectedDeviceForTab(int tabIndex) const;
+    void setSelectedDeviceForTab(int tabIndex, const String& deviceName);
+
     // UI updates
     void refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels);
     void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);

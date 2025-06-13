@@ -33,15 +33,13 @@ class StatusManager {
 
     // UI Updates
     static void onAudioLevelsChangedUI(void);
-    static String buildAudioDeviceOptionsString(void);
-    static String getSelectedAudioDevice(lv_obj_t* dropdown);
+    static void updateVolumeArcFromSelectedDevice(void);
+    static void updateVolumeArcLabel(int volume);
 
     // Device selection management
     static void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
     static String getDropdownSelection(lv_obj_t* dropdown);
     static String getSelectedDevice(void);  // For backward compatibility
-    static void updateVolumeArcFromSelectedDevice(void);
-    static void updateVolumeArcLabel(int volume);
 
     // Volume control
     static void setSelectedDeviceVolume(int volume);

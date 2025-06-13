@@ -162,62 +162,6 @@ void StatusManager::initializeBalanceDropdownSelections(void) {
     deviceSelectorManager->initializeBalanceSelections(currentAudioStatus.audioLevels);
 }
 
-String StatusManager::buildAudioDeviceOptionsString(void) {
-    if (currentAudioStatus.audioLevels.empty()) {
-        return "None";
-    }
-
-    String options = "";
-    bool first = true;
-
-    for (const auto& level : currentAudioStatus.audioLevels) {
-        if (!first) {
-            options += "\n";
-        }
-
-        // Format: "ProcessName (Volume%)" or "ProcessName (Volume%) (Stale)"
-        options += level.processName;
-        options += " (";
-        options += String(level.volume);
-        options += "%)";
-
-        if (level.stale) {
-            options += " (Stale)";
-        }
-
-        first = false;
-    }
-
-    return options;
-}
-
-String StatusManager::getSelectedAudioDevice(lv_obj_t* dropdown) {
-    if (dropdown == NULL) {
-        ESP_LOGW(TAG, "getSelectedAudioDevice: Invalid dropdown parameter");
-        return "";
-    }
-
-    // Get the selected text
-    char selectedText[256];
-    lv_dropdown_get_selected_str(dropdown, selectedText, sizeof(selectedText));
-
-    // Extract just the process name (before the volume indicator)
-    String selectedString = String(selectedText);
-
-    // Remove stale prefix if present
-    if (selectedString.startsWith("(!) ")) {
-        selectedString = selectedString.substring(4);
-    }
-
-    // Remove volume indicator if present
-    int volumeStart = selectedString.indexOf(" (");
-    if (volumeStart > 0) {
-        return selectedString.substring(0, volumeStart);
-    }
-
-    return selectedString;
-}
-
 std::vector<AudioLevel> StatusManager::getAllAudioLevels(void) {
     return currentAudioStatus.audioLevels;
 }
@@ -289,44 +233,14 @@ void StatusManager::onAudioStatusReceived(const AudioStatus& status) {
 }
 
 void StatusManager::onAudioLevelsChangedUI(void) {
-    // Update device dropdown if available (using the actual UI element names)
-    if (ui_selectAudioDevice && !suppressArcEvents) {
-        // Clear existing options
-        lv_dropdown_clear_options(ui_selectAudioDevice);
-
-        // If in MASTER tab, show default device in dropdown
-        if (currentTab == Events::UI::TabState::MASTER) {
-            // For MASTER tab, still show all available devices
-            if (currentAudioStatus.audioLevels.empty()) {
-                lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
-            } else {
-                for (const auto& level : currentAudioStatus.audioLevels) {
-                    // Mark stale devices with a prefix
-                    String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
-                    lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
-                }
-            }
-        } else {
-            // For other tabs, add devices from audio levels
-            if (currentAudioStatus.audioLevels.empty()) {
-                lv_dropdown_add_option(ui_selectAudioDevice, "No devices", LV_DROPDOWN_POS_LAST);
-            } else {
-                for (const auto& level : currentAudioStatus.audioLevels) {
-                    // Mark stale devices with a prefix
-                    String displayName = level.stale ? String("(!) ") + level.processName : level.processName;
-                    lv_dropdown_add_option(ui_selectAudioDevice, displayName.c_str(), LV_DROPDOWN_POS_LAST);
-                }
-            }
-        }
-
-        if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
-            lv_label_set_text(ui_lblPrimaryAudioDeviceValue, currentAudioStatus.defaultDevice.friendlyName.c_str());
-        }
-    }
-
     // Update all dropdowns through the device selector manager
     if (deviceSelectorManager) {
         deviceSelectorManager->refreshAllDropdowns(currentAudioStatus.audioLevels);
+    }
+
+    // Update default device label if available
+    if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
+        lv_label_set_text(ui_lblPrimaryAudioDeviceValue, currentAudioStatus.defaultDevice.friendlyName.c_str());
     }
 
     // Update volume arc based on current tab
@@ -335,13 +249,42 @@ void StatusManager::onAudioLevelsChangedUI(void) {
 
 String StatusManager::getSelectedDevice(void) {
     if (!deviceSelectorManager) return "";
-    return deviceSelectorManager->getMainSelection();
+
+    // Convert tab state to index for DeviceSelectorManager
+    int tabIndex = 0;  // Default to MASTER
+    switch (currentTab) {
+        case Events::UI::TabState::MASTER:
+            tabIndex = 0;
+            break;
+        case Events::UI::TabState::SINGLE:
+            tabIndex = 1;
+            break;
+        case Events::UI::TabState::BALANCE:
+            tabIndex = 2;
+            break;
+    }
+
+    return deviceSelectorManager->getSelectedDeviceForTab(tabIndex);
 }
 
 void StatusManager::setDropdownSelection(lv_obj_t* dropdown, const String& deviceName) {
     if (!deviceSelectorManager) return;
 
-    deviceSelectorManager->setDropdownSelection(dropdown, deviceName);
+    // Convert tab state to index for DeviceSelectorManager
+    int tabIndex = 0;  // Default to MASTER
+    switch (currentTab) {
+        case Events::UI::TabState::MASTER:
+            tabIndex = 0;
+            break;
+        case Events::UI::TabState::SINGLE:
+            tabIndex = 1;
+            break;
+        case Events::UI::TabState::BALANCE:
+            tabIndex = 2;
+            break;
+    }
+
+    deviceSelectorManager->setSelectedDeviceForTab(tabIndex, deviceName);
     updateVolumeArcFromSelectedDevice();
 }
 
@@ -352,12 +295,9 @@ String StatusManager::getDropdownSelection(lv_obj_t* dropdown) {
 
 void StatusManager::updateVolumeArcFromSelectedDevice(void) {
     lv_obj_t* slider;
-    float volume = 0.0;
     switch (currentTab) {
         case Events::UI::TabState::MASTER: {
             slider = ui_primaryVolumeSlider;
-            if (currentAudioStatus.hasDefaultDevice)
-                volume = currentAudioStatus.defaultDevice.volume;
             break;
         };
         case Events::UI::TabState::SINGLE: {
@@ -450,6 +390,11 @@ void StatusManager::setSelectedDeviceVolume(int volume) {
             // Update local default device volume for responsive UI
             currentAudioStatus.defaultDevice.volume = volume / 100.0f;
             ESP_LOGI(TAG, "Set default device volume to %d", volume);
+
+            // Update default device label if available
+            if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
+                lv_label_set_text(ui_lblPrimaryAudioDeviceValue, currentAudioStatus.defaultDevice.friendlyName.c_str());
+            }
         } else {
             ESP_LOGW(TAG, "No default device available for master volume control");
             return;

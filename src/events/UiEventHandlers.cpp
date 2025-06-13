@@ -7,8 +7,6 @@
 #include "../hardware/DeviceManager.h"
 #include "../application/AudioStatusManager.h"
 
-static const char* TAG = "UIEventHandlers";
-
 // Helper function to get event name for debugging
 static const char* getEventName(lv_event_code_t code) {
     switch (code) {
@@ -94,7 +92,7 @@ namespace UI {
 void btnRequestDataClickedHandler(lv_event_t* e) {
     ON_EVENT(LV_EVENT_CLICKED);
 
-    UI_LOG(TAG, "Button clicked - requesting audio status");
+    UI_LOG("UIEventHandlers", "Button clicked - requesting audio status");
 
     // Use AudioStatusManager to publish the request
     Application::Audio::StatusManager::publishAudioStatusRequest();
@@ -104,10 +102,10 @@ void btnRequestDataClickedHandler(lv_event_t* e) {
 void audioDeviceDropdownChangedHandler(lv_event_t* e) {
     ON_EVENT_GET_WIDGET(LV_EVENT_VALUE_CHANGED, dropdown);
 
-    // Get the selected audio device name
-    String selectedDevice = Application::Audio::StatusManager::getSelectedAudioDevice(dropdown);
+    // Get the selected audio device name using the new method
+    String selectedDevice = Application::Audio::StatusManager::getDropdownSelection(dropdown);
 
-    UI_LOG(TAG, "Audio device dropdown changed: %s", selectedDevice.c_str());
+    UI_LOG("UIEventHandlers", "Audio device dropdown changed: %s", selectedDevice.c_str());
 
     // Update the selection using the clean centralized interface
     Application::Audio::StatusManager::setDropdownSelection(dropdown, selectedDevice);
@@ -127,7 +125,7 @@ void volumeArcChangedHandler(lv_event_t* e) {
     // Get the arc value
     int volume = lv_arc_get_value(arc);
 
-    UI_LOG(TAG, "Volume arc changed: %d", volume);
+    UI_LOG("UIEventHandlers", "Volume arc changed: %d", volume);
 
     // Set the volume for the selected device
     Application::Audio::StatusManager::setSelectedDeviceVolume(volume);
@@ -137,7 +135,7 @@ void volumeArcChangedHandler(lv_event_t* e) {
 void tabSwitchHandler(lv_event_t* e) {
     ON_EVENT_GET_WIDGET(LV_EVENT_CLICKED, target);
 
-    UI_LOG(TAG, "Tab event received: %s (%d) on target: %p", getEventName(code), code, target);
+    UI_LOG("UIEventHandlers", "Tab event received: %s (%d) on target: %p", getEventName(code), code, target);
 
     uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
     Application::Audio::StatusManager::setCurrentTab(static_cast<TabState>(activeTab));

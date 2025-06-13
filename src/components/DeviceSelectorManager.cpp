@@ -55,6 +55,31 @@ String DeviceSelectorManager::getBalanceSelection2() const {
     return balanceSelection2;
 }
 
+String DeviceSelectorManager::getSelectedDeviceForTab(int tabIndex) const {
+    switch (tabIndex) {
+        case 0:  // MASTER tab - return main selection
+            return mainSelection;
+        case 1:  // SINGLE tab - return main selection
+            return mainSelection;
+        case 2:  // BALANCE tab - return first balance selection
+            return balanceSelection1;
+        default:
+            return "";
+    }
+}
+
+void DeviceSelectorManager::setSelectedDeviceForTab(int tabIndex, const String& deviceName) {
+    switch (tabIndex) {
+        case 0:  // MASTER tab
+        case 1:  // SINGLE tab
+            setMainSelection(deviceName);
+            break;
+        case 2:  // BALANCE tab
+            setBalanceSelections(deviceName, balanceSelection2);
+            break;
+    }
+}
+
 void DeviceSelectorManager::refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels) {
     if (mainDropdown) updateDropdownOptions(mainDropdown, audioLevels);
     if (balanceDropdown1) updateDropdownOptions(balanceDropdown1, audioLevels);
