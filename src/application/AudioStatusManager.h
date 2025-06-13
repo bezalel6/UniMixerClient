@@ -3,11 +3,12 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <memory>
 #include <lvgl.h>
 #include "../messaging/MessageBus.h"
 #include "../../include/MessageProtocol.h"
 #include "../events/UiEventHandlers.h"
-#include "../ui/components/DeviceSelectorManager.h"
+#include "../components/DeviceSelectorManager.h"
 #include "AudioTypes.h"
 
 namespace Application {

@@ -2,6 +2,7 @@
 #include "../hardware/DeviceManager.h"
 #include <esp_log.h>
 #include <ArduinoJson.h>
+#include <memory>
 #include <ui/ui.h>
 
 static const char* TAG = "AudioStatusManager";
