@@ -286,7 +286,10 @@ void ui_screenMain_screen_init(void)
     ui_lblFPS = lv_label_create(ui_screenMain);
     lv_obj_set_width(ui_lblFPS, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_lblFPS, -78);
+    lv_obj_set_y(ui_lblFPS, 30);
     lv_obj_set_align(ui_lblFPS, LV_ALIGN_TOP_RIGHT);
+    lv_label_set_long_mode(ui_lblFPS, LV_LABEL_LONG_DOT);
     lv_label_set_text(ui_lblFPS, "FPS: 1000");
 
     lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
