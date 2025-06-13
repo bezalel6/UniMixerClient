@@ -1,4 +1,6 @@
-SET(SOURCES screens/ui_screenMain.c
+SET(SOURCES components/ui_comp_volumeslider.c
+    components/ui_comp.c
+    screens/ui_screenMain.c
     screens/ui_screenOTA.c
     screens/ui_screenDebug.c
     ui.c

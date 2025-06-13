@@ -55,6 +55,13 @@ void updateNetworkInfo(lv_obj_t* ssidLabel, lv_obj_t* ipLabel, const char* ssid,
 // LVGL tick management
 void tickUpdate(void);
 
+// Helper functions for consistent label initialization
+void initializeLabelEmpty(lv_obj_t* label);
+void initializeLabelDash(lv_obj_t* label);
+void initializeLabelSpace(lv_obj_t* label);
+void initializeLabelUnknown(lv_obj_t* label);
+void initializeLabelNone(lv_obj_t* label);
+
 }  // namespace Display
 
 #endif  // DISPLAY_MANAGER_H

@@ -202,9 +202,10 @@ void setupUiComponents(void) {
                       Events::UI::audioDeviceDropdownChangedHandler,
                       LV_EVENT_VALUE_CHANGED, NULL);
 
-  // Register volume arc event handler
-  lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler,
-                      LV_EVENT_VALUE_CHANGED, NULL);
+    // Register volume arc event handlers for each tab
+    lv_obj_add_event_cb(ui_primaryVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_singleVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_balanceVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
 
   // Register tab switch event handler
   ESP_LOGI(TAG,

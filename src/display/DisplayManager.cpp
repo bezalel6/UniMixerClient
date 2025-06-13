@@ -1,13 +1,8 @@
 #include "DisplayManager.h"
 #include "../application/TaskManager.h"
 #include <cinttypes>
-#include <esp_heap_caps.h>
-#include <esp_log.h>
-#include <stdio.h>
-#include <string.h>
-#include <ui/ui.h>
-
-static const char *TAG = "DisplayManager";
+#include "../include/UIConstants.h"
+static const char* TAG = "DisplayManager";
 
 namespace Display {
 
@@ -205,26 +200,29 @@ void updateConnectionStatus(lv_obj_t *statusLabel, lv_obj_t *indicatorObj,
     lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
 
-    // Set color based on connection status
-    switch (status) {
-    case CONNECTION_STATUS_CONNECTED:
-      // Green background for connected
-      lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00),
-                                LV_PART_MAIN);
-      break;
-    case CONNECTION_STATUS_CONNECTING:
-      // Yellow background for connecting
-      lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00),
-                                LV_PART_MAIN);
-      break;
-    case CONNECTION_STATUS_FAILED:
-    case CONNECTION_STATUS_ERROR:
-    case CONNECTION_STATUS_DISCONNECTED:
-    default:
-      // Red background for disconnected/failed/error
-      lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000),
-                                LV_PART_MAIN);
-      break;
+        // Clear text and style as round background indicator
+        lv_label_set_text(indicatorObj, UI_LABEL_EMPTY);
+        lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
+
+        // Set color based on connection status
+        switch (status) {
+            case CONNECTION_STATUS_CONNECTED:
+                // Green background for connected
+                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00), LV_PART_MAIN);
+                break;
+            case CONNECTION_STATUS_CONNECTING:
+                // Yellow background for connecting
+                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
+                break;
+            case CONNECTION_STATUS_FAILED:
+            case CONNECTION_STATUS_ERROR:
+            case CONNECTION_STATUS_DISCONNECTED:
+            default:
+                // Red background for disconnected/failed/error
+                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000), LV_PART_MAIN);
+                break;
+        }
     }
   }
 }
@@ -304,20 +302,35 @@ void resetRenderStats(void) {
   renderSamples = 0;
 }
 
-size_t getPSRAMUsage(void) { return psramUsed; }
-
-size_t getPSRAMFree(void) { return psramFree; }
-
-void printDisplayStats(void) {
-  ESP_LOGI(TAG, "=== Display Performance Stats ===");
-  ESP_LOGI(TAG, "FPS: %.1f", currentFPS);
-  ESP_LOGI(TAG, "Avg Render Time: %d ms", avgRenderTime);
-  ESP_LOGI(TAG, "Max Render Time: %d ms", maxRenderTime);
-  ESP_LOGI(TAG, "PSRAM Used: %d bytes (%.1f KB)", psramUsed,
-           psramUsed / 1024.0f);
-  ESP_LOGI(TAG, "PSRAM Free: %d bytes (%.1f KB)", psramFree,
-           psramFree / 1024.0f);
-  ESP_LOGI(TAG, "==============================");
+// Helper functions for consistent label initialization
+void initializeLabelEmpty(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_EMPTY);
+    }
 }
 
-} // namespace Display
+void initializeLabelDash(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, "-");
+    }
+}
+
+void initializeLabelSpace(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_SPACE);
+    }
+}
+
+void initializeLabelUnknown(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_UNKNOWN);
+    }
+}
+
+void initializeLabelNone(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_NONE);
+    }
+}
+
+}  // namespace Display
