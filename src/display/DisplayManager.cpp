@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <cinttypes>
+#include "../include/UIConstants.h"
 static const char* TAG = "DisplayManager";
 
 namespace Display {
@@ -129,7 +130,7 @@ void updateConnectionStatus(lv_obj_t* statusLabel, lv_obj_t* indicatorObj, const
         }
 
         // Clear text and style as round background indicator
-        lv_label_set_text(indicatorObj, "");
+        lv_label_set_text(indicatorObj, UI_LABEL_EMPTY);
         lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
         lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
 
@@ -211,6 +212,37 @@ void updateFpsDisplay(lv_obj_t* fpsLabel) {
         char fpsText[16];
         snprintf(fpsText, sizeof(fpsText), "%.1f FPS", currentFPS);
         lv_label_set_text(fpsLabel, fpsText);
+    }
+}
+
+// Helper functions for consistent label initialization
+void initializeLabelEmpty(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_EMPTY);
+    }
+}
+
+void initializeLabelDash(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_DASH);
+    }
+}
+
+void initializeLabelSpace(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_SPACE);
+    }
+}
+
+void initializeLabelUnknown(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_UNKNOWN);
+    }
+}
+
+void initializeLabelNone(lv_obj_t* label) {
+    if (label) {
+        lv_label_set_text(label, UI_LABEL_NONE);
     }
 }
 

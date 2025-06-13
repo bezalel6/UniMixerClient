@@ -22,10 +22,10 @@ lv_obj_t * ui_pnlSingleSelectAudioDevice = NULL;
 lv_obj_t * ui_selectAudioDevice = NULL;
 lv_obj_t * ui_containerSingleVolumeSlider = NULL;
 lv_obj_t * ui_Balance = NULL;
-lv_obj_t * ui_pnlBalanceVolumeSlider = NULL;
 lv_obj_t * ui_pnlBalanceAudioDevices = NULL;
 lv_obj_t * ui_selectAudioDevice2 = NULL;
 lv_obj_t * ui_selectAudioDevice1 = NULL;
+lv_obj_t * ui_containerBalanceVolumeSlider = NULL;
 lv_obj_t * ui_pnlNetwork = NULL;
 lv_obj_t * ui_wifiContainer = NULL;
 lv_obj_t * ui_lblWifi = NULL;
@@ -115,10 +115,6 @@ void ui_screenMain_screen_init(void)
     ui_Balance = lv_tabview_add_tab(ui_tabsModeSwitch, "Balance");
     lv_obj_remove_flag(ui_Balance, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_pnlBalanceVolumeSlider = ui_VolumeSlider_create(ui_Balance);
-    lv_obj_set_x(ui_pnlBalanceVolumeSlider, 0);
-    lv_obj_set_y(ui_pnlBalanceVolumeSlider, -40);
-
     ui_pnlBalanceAudioDevices = lv_obj_create(ui_Balance);
     lv_obj_set_height(ui_pnlBalanceAudioDevices, 50);
     lv_obj_set_width(ui_pnlBalanceAudioDevices, lv_pct(100));
@@ -144,6 +140,14 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_y(ui_selectAudioDevice1, -1);
     lv_obj_set_align(ui_selectAudioDevice1, LV_ALIGN_BOTTOM_LEFT);
     lv_obj_add_flag(ui_selectAudioDevice1, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+
+    ui_containerBalanceVolumeSlider = ui_VolumeSlider_create(ui_Balance);
+    lv_obj_set_x(ui_containerBalanceVolumeSlider, 0);
+    lv_obj_set_y(ui_containerBalanceVolumeSlider, -40);
+
+    lv_arc_set_value(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER), 50);
+    lv_arc_set_mode(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
+                    LV_ARC_MODE_SYMMETRICAL);
 
     ui_pnlNetwork = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlNetwork, 200);
@@ -292,8 +296,9 @@ void ui_screenMain_screen_init(void)
     ui_lblSingleVolumeSlider = ui_comp_get_child(ui_containerSingleVolumeSlider,
                                                  UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER);
     ui_singleVolumeSlider = ui_comp_get_child(ui_containerSingleVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER);
-    ui_lblBalanceVolumeSlider = ui_comp_get_child(ui_pnlBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER);
-    ui_balanceVolumeSlider = ui_comp_get_child(ui_pnlBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER);
+    ui_lblBalanceVolumeSlider = ui_comp_get_child(ui_containerBalanceVolumeSlider,
+                                                  UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER);
+    ui_balanceVolumeSlider = ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER);
 
 }
 
@@ -317,12 +322,12 @@ void ui_screenMain_screen_destroy(void)
     ui_lblSingleVolumeSlider = NULL;
     ui_singleVolumeSlider = NULL;
     ui_Balance = NULL;
-    ui_pnlBalanceVolumeSlider = NULL;
-    ui_lblBalanceVolumeSlider = NULL;
-    ui_balanceVolumeSlider = NULL;
     ui_pnlBalanceAudioDevices = NULL;
     ui_selectAudioDevice2 = NULL;
     ui_selectAudioDevice1 = NULL;
+    ui_containerBalanceVolumeSlider = NULL;
+    ui_lblBalanceVolumeSlider = NULL;
+    ui_balanceVolumeSlider = NULL;
     ui_pnlNetwork = NULL;
     ui_wifiContainer = NULL;
     ui_lblWifi = NULL;

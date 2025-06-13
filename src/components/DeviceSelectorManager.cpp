@@ -1,5 +1,6 @@
 #include "DeviceSelectorManager.h"
 #include <algorithm>
+#include "../include/UIConstants.h"
 
 namespace UI {
 namespace Components {
@@ -15,9 +16,9 @@ bool DeviceSelectorManager::initialize(lv_obj_t* main, lv_obj_t* bal1, lv_obj_t*
     mainDropdown = main;
     balanceDropdown1 = bal1;
     balanceDropdown2 = bal2;
-    mainSelection = "";
-    balanceSelection1 = "";
-    balanceSelection2 = "";
+    mainSelection = UI_LABEL_EMPTY;
+    balanceSelection1 = UI_LABEL_EMPTY;
+    balanceSelection2 = UI_LABEL_EMPTY;
     return true;
 }
 
@@ -25,9 +26,9 @@ void DeviceSelectorManager::deinitialize() {
     mainDropdown = nullptr;
     balanceDropdown1 = nullptr;
     balanceDropdown2 = nullptr;
-    mainSelection = "";
-    balanceSelection1 = "";
-    balanceSelection2 = "";
+    mainSelection = UI_LABEL_EMPTY;
+    balanceSelection1 = UI_LABEL_EMPTY;
+    balanceSelection2 = UI_LABEL_EMPTY;
 }
 
 void DeviceSelectorManager::setMainSelection(const String& deviceName) {
