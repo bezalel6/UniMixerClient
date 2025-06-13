@@ -103,9 +103,9 @@ void audioDeviceDropdownChangedHandler(lv_event_t* e) {
     ON_EVENT_GET_WIDGET(LV_EVENT_VALUE_CHANGED, dropdown);
 
     // Check if dropdown events are suppressed to prevent infinite loops
-    if (Application::Audio::StatusManager::isSuppressingDropdownEvents()) {
-        return;
-    }
+    // if (Application::Audio::StatusManager::isSuppressingDropdownEvents()) {
+    //     return;
+    // }
 
     // Get the selected audio device name using the new method
     String selectedDevice = Application::Audio::StatusManager::getDropdownSelection(dropdown);

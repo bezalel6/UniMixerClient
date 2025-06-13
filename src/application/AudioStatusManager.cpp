@@ -512,11 +512,7 @@ void StatusManager::updateVolumeArcFromSelectedDevice(void) {
             auto level1 = getAudioLevel(selections.device1.getValue());
             auto level2 = getAudioLevel(selections.device2.getValue());
 
-            // For balance tab, show the average volume of both devices
-            int volume1 = level1 ? level1->volume : 0;
-            int volume2 = level2 ? level2->volume : 0;
-            int averageVolume = (volume1 + volume2) / 2;
-            resVolume = averageVolume;
+            resVolume = 50 + level2->volume - level1->volume;
         }
     } else {
         // For other tabs, show selected device volume
