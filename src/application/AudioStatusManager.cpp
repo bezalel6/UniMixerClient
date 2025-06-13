@@ -537,51 +537,16 @@ String StatusManager::getDropdownSelection(lv_obj_t *dropdown) {
 }
 
 void StatusManager::updateVolumeArcFromSelectedDevice(void) {
-  lv_obj_t *slider;
-  int resVolume = 0;
-
-  // Determine which slider to use based on current tab
-  switch (currentTab) {
-  case Events::UI::TabState::MASTER: {
-    slider = ui_primaryVolumeSlider;
-    break;
-  };
-  case Events::UI::TabState::SINGLE: {
-    slider = ui_singleVolumeSlider;
-    break;
-  };
-  case Events::UI::TabState::BALANCE: {
-    slider = ui_balanceVolumeSlider;
-    break;
-  };
-  default:
-    slider = nullptr;
-  }
-
+  lv_obj_t *slider = getCurrentVolumeSlider();
   if (!slider) {
+    ESP_LOGW(TAG, "No volume slider available for current tab");
     return;
   }
 
-  suppressArcEvents = true;
-
-  // Determine volume value based on current tab
-  if (currentTab == Events::UI::TabState::MASTER) {
-    if (currentAudioStatus.hasDefaultDevice) {
-      resVolume = (int)(currentAudioStatus.defaultDevice.volume * 100.0f);
-    }
-  } else if (currentTab == Events::UI::TabState::BALANCE) {
-    auto selections = deviceSelectorManager->getBalanceSelections();
-    if (selections.isValid()) {
-      auto level1 = getAudioLevel(selections.device1.getValue());
-      auto level2 = getAudioLevel(selections.device2.getValue());
-
-      if (level1 && level2) {
-        resVolume = 50 + (level1->volume - level2->volume);
-        resVolume = constrain(resVolume, 0, 100);
-      }
-    }
-  } else {
-    // For other tabs, show selected device volume
+  // Determine volume to set
+  int resVolume = 0;
+  if (resVolume < 0) {
+    // Use current selected device volume
     String selectedDevice = getSelectedDevice();
     AudioLevel *level = getAudioLevel(selectedDevice);
     if (level) {
@@ -589,31 +554,18 @@ void StatusManager::updateVolumeArcFromSelectedDevice(void) {
     }
   }
 
-  lv_arc_set_value(slider, resVolume);
-  updateVolumeArcLabel(resVolume);
+  // Use message handler for thread-safe UI updates instead of direct LVGL calls
+  Application::LVGLMessageHandler::updateVolumeLevel(resVolume);
   suppressArcEvents = false;
 }
 
 void StatusManager::updateVolumeArcLabel(int volume) {
-  lv_obj_t *label = nullptr;
-  switch (currentTab) {
-  case Events::UI::TabState::MASTER:
-    label = ui_lblPrimaryVolumeSlider;
-    break;
-  case Events::UI::TabState::SINGLE:
-    label = ui_lblSingleVolumeSlider;
-    break;
-  case Events::UI::TabState::BALANCE:
-    label = ui_lblBalanceVolumeSlider;
-    break;
-  default:
-    break;
-  }
-  if (label) {
-    char labelText[16];
-    snprintf(labelText, sizeof(labelText), "%d%%", volume);
-    lv_label_set_text(label, labelText);
-  }
+  // Remove direct LVGL calls - volume label is now updated via message handler
+  // in the LVGLMessageHandler::processMessageQueue when MSG_UPDATE_VOLUME is
+  // processed
+
+  // The volume label update is handled automatically by the message handler
+  // when updateVolumeLevel() is called, so no direct LVGL calls needed here
 }
 
 // Volume control
@@ -634,13 +586,8 @@ void StatusManager::setSelectedDeviceVolume(int volume) {
       currentAudioStatus.defaultDevice.volume = volume / 100.0f;
       ESP_LOGI(TAG, "Set default device volume to %d", volume);
 
-      // Update default device label if available
-      if (currentAudioStatus.hasDefaultDevice &&
-          ui_lblPrimaryAudioDeviceValue) {
-        lv_label_set_text(
-            ui_lblPrimaryAudioDeviceValue,
-            currentAudioStatus.defaultDevice.friendlyName.c_str());
-      }
+      // Default device label update is handled via message handler
+      // Direct LVGL calls removed for thread safety
     } else {
       ESP_LOGW(TAG, "No default device available for master volume control");
       return;

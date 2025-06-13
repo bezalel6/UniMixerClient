@@ -8,6 +8,7 @@
 #include "../hardware/OTAManager.h"
 #include "../messaging/MessageBus.h"
 #include "AudioStatusManager.h"
+#include "LVGLMessageHandler.h"
 #include "TaskManager.h"
 #include <esp_log.h>
 #include <ui/ui.h>
@@ -202,10 +203,16 @@ void setupUiComponents(void) {
                       Events::UI::audioDeviceDropdownChangedHandler,
                       LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Register volume arc event handlers for each tab
-    lv_obj_add_event_cb(ui_primaryVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_singleVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_balanceVolumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+  // Register volume arc event handlers for each tab
+  lv_obj_add_event_cb(ui_primaryVolumeSlider,
+                      Events::UI::volumeArcChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(ui_singleVolumeSlider,
+                      Events::UI::volumeArcChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(ui_balanceVolumeSlider,
+                      Events::UI::volumeArcChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
 
   // Register tab switch event handler
   ESP_LOGI(TAG,
@@ -242,12 +249,9 @@ void setupUiComponents(void) {
 
   // Setup OTA UI elements if available
 #if OTA_ENABLE_UPDATES
-  if (ui_barOTAUpdateProgress) {
-    lv_bar_set_value(ui_barOTAUpdateProgress, 0, LV_ANIM_OFF);
-  }
-  if (ui_lblOTAUpdateProgress) {
-    lv_label_set_text(ui_lblOTAUpdateProgress, "OTA Ready");
-  }
+  // Use message handler for thread-safe UI initialization
+  Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
+                                                     "OTA Ready");
 #endif
 }
 
