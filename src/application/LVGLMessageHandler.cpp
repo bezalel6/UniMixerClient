@@ -1,0 +1,244 @@
+#include "LVGLMessageHandler.h"
+#include "../display/DisplayManager.h"
+#include <esp_log.h>
+#include <ui/ui.h>
+
+static const char *TAG = "LVGLMessageHandler";
+
+namespace Application {
+namespace LVGLMessageHandler {
+
+// Queue handle
+QueueHandle_t lvglMessageQueue = NULL;
+
+// Message queue size
+#define LVGL_MESSAGE_QUEUE_SIZE 32
+
+bool init(void) {
+  ESP_LOGI(TAG, "Initializing LVGL Message Handler");
+
+  // Create message queue
+  lvglMessageQueue =
+      xQueueCreate(LVGL_MESSAGE_QUEUE_SIZE, sizeof(LVGLMessage_t));
+  if (lvglMessageQueue == NULL) {
+    ESP_LOGE(TAG, "Failed to create LVGL message queue");
+    return false;
+  }
+
+  // Create LVGL timer to process messages every 50ms (reduced frequency to
+  // avoid conflicts)
+  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 50, NULL);
+  if (msgTimer == NULL) {
+    ESP_LOGE(TAG, "Failed to create LVGL message processing timer");
+    return false;
+  }
+
+  ESP_LOGI(TAG, "LVGL Message Handler initialized successfully");
+  return true;
+}
+
+void deinit(void) {
+  if (lvglMessageQueue) {
+    vQueueDelete(lvglMessageQueue);
+    lvglMessageQueue = NULL;
+  }
+}
+
+bool sendMessage(const LVGLMessage_t *message) {
+  if (lvglMessageQueue == NULL || message == NULL) {
+    return false;
+  }
+
+  // Send message with no blocking (timeout = 0)
+  if (xQueueSend(lvglMessageQueue, message, 0) != pdTRUE) {
+    ESP_LOGW(TAG, "Message queue full, dropping message type %d",
+             message->type);
+    return false;
+  }
+
+  return true;
+}
+
+void processMessageQueue(lv_timer_t *timer) {
+  // CRITICAL: Don't process UI updates during rendering to prevent corruption
+  lv_disp_t *disp = lv_disp_get_default();
+  if (disp && disp->rendering_in_progress) {
+    ESP_LOGD(TAG, "Skipping message processing - rendering in progress");
+    return;
+  }
+
+  LVGLMessage_t message;
+
+  // Process all available messages in the queue
+  while (xQueueReceive(lvglMessageQueue, &message, 0) == pdTRUE) {
+
+    switch (message.type) {
+    case MSG_UPDATE_WIFI_STATUS:
+      // Update WiFi status indicators
+      if (ui_lblWifiStatus) {
+        lv_label_set_text(ui_lblWifiStatus, message.data.wifi_status.status);
+      }
+      if (ui_objWifiIndicator) {
+        if (message.data.wifi_status.connected) {
+          lv_obj_set_style_bg_color(ui_objWifiIndicator, lv_color_hex(0x00FF00),
+                                    LV_PART_MAIN);
+        } else {
+          lv_obj_set_style_bg_color(ui_objWifiIndicator, lv_color_hex(0xFF0000),
+                                    LV_PART_MAIN);
+        }
+      }
+      break;
+
+    case MSG_UPDATE_NETWORK_INFO:
+      // Update network information
+      if (ui_lblSSIDValue) {
+        lv_label_set_text(ui_lblSSIDValue, message.data.network_info.ssid);
+      }
+      if (ui_lblIPValue) {
+        lv_label_set_text(ui_lblIPValue, message.data.network_info.ip);
+      }
+      break;
+
+    case MSG_UPDATE_OTA_PROGRESS:
+      // Update OTA progress
+      if (message.data.ota_progress.in_progress) {
+        // Switch to OTA screen if not already there
+        if (lv_scr_act() != ui_screenOTA) {
+          _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0,
+                            ui_screenOTA_screen_init);
+        }
+
+        // Update progress bar
+        if (ui_barOTAUpdateProgress) {
+          lv_bar_set_value(ui_barOTAUpdateProgress,
+                           message.data.ota_progress.progress, LV_ANIM_ON);
+        }
+
+        // Update status label
+        if (ui_lblOTAUpdateProgress) {
+          lv_label_set_text(ui_lblOTAUpdateProgress,
+                            message.data.ota_progress.message);
+        }
+
+        ESP_LOGI(TAG, "OTA Progress: %d%% - %s",
+                 message.data.ota_progress.progress,
+                 message.data.ota_progress.message);
+      } else {
+        // OTA finished - update final status
+        if (ui_lblOTAUpdateProgress) {
+          lv_label_set_text(ui_lblOTAUpdateProgress,
+                            message.data.ota_progress.message);
+        }
+        if (ui_barOTAUpdateProgress) {
+          lv_bar_set_value(ui_barOTAUpdateProgress,
+                           message.data.ota_progress.success ? 100 : 0,
+                           LV_ANIM_OFF);
+        }
+      }
+      break;
+
+    case MSG_UPDATE_FPS_DISPLAY:
+      // Update FPS display
+      if (ui_lblFPS) {
+        char fpsText[32];
+        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f",
+                 message.data.fps_display.fps);
+        lv_label_set_text(ui_lblFPS, fpsText);
+      }
+      break;
+
+    case MSG_UPDATE_VOLUME:
+      // Update volume slider
+      if (ui_volumeSlider) {
+        lv_slider_set_value(ui_volumeSlider, message.data.volume_update.volume,
+                            LV_ANIM_ON);
+      }
+      break;
+
+    case MSG_SCREEN_CHANGE:
+      // Change screen
+      if (message.data.screen_change.screen) {
+        lv_screen_load_anim_t anim = static_cast<lv_screen_load_anim_t>(
+            message.data.screen_change.anim_type);
+        _ui_screen_change((lv_obj_t **)&message.data.screen_change.screen, anim,
+                          message.data.screen_change.time,
+                          message.data.screen_change.delay, NULL);
+      }
+      break;
+
+    case MSG_REQUEST_DATA:
+      // Handle data request - could trigger other system actions
+      ESP_LOGI(TAG, "Data request triggered from UI");
+      break;
+
+    default:
+      ESP_LOGW(TAG, "Unknown message type: %d", message.type);
+      break;
+    }
+  }
+}
+
+// Helper functions
+bool updateWifiStatus(const char *status, bool connected) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_WIFI_STATUS;
+  message.data.wifi_status.status = status;
+  message.data.wifi_status.connected = connected;
+  return sendMessage(&message);
+}
+
+bool updateNetworkInfo(const char *ssid, const char *ip) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_NETWORK_INFO;
+  message.data.network_info.ssid = ssid;
+  message.data.network_info.ip = ip;
+  return sendMessage(&message);
+}
+
+bool updateOTAProgress(uint8_t progress, bool in_progress, bool success,
+                       const char *msg) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_OTA_PROGRESS;
+  message.data.ota_progress.progress = progress;
+  message.data.ota_progress.in_progress = in_progress;
+  message.data.ota_progress.success = success;
+
+  // Safely copy message string
+  if (msg) {
+    strncpy(message.data.ota_progress.message, msg,
+            sizeof(message.data.ota_progress.message) - 1);
+    message.data.ota_progress
+        .message[sizeof(message.data.ota_progress.message) - 1] = '\0';
+  } else {
+    message.data.ota_progress.message[0] = '\0';
+  }
+
+  return sendMessage(&message);
+}
+
+bool updateFpsDisplay(float fps) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_FPS_DISPLAY;
+  message.data.fps_display.fps = fps;
+  return sendMessage(&message);
+}
+
+bool updateVolumeLevel(int volume) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_VOLUME;
+  message.data.volume_update.volume = volume;
+  return sendMessage(&message);
+}
+
+bool changeScreen(void *screen, int anim_type, int time, int delay) {
+  LVGLMessage_t message;
+  message.type = MSG_SCREEN_CHANGE;
+  message.data.screen_change.screen = screen;
+  message.data.screen_change.anim_type = anim_type;
+  message.data.screen_change.time = time;
+  message.data.screen_change.delay = delay;
+  return sendMessage(&message);
+}
+
+} // namespace LVGLMessageHandler
+} // namespace Application
