@@ -517,23 +517,14 @@ void StatusManager::updateVolumeArcFromSelectedDevice(void) {
             int volume2 = level2 ? level2->volume : 0;
             int averageVolume = (volume1 + volume2) / 2;
             resVolume = averageVolume;
-
-        } else {
         }
     } else {
         // For other tabs, show selected device volume
         String selectedDevice = getSelectedDevice();
-        // if (selectedDevice.isEmpty()) {
-        //     lv_arc_set_value(slider, 0);
-        //     updateVolumeArcLabel(0);
-        // } else {
-        // Find audio level for selected device
         AudioLevel* level = getAudioLevel(selectedDevice);
         if (level) {
             resVolume = level->volume;
-        } else {
         }
-        // }
     }
     lv_arc_set_value(slider, resVolume);
     updateVolumeArcLabel(resVolume);
