@@ -361,13 +361,13 @@ void audioTask(void *parameter) {
       lastFpsUpdate = currentTime;
     }
 
-    // TEMPORARILY DISABLE audio status updates to isolate issues
-    // static unsigned long lastAudioUpdate = 0;
-    // if (currentTime - lastAudioUpdate >= 2000) { // Every 2 seconds only
-    //   ESP_LOGD(TAG, "Audio task: Processing audio status");
-    //   Application::Audio::StatusManager::onAudioLevelsChangedUI();
-    //   lastAudioUpdate = currentTime;
-    // }
+    // Re-enable audio status updates
+    static unsigned long lastAudioUpdate = 0;
+    if (currentTime - lastAudioUpdate >= 2000) { // Every 2 seconds only
+      ESP_LOGD(TAG, "Audio task: Processing audio status");
+      Application::Audio::StatusManager::onAudioLevelsChangedUI();
+      lastAudioUpdate = currentTime;
+    }
 
     // Sleep until next update with much longer interval
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(AUDIO_UPDATE_INTERVAL));

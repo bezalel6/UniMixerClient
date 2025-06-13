@@ -1,15 +1,16 @@
 #ifndef AUDIO_STATUS_MANAGER_H
 #define AUDIO_STATUS_MANAGER_H
 
-#include <Arduino.h>
-#include <vector>
-#include <memory>
-#include <lvgl.h>
-#include "../messaging/MessageBus.h"
 #include "../../include/MessageProtocol.h"
-#include "../events/UiEventHandlers.h"
 #include "../components/DeviceSelectorManager.h"
+#include "../events/UiEventHandlers.h"
+#include "../messaging/MessageBus.h"
 #include "AudioTypes.h"
+#include <Arduino.h>
+#include <lvgl.h>
+#include <memory>
+#include <vector>
+
 
 namespace Application {
 namespace Audio {
@@ -31,23 +32,24 @@ public:
   static AudioLevel *getAudioLevel(const String &processName);
   static AudioStatus getCurrentAudioStatus(void);
 
-    // UI Updates
-    static void onAudioLevelsChangedUI(void);
-    static void updateVolumeArcFromSelectedDevice(void);
-    static void updateVolumeArcLabel(int volume);
+  // UI Updates
+  static void onAudioLevelsChangedUI(void);
+  static void updateVolumeArcFromSelectedDevice(void);
+  static void updateVolumeArcLabel(int volume);
 
-    // Device selection management
-    static void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
-    static String getDropdownSelection(lv_obj_t* dropdown);
-    static String getSelectedDevice(void);  // For backward compatibility
+  // Device selection management
+  static void setDropdownSelection(lv_obj_t *dropdown,
+                                   const String &deviceName);
+  static String getDropdownSelection(lv_obj_t *dropdown);
+  static String getSelectedDevice(void); // For backward compatibility
 
-    // Volume control
-    static void setSelectedDeviceVolume(int volume);
-    static void muteSelectedDevice(void);
-    static void unmuteSelectedDevice(void);
-    static void publishStatusUpdate(void);
-    static bool isSuppressingArcEvents(void);
-    static bool isSuppressingDropdownEvents(void);
+  // Volume control
+  static void setSelectedDeviceVolume(int volume);
+  static void muteSelectedDevice(void);
+  static void unmuteSelectedDevice(void);
+  static void publishStatusUpdate(void);
+  static bool isSuppressingArcEvents(void);
+  static bool isSuppressingDropdownEvents(void);
 
   // Tab state management
   static Events::UI::TabState getCurrentTab(void);
@@ -77,13 +79,14 @@ private:
   static unsigned long lastUpdateTime;
   static bool initialized;
 
-    // UI state
-    static bool suppressArcEvents;
-    static bool suppressDropdownEvents;
-    static Events::UI::TabState currentTab;
+  // UI state
+  static bool suppressArcEvents;
+  static bool suppressDropdownEvents;
+  static Events::UI::TabState currentTab;
 
-    // Device selector management
-    static std::unique_ptr<UI::Components::DeviceSelectorManager> deviceSelectorManager;
+  // Device selector management
+  static std::unique_ptr<UI::Components::DeviceSelectorManager>
+      deviceSelectorManager;
 };
 
 } // namespace Audio
