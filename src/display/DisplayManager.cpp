@@ -1,8 +1,10 @@
 #include "DisplayManager.h"
 #include "../application/TaskManager.h"
-#include <cinttypes>
 #include "../include/UIConstants.h"
-static const char* TAG = "DisplayManager";
+#include <cinttypes>
+#include <ui/ui.h>
+
+static const char *TAG = "DisplayManager";
 
 namespace Display {
 
@@ -200,29 +202,31 @@ void updateConnectionStatus(lv_obj_t *statusLabel, lv_obj_t *indicatorObj,
     lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
 
-        // Clear text and style as round background indicator
-        lv_label_set_text(indicatorObj, UI_LABEL_EMPTY);
-        lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
+    // Clear text and style as round background indicator
+    lv_label_set_text(indicatorObj, UI_LABEL_EMPTY);
+    lv_obj_set_style_radius(indicatorObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(indicatorObj, LV_OPA_80, LV_PART_MAIN);
 
-        // Set color based on connection status
-        switch (status) {
-            case CONNECTION_STATUS_CONNECTED:
-                // Green background for connected
-                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00), LV_PART_MAIN);
-                break;
-            case CONNECTION_STATUS_CONNECTING:
-                // Yellow background for connecting
-                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00), LV_PART_MAIN);
-                break;
-            case CONNECTION_STATUS_FAILED:
-            case CONNECTION_STATUS_ERROR:
-            case CONNECTION_STATUS_DISCONNECTED:
-            default:
-                // Red background for disconnected/failed/error
-                lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000), LV_PART_MAIN);
-                break;
-        }
+    // Set color based on connection status
+    switch (status) {
+    case CONNECTION_STATUS_CONNECTED:
+      // Green background for connected
+      lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0x00FF00),
+                                LV_PART_MAIN);
+      break;
+    case CONNECTION_STATUS_CONNECTING:
+      // Yellow background for connecting
+      lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFFFF00),
+                                LV_PART_MAIN);
+      break;
+    case CONNECTION_STATUS_FAILED:
+    case CONNECTION_STATUS_ERROR:
+    case CONNECTION_STATUS_DISCONNECTED:
+    default:
+      // Red background for disconnected/failed/error
+      lv_obj_set_style_bg_color(indicatorObj, lv_color_hex(0xFF0000),
+                                LV_PART_MAIN);
+      break;
     }
   }
 }
@@ -303,34 +307,34 @@ void resetRenderStats(void) {
 }
 
 // Helper functions for consistent label initialization
-void initializeLabelEmpty(lv_obj_t* label) {
-    if (label) {
-        lv_label_set_text(label, UI_LABEL_EMPTY);
-    }
+void initializeLabelEmpty(lv_obj_t *label) {
+  if (label) {
+    lv_label_set_text(label, UI_LABEL_EMPTY);
+  }
 }
 
-void initializeLabelDash(lv_obj_t* label) {
-    if (label) {
-        lv_label_set_text(label, "-");
-    }
+void initializeLabelDash(lv_obj_t *label) {
+  if (label) {
+    lv_label_set_text(label, "-");
+  }
 }
 
-void initializeLabelSpace(lv_obj_t* label) {
-    if (label) {
-        lv_label_set_text(label, UI_LABEL_SPACE);
-    }
+void initializeLabelSpace(lv_obj_t *label) {
+  if (label) {
+    lv_label_set_text(label, UI_LABEL_SPACE);
+  }
 }
 
-void initializeLabelUnknown(lv_obj_t* label) {
-    if (label) {
-        lv_label_set_text(label, UI_LABEL_UNKNOWN);
-    }
+void initializeLabelUnknown(lv_obj_t *label) {
+  if (label) {
+    lv_label_set_text(label, UI_LABEL_UNKNOWN);
+  }
 }
 
-void initializeLabelNone(lv_obj_t* label) {
-    if (label) {
-        lv_label_set_text(label, UI_LABEL_NONE);
-    }
+void initializeLabelNone(lv_obj_t *label) {
+  if (label) {
+    lv_label_set_text(label, UI_LABEL_NONE);
+  }
 }
 
-}  // namespace Display
+} // namespace Display

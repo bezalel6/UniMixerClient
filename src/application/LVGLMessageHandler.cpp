@@ -148,10 +148,18 @@ void processMessageQueue(lv_timer_t *timer) {
       break;
 
     case MSG_UPDATE_VOLUME:
-      // Update volume slider
-      if (ui_volumeSlider) {
-        lv_slider_set_value(ui_volumeSlider, message.data.volume_update.volume,
-                            LV_ANIM_ON);
+      // Update all volume sliders (since we don't know which tab is active)
+      if (ui_primaryVolumeSlider) {
+        lv_arc_set_value(ui_primaryVolumeSlider,
+                         message.data.volume_update.volume);
+      }
+      if (ui_singleVolumeSlider) {
+        lv_arc_set_value(ui_singleVolumeSlider,
+                         message.data.volume_update.volume);
+      }
+      if (ui_balanceVolumeSlider) {
+        lv_arc_set_value(ui_balanceVolumeSlider,
+                         message.data.volume_update.volume);
       }
       break;
 
