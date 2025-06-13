@@ -2,6 +2,8 @@
 #include "../hardware/DeviceManager.h"
 #include "../include/UIConstants.h"
 #include "DebugUtils.h"
+#include "LVGLMessageHandler.h"
+#include "ui/screens/ui_screenMain.h"
 #include <ArduinoJson.h>
 #include <esp_log.h>
 #include <memory>
@@ -534,6 +536,19 @@ String StatusManager::getDropdownSelection(lv_obj_t *dropdown) {
   }
 
   return "";
+}
+lv_obj_t *StatusManager::getCurrentVolumeSlider(void) {
+  switch (currentTab) {
+  case Events::UI::TabState::MASTER:
+    return ui_primaryVolumeSlider;
+  case Events::UI::TabState::SINGLE:
+    return ui_singleVolumeSlider;
+  case Events::UI::TabState::BALANCE:
+    return ui_balanceVolumeSlider;
+  default:
+    ESP_LOGW(TAG, "Unknown tab state for volume slider");
+    return nullptr;
+  }
 }
 
 void StatusManager::updateVolumeArcFromSelectedDevice(void) {

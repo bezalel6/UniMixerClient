@@ -11,7 +11,6 @@
 #include <memory>
 #include <vector>
 
-
 namespace Application {
 namespace Audio {
 
@@ -50,6 +49,8 @@ public:
   static void publishStatusUpdate(void);
   static bool isSuppressingArcEvents(void);
   static bool isSuppressingDropdownEvents(void);
+
+  static lv_obj_t *getCurrentVolumeSlider(void);
 
   // Tab state management
   static Events::UI::TabState getCurrentTab(void);
