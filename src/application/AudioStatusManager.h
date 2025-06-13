@@ -1,12 +1,11 @@
 #ifndef AUDIO_STATUS_MANAGER_H
 #define AUDIO_STATUS_MANAGER_H
 
-#include <Arduino.h>
-#include <vector>
-#include <lvgl.h>
-#include "../messaging/MessageBus.h"
-#include "../../include/MessageProtocol.h"
 #include "../events/UiEventHandlers.h"
+#include "../messaging/MessageBus.h"
+#include <Arduino.h>
+#include <lvgl.h>
+#include <vector>
 
 namespace Application {
 namespace Audio {
@@ -17,116 +16,121 @@ struct AudioStatus;
 
 // Centralized dropdown selection management
 class SelectionManager {
-   public:
-    static void setSelection(lv_obj_t* dropdown, const String& deviceName);
-    static String getSelection(lv_obj_t* dropdown);
-    static String getMainSelection();  // For volume control and backward compatibility
+public:
+  static void setSelection(lv_obj_t *dropdown, const String &deviceName);
+  static String getSelection(lv_obj_t *dropdown);
+  static String
+  getMainSelection(); // For volume control and backward compatibility
 
-    static void clearAll();
-    static bool isAvailableFor(const String& deviceName, lv_obj_t* dropdown);
+  static void clearAll();
+  static bool isAvailableFor(const String &deviceName, lv_obj_t *dropdown);
 
-    static void refreshDropdown(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
-    static void refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels);
+  static void refreshDropdown(lv_obj_t *dropdown,
+                              const std::vector<AudioLevel> &audioLevels);
+  static void refreshAllDropdowns(const std::vector<AudioLevel> &audioLevels);
 
-   private:
-    static String mainDevice;    // ui_selectAudioDevice
-    static String balanceLeft;   // ui_selectAudioDevice1
-    static String balanceRight;  // ui_selectAudioDevice2
+private:
+  static String mainDevice;   // ui_selectAudioDevice
+  static String balanceLeft;  // ui_selectAudioDevice1
+  static String balanceRight; // ui_selectAudioDevice2
 
-    static void updateDropdownOptions(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
-    static void updateDropdownSelection(lv_obj_t* dropdown);
-    static lv_obj_t* getDropdownFromDevice(const String& deviceName);
+  static void updateDropdownOptions(lv_obj_t *dropdown,
+                                    const std::vector<AudioLevel> &audioLevels);
+  static void updateDropdownSelection(lv_obj_t *dropdown);
+  static lv_obj_t *getDropdownFromDevice(const String &deviceName);
 };
 
 // Structure to hold audio level data
 struct AudioLevel {
-    String processName;
-    int volume;
-    bool isMuted = false;
-    unsigned long lastUpdate;
-    bool stale = false;
+  String processName;
+  int volume;
+  bool isMuted = false;
+  unsigned long lastUpdate;
+  bool stale = false;
 };
 
 struct AudioDevice {
-    String friendlyName;
-    float volume;
-    bool isMuted;
-    String state;
+  String friendlyName;
+  float volume;
+  bool isMuted;
+  String state;
 };
 
 // Structure to hold complete audio status
 struct AudioStatus {
-    std::vector<AudioLevel> audioLevels;
-    AudioDevice defaultDevice;
-    unsigned long timestamp;
-    bool hasDefaultDevice = false;
+  std::vector<AudioLevel> audioLevels;
+  AudioDevice defaultDevice;
+  unsigned long timestamp;
+  bool hasDefaultDevice = false;
 };
 
 // Audio Status Manager class
 class StatusManager {
-   public:
-    // Initialization and cleanup
-    static bool init(void);
-    static void deinit(void);
+public:
+  // Initialization and cleanup
+  static bool init(void);
+  static void deinit(void);
 
-    // Audio level management
-    static void updateAudioLevel(const String& processName, int volume);
-    static std::vector<AudioLevel> getAllAudioLevels(void);
-    static AudioLevel* getAudioLevel(const String& processName);
-    static AudioStatus getCurrentAudioStatus(void);
+  // Audio level management
+  static void updateAudioLevel(const String &processName, int volume);
+  static std::vector<AudioLevel> getAllAudioLevels(void);
+  static AudioLevel *getAudioLevel(const String &processName);
+  static AudioStatus getCurrentAudioStatus(void);
 
-    // UI Updates
-    static void onAudioLevelsChangedUI(void);
-    static String buildAudioDeviceOptionsString(void);
-    static String getSelectedAudioDevice(lv_obj_t* dropdown);
+  // UI Updates
+  static void onAudioLevelsChangedUI(void);
+  static String buildAudioDeviceOptionsString(void);
+  static String getSelectedAudioDevice(lv_obj_t *dropdown);
 
-    // Device selection management
-    static void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
-    static String getDropdownSelection(lv_obj_t* dropdown);
-    static String getSelectedDevice(void);  // For backward compatibility
-    static void updateVolumeArcFromSelectedDevice(void);
-    static void updateVolumeArcLabel(int volume);
+  // Device selection management
+  static void setDropdownSelection(lv_obj_t *dropdown,
+                                   const String &deviceName);
+  static String getDropdownSelection(lv_obj_t *dropdown);
+  static String getSelectedDevice(void); // For backward compatibility
+  static void updateVolumeArcFromSelectedDevice(void);
+  static void updateVolumeArcLabel(int volume);
 
-    // Volume control
-    static void setSelectedDeviceVolume(int volume);
-    static void muteSelectedDevice(void);
-    static void unmuteSelectedDevice(void);
-    static void publishStatusUpdate(void);
-    static bool isSuppressingArcEvents(void);
+  // Volume control
+  static void setSelectedDeviceVolume(int volume);
+  static void muteSelectedDevice(void);
+  static void unmuteSelectedDevice(void);
+  static void publishStatusUpdate(void);
+  static bool isSuppressingArcEvents(void);
 
-    // Tab state management
-    static Events::UI::TabState getCurrentTab(void);
-    static void setCurrentTab(Events::UI::TabState tab);
-    static const char* getTabName(Events::UI::TabState tab);
+  // Tab state management
+  static Events::UI::TabState getCurrentTab(void);
+  static void setCurrentTab(Events::UI::TabState tab);
+  static const char *getTabName(Events::UI::TabState tab);
 
-    // Status callback
-    static void onAudioStatusReceived(const AudioStatus& status);
+  // Status callback
+  static void onAudioStatusReceived(const AudioStatus &status);
 
-    // Command publishing methods
-    static void publishAudioStatusRequest(bool delayed = false);
+  // Command publishing methods
+  static void publishAudioStatusRequest(bool delayed = false);
 
-   private:
-    // Helper functions
-    static int getProcessIdForDevice(const String& deviceName);
-    static void initializeBalanceDropdownSelections(void);
+private:
+  // Helper functions
+  static int getProcessIdForDevice(const String &deviceName);
+  static void initializeBalanceDropdownSelections(void);
 
-    // Message handler management
-    static void initializeMessageHandlers(void);
-    static void audioStatusMessageHandler(const char* messageType, const char* payload);
-    static AudioStatus parseAudioStatusJson(const char* jsonPayload);
+  // Message handler management
+  static void initializeMessageHandlers(void);
+  static void audioStatusMessageHandler(const char *messageType,
+                                        const char *payload);
+  static AudioStatus parseAudioStatusJson(const char *jsonPayload);
 
-    // Internal state
-    static AudioStatus currentAudioStatus;
-    static Messaging::Handler audioStatusHandler;
-    static unsigned long lastUpdateTime;
-    static bool initialized;
+  // Internal state
+  static AudioStatus currentAudioStatus;
+  static Messaging::Handler audioStatusHandler;
+  static unsigned long lastUpdateTime;
+  static bool initialized;
 
-    // UI state
-    static bool suppressArcEvents;
-    static Events::UI::TabState currentTab;
+  // UI state
+  static bool suppressArcEvents;
+  static Events::UI::TabState currentTab;
 };
 
-}  // namespace Audio
-}  // namespace Application
+} // namespace Audio
+} // namespace Application
 
-#endif  // AUDIO_STATUS_MANAGER_H
+#endif // AUDIO_STATUS_MANAGER_H

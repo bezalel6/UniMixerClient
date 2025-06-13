@@ -1,279 +1,253 @@
 #include "AppController.h"
-#include "AudioStatusManager.h"
+#include "../../include/MessagingConfig.h"
+#include "../../include/OTAConfig.h"
 #include "../display/DisplayManager.h"
+#include "../events/UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
 #include "../messaging/MessageBus.h"
-#include "../events/UiEventHandlers.h"
-#include "../../include/MessagingConfig.h"
-#include "../../include/OTAConfig.h"
-#include <ui/ui.h>
+#include "AudioStatusManager.h"
+#include "TaskManager.h"
 #include <esp_log.h>
+#include <ui/ui.h>
 
 // Private variables
-static const char* TAG = "AppController";
-static unsigned long lastNetworkUpdate = 0;
-static unsigned long lastMessageBusUpdate = 0;
-static unsigned long lastDisplayUpdate = 0;
-static unsigned long lastOTAUpdate = 0;
-
-// Update intervals (in milliseconds)
-#define NETWORK_UPDATE_INTERVAL 1000
-#define MESSAGE_BUS_UPDATE_INTERVAL 10
-#define DISPLAY_UPDATE_INTERVAL 200
-#define OTA_UPDATE_INTERVAL 5000
+static const char *TAG = "AppController";
 
 namespace Application {
 
-// Private helper function declarations
-static void updateNetworkStatus(void);
-static void updateDisplayElements(void);
-static void updateOTA(void);
-
 bool init(void) {
-    ESP_LOGI(TAG, "Initializing Application Controller (single-threaded)");
+  ESP_LOGI(TAG,
+           "Initializing Application Controller (Multi-threaded ESP32-S3)");
 
-    // Initialize hardware/device manager
-    if (!Hardware::Device::init()) {
-        ESP_LOGE(TAG, "Failed to initialize device manager");
-        return false;
-    }
+  // Initialize hardware/device manager
+  if (!Hardware::Device::init()) {
+    ESP_LOGE(TAG, "Failed to initialize device manager");
+    return false;
+  }
 
-    // Initialize display manager
-    if (!Display::init()) {
-        ESP_LOGE(TAG, "Failed to initialize display manager");
-        return false;
-    }
+  // Initialize display manager
+  if (!Display::init()) {
+    ESP_LOGE(TAG, "Failed to initialize display manager");
+    return false;
+  }
 
-    // Initialize messaging system
-    if (!Messaging::MessageBus::Init()) {
-        ESP_LOGE(TAG, "Failed to initialize messaging system");
-        return false;
-    }
+  // Initialize messaging system
+  if (!Messaging::MessageBus::Init()) {
+    ESP_LOGE(TAG, "Failed to initialize messaging system");
+    return false;
+  }
 
-    // Determine if network manager is needed (for MQTT or OTA)
-    bool networkNeeded = false;
+  // Determine if network manager is needed (for MQTT or OTA)
+  bool networkNeeded = false;
 
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-    networkNeeded = true;  // MQTT transport modes need network
+  networkNeeded = true; // MQTT transport modes need network
 #endif
 
 #if OTA_ENABLE_UPDATES
-    networkNeeded = true;  // OTA always needs network
+  networkNeeded = true; // OTA always needs network
 #endif
 
-    // Initialize network manager if needed
-    if (networkNeeded) {
-        ESP_LOGI(TAG, "Network required for MQTT/OTA - initializing network manager");
-        if (!Hardware::Network::init()) {
-            ESP_LOGE(TAG, "Failed to initialize network manager");
-            return false;
-        }
-
-        // Enable auto-reconnect (WiFi connection will be started automatically by NetworkManager)
-        Hardware::Network::enableAutoReconnect(true);
+  // Initialize network manager if needed
+  if (networkNeeded) {
+    ESP_LOGI(TAG,
+             "Network required for MQTT/OTA - initializing network manager");
+    if (!Hardware::Network::init()) {
+      ESP_LOGE(TAG, "Failed to initialize network manager");
+      return false;
     }
 
-    // Configure transport based on MessagingConfig.h settings
+    // Enable auto-reconnect (WiFi connection will be started automatically by
+    // NetworkManager)
+    Hardware::Network::enableAutoReconnect(true);
+  }
+
+  // Configure transport based on MessagingConfig.h settings
 #if MESSAGING_DEFAULT_TRANSPORT == 0
-    // MQTT only
+  // MQTT only
 #if MESSAGING_ENABLE_MQTT_TRANSPORT
-    ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
-    Messaging::MessageBus::EnableMqttTransport();
+  ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
+  Messaging::MessageBus::EnableMqttTransport();
 #else
-    ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
-    return false;
+  ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
+  return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 1
-    // Serial only - no additional network configuration needed
+  // Serial only - no additional network configuration needed
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
-    Messaging::MessageBus::EnableSerialTransport();
+  ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
+  Messaging::MessageBus::EnableSerialTransport();
 #else
-    ESP_LOGE(TAG, "Serial transport requested but disabled in config");
-    return false;
+  ESP_LOGE(TAG, "Serial transport requested but disabled in config");
+  return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 2
-    // Both transports
+  // Both transports
 #if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
-    Messaging::MessageBus::EnableBothTransports();
+  ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
+  Messaging::MessageBus::EnableBothTransports();
 #else
-    ESP_LOGE(TAG, "Dual transport requested but one or both transports disabled in config");
-    return false;
+  ESP_LOGE(
+      TAG,
+      "Dual transport requested but one or both transports disabled in config");
+  return false;
 #endif
 #else
-    ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d", MESSAGING_DEFAULT_TRANSPORT);
-    return false;
+  ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d",
+           MESSAGING_DEFAULT_TRANSPORT);
+  return false;
 #endif
 
-    // Initialize audio status manager (requires MessageBus to be initialized)
-    if (!Application::Audio::StatusManager::init()) {
-        ESP_LOGE(TAG, "Failed to initialize audio status manager");
-        return false;
-    }
+  // Initialize audio status manager (requires MessageBus to be initialized)
+  if (!Application::Audio::StatusManager::init()) {
+    ESP_LOGE(TAG, "Failed to initialize audio status manager");
+    return false;
+  }
 
-    // Send initial status request to get current audio information
-    ESP_LOGI(TAG, "Sending initial status request");
-    Application::Audio::StatusManager::publishAudioStatusRequest();
+#if OTA_ENABLE_UPDATES
+  // Initialize standard OTA
+  if (!Hardware::OTA::init()) {
+    ESP_LOGE(TAG, "Failed to initialize OTA manager");
+    return false;
+  }
+  ESP_LOGI(TAG, "OTA manager initialized successfully");
+#endif
 
-    // Setup UI components
-    setupUiComponents();
+  // Setup UI components
+  setupUiComponents();
 
-    ESP_LOGI(TAG, "Application Controller initialized successfully (single-threaded)");
-    return true;
+  // Initialize the multi-threaded task manager (includes LVGL Message Handler)
+  if (!TaskManager::init()) {
+    ESP_LOGE(TAG, "Failed to initialize task manager");
+    return false;
+  }
+
+  // Send initial status request to get current audio information
+  ESP_LOGI(TAG, "Sending initial status request");
+  Application::Audio::StatusManager::publishAudioStatusRequest();
+
+  ESP_LOGI(TAG, "Application Controller initialized successfully "
+                "(Multi-threaded ESP32-S3)");
+  return true;
 }
 
 void deinit(void) {
-    ESP_LOGI(TAG, "Deinitializing Application Controller");
+  ESP_LOGI(TAG, "Deinitializing Application Controller");
 
-    Application::Audio::StatusManager::deinit();
+  // Deinitialize task manager first (this stops all tasks)
+  TaskManager::deinit();
 
-    // Deinitialize messaging system
-    Messaging::MessageBus::Deinit();
+  Application::Audio::StatusManager::deinit();
 
-    // Deinitialize network manager if it was initialized
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
-    Hardware::Network::deinit();
+#if OTA_ENABLE_UPDATES
+  Hardware::OTA::deinit();
 #endif
 
-    Display::deinit();
-    Hardware::Device::deinit();
+  // Deinitialize messaging system
+  Messaging::MessageBus::Deinit();
+
+  // Deinitialize network manager if it was initialized
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 ||    \
+    OTA_ENABLE_UPDATES
+  Hardware::Network::deinit();
+#endif
+
+  Display::deinit();
+  Hardware::Device::deinit();
 }
 
 void run(void) {
-    unsigned long currentTime = millis();
+  // In the new multithreaded architecture, the main loop is much simpler
+  // All heavy processing is handled by dedicated tasks
 
-    // Update LVGL tick system
-    Display::tickUpdate();
+  // Longer delay to reduce main loop overhead - tasks handle everything
+  vTaskDelay(pdMS_TO_TICKS(100));
 
-    // Handle LVGL tasks and rendering
-    lv_timer_handler();
+  // Optional: Print task statistics periodically for debugging
+  static unsigned long lastStatsTime = 0;
+  unsigned long currentTime = millis();
+  if (currentTime - lastStatsTime >=
+      60000) { // Every 60 seconds (less frequent)
+    TaskManager::printTaskStats();
 
-    // Update message bus (high frequency for responsiveness)
-    if (currentTime - lastMessageBusUpdate >= MESSAGE_BUS_UPDATE_INTERVAL) {
-        Messaging::MessageBus::Update();
-        lastMessageBusUpdate = currentTime;
-    }
+    // Print stack usage for monitoring
+    ESP_LOGI(TAG, "LVGL Task Stack High Water Mark: %d bytes",
+             TaskManager::getLvglTaskHighWaterMark() * sizeof(StackType_t));
+    ESP_LOGI(TAG, "Network Task Stack High Water Mark: %d bytes",
+             TaskManager::getNetworkTaskHighWaterMark() * sizeof(StackType_t));
 
-    // Update network status (lower frequency)
-    if (currentTime - lastNetworkUpdate >= NETWORK_UPDATE_INTERVAL) {
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
-        Hardware::Network::update();
-        updateNetworkStatus();
-#endif
-        lastNetworkUpdate = currentTime;
-    }
-
-    // Update display elements (medium frequency)
-    if (currentTime - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
-        updateDisplayElements();
-        lastDisplayUpdate = currentTime;
-    }
-
-    // Update OTA (very low frequency)
-    if (currentTime - lastOTAUpdate >= OTA_UPDATE_INTERVAL) {
-#if OTA_ENABLE_UPDATES
-        updateOTA();
-#endif
-        lastOTAUpdate = currentTime;
-    }
-
-#ifdef BOARD_HAS_RGB_LED
-    // Update LED colors
-    Hardware::Device::ledCycleColors();
-#endif
-
-    // Count frames for FPS calculation (only when we actually render)
-    static unsigned long lastFrameTime = 0;
-    if (currentTime - lastFrameTime >= 16) {  // ~60 FPS max
-        Display::update();                    // Count this as a frame
-        lastFrameTime = currentTime;
-    }
-
-    // No delay needed - LVGL handles its own timing
+    lastStatsTime = currentTime;
+  }
 }
 
 void setupUiComponents(void) {
-    // Set display to 180 degrees rotation
-    Display::setRotation(Display::ROTATION_0);
+  // Set display to 180 degrees rotation
+  Display::setRotation(Display::ROTATION_0);
 
-    // Register button click event handler
-    lv_obj_add_event_cb(ui_btnRequestData, Events::UI::btnRequestDataClickedHandler, LV_EVENT_CLICKED, NULL);
+  // Register button click event handler
+  lv_obj_add_event_cb(ui_btnRequestData,
+                      Events::UI::btnRequestDataClickedHandler,
+                      LV_EVENT_CLICKED, NULL);
 
-    // Register audio device dropdown event handlers
-    lv_obj_add_event_cb(ui_selectAudioDevice, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_selectAudioDevice1, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_selectAudioDevice2, Events::UI::audioDeviceDropdownChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+  // Register audio device dropdown event handlers
+  lv_obj_add_event_cb(ui_selectAudioDevice,
+                      Events::UI::audioDeviceDropdownChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(ui_selectAudioDevice1,
+                      Events::UI::audioDeviceDropdownChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(ui_selectAudioDevice2,
+                      Events::UI::audioDeviceDropdownChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Register volume arc event handler
-    lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler, LV_EVENT_VALUE_CHANGED, NULL);
+  // Register volume arc event handler
+  lv_obj_add_event_cb(ui_volumeSlider, Events::UI::volumeArcChangedHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Register tab switch event handler
-    ESP_LOGI(TAG, "Registering tab switch event handler for ui_tabsModeSwitch: %p", ui_tabsModeSwitch);
-    lv_obj_add_event_cb(ui_tabsModeSwitch, Events::UI::tabSwitchHandler, LV_EVENT_VALUE_CHANGED, NULL);
+  // Register tab switch event handler
+  ESP_LOGI(TAG,
+           "Registering tab switch event handler for ui_tabsModeSwitch: %p",
+           ui_tabsModeSwitch);
+  lv_obj_add_event_cb(ui_tabsModeSwitch, Events::UI::tabSwitchHandler,
+                      LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Alternative approach: Register on individual tab buttons (for newer LVGL versions)
-    lv_obj_t* tab_buttons = lv_tabview_get_tab_bar(ui_tabsModeSwitch);
-    if (tab_buttons) {
-        ESP_LOGI(TAG, "Registering tab button events on tab bar: %p", tab_buttons);
+  // Alternative approach: Register on individual tab buttons (for newer LVGL
+  // versions)
+  lv_obj_t *tab_buttons = lv_tabview_get_tab_bar(ui_tabsModeSwitch);
+  if (tab_buttons) {
+    ESP_LOGI(TAG, "Registering tab button events on tab bar: %p", tab_buttons);
 
-        // Get the number of tabs and register event on each button
-        uint32_t tab_count = lv_obj_get_child_count(tab_buttons);
-        ESP_LOGI(TAG, "Found %d tab buttons", tab_count);
+    // Get the number of tabs and register event on each button
+    uint32_t tab_count = lv_obj_get_child_count(tab_buttons);
+    ESP_LOGI(TAG, "Found %d tab buttons", tab_count);
 
-        for (uint32_t i = 0; i < tab_count; i++) {
-            lv_obj_t* tab_button = lv_obj_get_child(tab_buttons, i);
-            if (tab_button) {
-                ESP_LOGI(TAG, "Registering event on tab button %d: %p", i, tab_button);
-                lv_obj_add_event_cb(tab_button, Events::UI::tabSwitchHandler, LV_EVENT_CLICKED, NULL);
-            }
-        }
+    for (uint32_t i = 0; i < tab_count; i++) {
+      lv_obj_t *tab_button = lv_obj_get_child(tab_buttons, i);
+      if (tab_button) {
+        ESP_LOGI(TAG, "Registering event on tab button %d: %p", i, tab_button);
+        lv_obj_add_event_cb(tab_button, Events::UI::tabSwitchHandler,
+                            LV_EVENT_CLICKED, NULL);
+      }
     }
+  }
 
-    // Initialize current tab state by reading the actual active tab from the UI
-    uint32_t activeTabIndex = lv_tabview_get_tab_active(ui_tabsModeSwitch);
-    Events::UI::setCurrentTab(static_cast<Events::UI::TabState>(activeTabIndex));
-    ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex, Events::UI::getTabName(Events::UI::getCurrentTab()));
-}
+  // Initialize current tab state by reading the actual active tab from the UI
+  uint32_t activeTabIndex = lv_tabview_get_tab_active(ui_tabsModeSwitch);
+  Events::UI::setCurrentTab(static_cast<Events::UI::TabState>(activeTabIndex));
+  ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex,
+           Events::UI::getTabName(Events::UI::getCurrentTab()));
 
-// Private helper functions for single-threaded operation
-static void updateNetworkStatus(void) {
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || OTA_ENABLE_UPDATES
-    bool connected = Hardware::Network::isConnected();
-    const char* status = Hardware::Network::getWifiStatusString();
-    const char* ssid = Hardware::Network::getSsid();
-    const char* ip = Hardware::Network::getIpAddress();
-
-    // Update WiFi status display
-    Display::updateWifiStatus(ui_lblWifiStatus, ui_objWifiIndicator, status, connected);
-
-    // Update network info display
-    Display::updateNetworkInfo(ui_lblSSIDValue, ui_lblIPValue, ssid, ip);
-#endif
-}
-
-static void updateDisplayElements(void) {
-    // Update audio status manager UI elements (more important)
-    Application::Audio::StatusManager::onAudioLevelsChangedUI();
-
-    // Update FPS display less frequently to reduce overhead
-    static unsigned long lastFpsUpdate = 0;
-    unsigned long currentTime = millis();
-    if (currentTime - lastFpsUpdate >= 500) {  // Update FPS every 500ms
-        Display::updateFpsDisplay(ui_lblFPS);
-        lastFpsUpdate = currentTime;
-    }
-}
-
-static void updateOTA(void) {
+  // Setup OTA UI elements if available
 #if OTA_ENABLE_UPDATES
-    // Only check for OTA updates if WiFi is connected
-    if (Hardware::Network::isConnected()) {
-        Hardware::OTA::update();
-    }
+  if (ui_barOTAUpdateProgress) {
+    lv_bar_set_value(ui_barOTAUpdateProgress, 0, LV_ANIM_OFF);
+  }
+  if (ui_lblOTAUpdateProgress) {
+    lv_label_set_text(ui_lblOTAUpdateProgress, "OTA Ready");
+  }
 #endif
 }
 
-}  // namespace Application
+} // namespace Application
