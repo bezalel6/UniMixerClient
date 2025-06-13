@@ -224,7 +224,7 @@ void initializeLabelEmpty(lv_obj_t* label) {
 
 void initializeLabelDash(lv_obj_t* label) {
     if (label) {
-        lv_label_set_text(label, UI_LABEL_DASH);
+        lv_label_set_text(label, "-");
     }
 }
 

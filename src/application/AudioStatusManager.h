@@ -47,6 +47,7 @@ class StatusManager {
     static void unmuteSelectedDevice(void);
     static void publishStatusUpdate(void);
     static bool isSuppressingArcEvents(void);
+    static bool isSuppressingDropdownEvents(void);
 
     // Tab state management
     static Events::UI::TabState getCurrentTab(void);
@@ -77,6 +78,7 @@ class StatusManager {
 
     // UI state
     static bool suppressArcEvents;
+    static bool suppressDropdownEvents;
     static Events::UI::TabState currentTab;
 
     // Device selector management

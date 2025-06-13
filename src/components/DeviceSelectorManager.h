@@ -2,8 +2,10 @@
 #define DEVICE_SELECTOR_MANAGER_H
 
 #include <Arduino.h>
-#include <lvgl.h>
 #include <vector>
+#include <utility>
+#include <optional>
+#include <functional>
 #include "../application/AudioTypes.h"
 
 using Application::Audio::AudioLevel;
@@ -11,50 +13,120 @@ using Application::Audio::AudioLevel;
 namespace UI {
 namespace Components {
 
+// Selection state for different tabs
+struct DeviceSelection {
+    std::optional<String> deviceName;
+
+    bool isValid() const {
+        return deviceName.has_value() && !deviceName->isEmpty() && *deviceName != "-";
+    }
+
+    String getValue() const {
+        return deviceName.value_or("-");
+    }
+
+    void clear() {
+        deviceName.reset();
+    }
+
+    bool operator==(const DeviceSelection& other) const {
+        return deviceName == other.deviceName;
+    }
+
+    bool operator!=(const DeviceSelection& other) const {
+        return !(*this == other);
+    }
+};
+
+struct BalanceSelection {
+    DeviceSelection device1;
+    DeviceSelection device2;
+
+    bool isValid() const {
+        return device1.isValid() && device2.isValid();
+    }
+
+    bool hasConflict() const {
+        return device1.isValid() && device2.isValid() && device1.getValue() == device2.getValue();
+    }
+
+    std::pair<String, String> getValues() const {
+        return {device1.getValue(), device2.getValue()};
+    }
+
+    void clear() {
+        device1.clear();
+        device2.clear();
+    }
+
+    bool operator==(const BalanceSelection& other) const {
+        return device1 == other.device1 && device2 == other.device2;
+    }
+
+    bool operator!=(const BalanceSelection& other) const {
+        return !(*this == other);
+    }
+};
+
+// State change callback types
+typedef std::function<void(const DeviceSelection&)> MainSelectionCallback;
+typedef std::function<void(const BalanceSelection&)> BalanceSelectionCallback;
+typedef std::function<void(const std::vector<AudioLevel>&)> DeviceListCallback;
+
 class DeviceSelectorManager {
    public:
     DeviceSelectorManager();
     ~DeviceSelectorManager();
 
-    // Initialize with UI dropdown elements
-    bool initialize(lv_obj_t* mainDropdown, lv_obj_t* balanceDropdown1, lv_obj_t* balanceDropdown2);
-    void deinitialize();
+    // State management - no UI dependencies
+    void setMainSelection(const DeviceSelection& selection);
+    DeviceSelection getMainSelection() const;
 
-    // Device selection management
-    void setMainSelection(const String& deviceName);
-    String getMainSelection() const;
-
-    void setBalanceSelections(const String& device1, const String& device2);
-    String getBalanceSelection1() const;
-    String getBalanceSelection2() const;
+    void setBalanceSelections(const BalanceSelection& selection);
+    BalanceSelection getBalanceSelections() const;
 
     // Tab-aware device selection
-    String getSelectedDeviceForTab(int tabIndex) const;
-    void setSelectedDeviceForTab(int tabIndex, const String& deviceName);
+    DeviceSelection getSelectionForTab(int tabIndex) const;
+    BalanceSelection getBalanceSelectionForTab() const;
+    void setSelectionForTab(int tabIndex, const DeviceSelection& selection);
+    void setBalanceSelectionForTab(const BalanceSelection& selection);
 
-    // UI updates
-    void refreshAllDropdowns(const std::vector<AudioLevel>& audioLevels);
-    void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
-    String getDropdownSelection(lv_obj_t* dropdown) const;
+    // Device list management
+    void updateAvailableDevices(const std::vector<AudioLevel>& audioLevels);
+    std::vector<AudioLevel> getAvailableDevices() const;
 
-    // Balance dropdown initialization
-    void initializeBalanceSelections(const std::vector<AudioLevel>& audioLevels);
+    // Auto-initialize balance selections from available devices
+    void initializeBalanceSelections();
+
+    // State validation
+    bool validateSelections() const;
+    bool isDeviceAvailable(const String& deviceName) const;
+
+    // Callback registration for state changes
+    void setMainSelectionCallback(MainSelectionCallback callback);
+    void setBalanceSelectionCallback(BalanceSelectionCallback callback);
+    void setDeviceListCallback(DeviceListCallback callback);
 
    private:
-    // UI elements
-    lv_obj_t* mainDropdown;
-    lv_obj_t* balanceDropdown1;
-    lv_obj_t* balanceDropdown2;
+    // Current state - no UI references
+    DeviceSelection mainSelection;
+    BalanceSelection balanceSelection;
+    std::vector<AudioLevel> availableDevices;
 
-    // Current selections
-    String mainSelection;
-    String balanceSelection1;
-    String balanceSelection2;
+    // State change callbacks
+    MainSelectionCallback mainSelectionCallback;
+    BalanceSelectionCallback balanceSelectionCallback;
+    DeviceListCallback deviceListCallback;
 
-    // Helper methods
-    void updateDropdownOptions(lv_obj_t* dropdown, const std::vector<AudioLevel>& audioLevels);
-    void ensureBalanceExclusivity();
-    String extractDeviceNameFromDropdownText(const String& dropdownText) const;
+    // Helper methods for state management
+    void validateAndFixSelections();
+    void notifyMainSelectionChanged();
+    void notifyBalanceSelectionChanged();
+    void notifyDeviceListChanged();
+
+    // Device name validation
+    bool isValidDeviceName(const String& deviceName) const;
+    std::vector<String> getValidDeviceNames() const;
 };
 
 }  // namespace Components
