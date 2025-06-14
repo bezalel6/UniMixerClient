@@ -19,10 +19,12 @@ static bool otaInProgress = false;
 
 // OTA callback functions, now using the decoupled message handler
 static void onOTAStart() {
-  // Forcefully end any lingering update process before starting a new one.
+  // If a previous update has failed or is stale, the only reliable way
+  // to recover is to reboot the device.
   if (Update.isRunning()) {
-    ESP_LOGW(TAG, "An update was already running. Forcing cleanup...");
-    Update.end();
+    ESP_LOGE(TAG, "A stale update was detected. Rebooting to clear state...");
+    vTaskDelay(1000); // Allow time for the log message to be sent
+    ESP.restart();
   }
 
   String type;
