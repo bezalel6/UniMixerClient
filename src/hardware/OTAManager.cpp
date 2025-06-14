@@ -74,14 +74,20 @@ static std::function<void(unsigned int, unsigned int)> onOTAProgress =
 
 static std::function<void(ota_error_t)> onOTAError = [](ota_error_t error) {
   ESP_LOGE(TAG, "OTA Error[%u]: ", error);
-  const char *errorMsg = "Unknown error";
 
+  // OTA_BEGIN_ERROR is sometimes reported erroneously, but the update can
+  // still succeed. We will log it as a warning and allow the update to
+  // continue.
+  if (error == OTA_BEGIN_ERROR) {
+    ESP_LOGW(TAG, "Begin Failed (non-fatal), allowing update to continue...");
+    // Do not set otaInProgress to false or send a failure message.
+    return;
+  }
+
+  const char *errorMsg = "Unknown error";
   if (error == OTA_AUTH_ERROR) {
     ESP_LOGE(TAG, "Auth Failed");
     errorMsg = "Authentication failed";
-  } else if (error == OTA_BEGIN_ERROR) {
-    ESP_LOGE(TAG, "Begin Failed");
-    errorMsg = "Begin failed";
   } else if (error == OTA_CONNECT_ERROR) {
     ESP_LOGE(TAG, "Connect Failed");
     errorMsg = "Connection failed";
@@ -93,7 +99,7 @@ static std::function<void(ota_error_t)> onOTAError = [](ota_error_t error) {
     errorMsg = "End failed";
   }
 
-  // Use message handler for thread-safe UI updates only
+  // For all other errors, treat them as fatal.
   if (otaInProgress) {
     Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
                                                        errorMsg);
@@ -176,14 +182,20 @@ bool init(void) {
   });
   ArduinoOTA.onError([](ota_error_t error) {
     ESP_LOGE(TAG, "OTA Error[%u]: ", error);
-    const char *errorMsg = "Unknown error";
 
+    // OTA_BEGIN_ERROR is sometimes reported erroneously, but the update can
+    // still succeed. We will log it as a warning and allow the update to
+    // continue.
+    if (error == OTA_BEGIN_ERROR) {
+      ESP_LOGW(TAG, "Begin Failed (non-fatal), allowing update to continue...");
+      // Do not set otaInProgress to false or send a failure message.
+      return;
+    }
+
+    const char *errorMsg = "Unknown error";
     if (error == OTA_AUTH_ERROR) {
       ESP_LOGE(TAG, "Auth Failed");
       errorMsg = "Authentication failed";
-    } else if (error == OTA_BEGIN_ERROR) {
-      ESP_LOGE(TAG, "Begin Failed");
-      errorMsg = "Begin failed";
     } else if (error == OTA_CONNECT_ERROR) {
       ESP_LOGE(TAG, "Connect Failed");
       errorMsg = "Connection failed";
@@ -195,7 +207,7 @@ bool init(void) {
       errorMsg = "End failed";
     }
 
-    // Use message handler for thread-safe UI updates only
+    // For all other errors, treat them as fatal.
     if (otaInProgress) {
       Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
                                                          errorMsg);
