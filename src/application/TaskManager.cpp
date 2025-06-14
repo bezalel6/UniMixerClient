@@ -388,9 +388,9 @@ void audioTask(void *parameter) {
     // Yield immediately to prevent watchdog issues
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    // Update FPS display regularly for monitoring
+    // Update FPS display less frequently for monitoring
     unsigned long currentTime = millis();
-    if (currentTime - lastFpsUpdate >= 1000) { // Every second
+    if (currentTime - lastFpsUpdate >= 2000) { // Every 2 seconds
       ESP_LOGD(TAG, "Audio task: Updating FPS display");
 
       // Get actual FPS from display manager
@@ -401,7 +401,7 @@ void audioTask(void *parameter) {
 
     // Re-enable audio status updates
     static unsigned long lastAudioUpdate = 0;
-    if (currentTime - lastAudioUpdate >= 2000) { // Every 2 seconds only
+    if (currentTime - lastAudioUpdate >= 500) { // Every 500ms
       ESP_LOGD(TAG, "Audio task: Processing audio status");
       Application::Audio::StatusManager::onAudioLevelsChangedUI();
       lastAudioUpdate = currentTime;

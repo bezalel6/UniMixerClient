@@ -68,9 +68,9 @@ void processMessageQueue(lv_timer_t *timer) {
 
   LVGLMessage_t message;
 
-  // Process maximum 3 messages per cycle to avoid blocking rendering
+  // Process maximum 10 messages per cycle to avoid blocking rendering
   int messagesProcessed = 0;
-  const int MAX_MESSAGES_PER_CYCLE = 3;
+  const int MAX_MESSAGES_PER_CYCLE = 10;
 
   // Process available messages in the queue (limited per cycle)
   while (messagesProcessed < MAX_MESSAGES_PER_CYCLE &&
