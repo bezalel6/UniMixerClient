@@ -185,6 +185,33 @@ void resume(void) {
   }
 }
 
+void suspendForOTA(void) {
+  if (tasksRunning) {
+    ESP_LOGI(TAG, "Suspending tasks for OTA update...");
+    // Suspend tasks that might interfere with OTA, but leave LVGL and OTA tasks
+    // running.
+    if (networkTaskHandle)
+      vTaskSuspend(networkTaskHandle);
+    if (messagingTaskHandle)
+      vTaskSuspend(messagingTaskHandle);
+    if (audioTaskHandle)
+      vTaskSuspend(audioTaskHandle);
+  }
+}
+
+void resumeFromOTA(void) {
+  if (tasksRunning) {
+    ESP_LOGI(TAG, "Resuming tasks after OTA update...");
+    // Resume tasks that were suspended for OTA.
+    if (networkTaskHandle)
+      vTaskResume(networkTaskHandle);
+    if (messagingTaskHandle)
+      vTaskResume(messagingTaskHandle);
+    if (audioTaskHandle)
+      vTaskResume(audioTaskHandle);
+  }
+}
+
 void lvglLock(void) {
   if (lvglMutex) {
     xSemaphoreTakeRecursive(lvglMutex, portMAX_DELAY);

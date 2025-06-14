@@ -74,6 +74,10 @@ void deinit(void);
 void suspend(void);
 void resume(void);
 
+// OTA-specific task management
+void suspendForOTA(void);
+void resumeFromOTA(void);
+
 // LVGL thread safety functions
 void lvglLock(void);
 void lvglUnlock(void);

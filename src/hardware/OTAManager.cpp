@@ -41,7 +41,7 @@ static void onOTAStart() {
   ESP_LOGI(TAG, "Start updating %s", type.c_str());
 
   otaInProgress = true;
-  Application::TaskManager::suspend();
+  Application::TaskManager::suspendForOTA();
   show_ota_screen("Starting update...");
 }
 
@@ -50,7 +50,7 @@ static void onOTAEnd() {
   update_ota_screen(100, "Update complete! Restarting...");
   vTaskDelay(pdMS_TO_TICKS(1000));
   hide_ota_screen();
-  Application::TaskManager::resume();
+  Application::TaskManager::resumeFromOTA();
   otaInProgress = false;
 }
 
@@ -92,7 +92,7 @@ static void onOTAError(ota_error_t error) {
   update_ota_screen(0, errorMsg);
   vTaskDelay(pdMS_TO_TICKS(3000));
   hide_ota_screen();
-  Application::TaskManager::resume();
+  Application::TaskManager::resumeFromOTA();
   otaInProgress = false;
 }
 
@@ -140,7 +140,6 @@ static void update_ota_screen(int progress, const char *message) {
     if (ota_bar) {
       lv_bar_set_value(ota_bar, progress, LV_ANIM_ON);
     }
-    lv_timer_handler(); // Manually update the screen
     Application::TaskManager::lvglUnlock();
   }
 }
