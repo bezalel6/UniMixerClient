@@ -3,6 +3,7 @@
 #if OTA_ENABLE_UPDATES
 
 #include "../application/LVGLMessageHandler.h"
+#include "../application/TaskManager.h"
 #include "../display/DisplayManager.h"
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -61,9 +62,12 @@ static std::function<void(unsigned int, unsigned int)> onOTAProgress =
                    progressPercent);
           Application::LVGLMessageHandler::updateOTAProgress(
               progressPercent, true, false, progressText);
-          // Manually update LVGL to show progress
-          lv_timer_handler();
-          Display::tickUpdate();
+          // Manually update LVGL to show progress, but in a thread-safe way
+          if (Application::TaskManager::lvglTryLock(10)) {
+            lv_timer_handler();
+            Display::tickUpdate();
+            Application::TaskManager::lvglUnlock();
+          }
           vTaskDelay(
               pdMS_TO_TICKS(5)); // Add small delay to prevent watchdog timeout
         }
@@ -170,9 +174,12 @@ bool init(void) {
                  progressPercent);
         Application::LVGLMessageHandler::updateOTAProgress(
             progressPercent, true, false, progressText);
-        // Manually update LVGL to show progress
-        lv_timer_handler();
-        Display::tickUpdate();
+        // Manually update LVGL to show progress, but in a thread-safe way
+        if (Application::TaskManager::lvglTryLock(10)) {
+          lv_timer_handler();
+          Display::tickUpdate();
+          Application::TaskManager::lvglUnlock();
+        }
         vTaskDelay(
             pdMS_TO_TICKS(5)); // Add small delay to prevent watchdog timeout
       }

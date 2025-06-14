@@ -38,6 +38,13 @@ static OTAProgressData_t currentOTAProgress = {0, false, false, "Ready"};
 bool init(void) {
   ESP_LOGI(TAG, "Initializing Task Manager for ESP32-S3 dual-core");
 
+  // Create LVGL mutex for thread safety
+  lvglMutex = xSemaphoreCreateRecursiveMutex();
+  if (lvglMutex == NULL) {
+    ESP_LOGE(TAG, "Failed to create LVGL mutex");
+    return false;
+  }
+
   // Initialize LVGL Message Handler
   if (!LVGLMessageHandler::init()) {
     ESP_LOGE(TAG, "Failed to initialize LVGL Message Handler");
@@ -244,7 +251,9 @@ void lvglTask(void *parameter) {
 
     // Handle LVGL tasks and rendering - this MUST run every cycle for smooth
     // animations The LVGLMessageHandler processes queue messages via LVGL timer
+    lvglLock();
     lv_timer_handler();
+    lvglUnlock();
 
     // Do less frequent operations to keep animation smooth
     unsigned long currentTime = millis();
