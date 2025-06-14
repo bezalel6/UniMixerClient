@@ -67,7 +67,7 @@ void processMessageQueue(lv_timer_t *timer) {
   // CRITICAL: Don't process UI updates during rendering to prevent corruption
   lv_disp_t *disp = lv_disp_get_default();
   if (disp && disp->rendering_in_progress) {
-    ESP_LOGD(TAG, "Skipping message processing - rendering in progress");
+    // ESP_LOGD(TAG, "Skipping message processing - rendering in progress");
     return;
   }
 

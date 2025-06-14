@@ -17,6 +17,7 @@ static bool otaInitialized = false;
 static String hostname = OTA_HOSTNAME;
 static String password = OTA_PASSWORD;
 static bool otaInProgress = false;
+static bool errorHandlingInProgress = false;
 
 static void onOTAStart() {
   String type;
@@ -46,17 +47,33 @@ static void onOTAProgress(unsigned int progress, unsigned int total) {
   uint8_t percentage = (progress / (total / 100));
   char msg[64];
   snprintf(msg, sizeof(msg), "Updating: %d%%", percentage);
-  Application::LVGLMessageHandler::updateOtaScreenDirectly(percentage, msg);
+  Application::LVGLMessageHandler::updateOtaScreenProgress(percentage, msg);
 }
 
 static void onOTAError(ota_error_t error) {
+  if (errorHandlingInProgress) {
+    ESP_LOGW(TAG,
+             "OTA error handler already running, ignoring subsequent error.");
+    return;
+  }
+
+  // The "already running" error can sometimes be ignored, allowing the update
+  // to proceed.
+  if (error == OTA_BEGIN_ERROR) {
+    ESP_LOGW(TAG, "Non-fatal OTA Error (ignored): OTA_BEGIN_ERROR. Update will "
+                  "continue.");
+    return;
+  }
+
+  errorHandlingInProgress = true;
+
   ESP_LOGE(TAG, "OTA Error[%u]: ", error);
 
-  // Abort the update to ensure clean state
-  if (Update.isRunning()) {
-    ESP_LOGW(TAG, "An update was running. Aborting to clean up.");
-    Update.abort();
-  }
+  // Do not call Update.abort() here.
+  // ArduinoOTA.end() will handle the necessary cleanup.
+
+  // Stop the OTA service completely to terminate the connection
+  ArduinoOTA.end();
 
   const char *errorMsg = "Unknown error";
   switch (error) {
@@ -80,8 +97,10 @@ static void onOTAError(ota_error_t error) {
   Application::LVGLMessageHandler::updateOtaScreenProgress(0, errorMsg);
   vTaskDelay(pdMS_TO_TICKS(3000));
   Application::LVGLMessageHandler::hideOtaScreen();
+  ESP_LOGI(TAG, "Resuming tasks after OTA error.");
   Application::TaskManager::resumeFromOTA();
   otaInProgress = false;
+  errorHandlingInProgress = false;
 }
 
 namespace Hardware {

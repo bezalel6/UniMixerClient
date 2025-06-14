@@ -11,6 +11,7 @@
 #include "LVGLMessageHandler.h"
 #include "TaskManager.h"
 #include <esp_log.h>
+#include <esp_task_wdt.h>
 #include <ui/ui.h>
 
 // Private variables
@@ -22,23 +23,35 @@ bool init(void) {
   ESP_LOGI(TAG,
            "Initializing Application Controller (Multi-threaded ESP32-S3)");
 
+  // Initialize watchdog timer for startup debugging (15 seconds)
+  ESP_LOGI(TAG, "Initializing startup watchdog timer...");
+  esp_task_wdt_init(15, true);
+  esp_task_wdt_add(NULL);
+  esp_task_wdt_reset();
+
   // Initialize hardware/device manager
+  ESP_LOGI(TAG, "WDT Reset: Initializing Device Manager...");
   if (!Hardware::Device::init()) {
     ESP_LOGE(TAG, "Failed to initialize device manager");
     return false;
   }
+  esp_task_wdt_reset();
 
   // Initialize display manager
+  ESP_LOGI(TAG, "WDT Reset: Initializing Display Manager...");
   if (!Display::init()) {
     ESP_LOGE(TAG, "Failed to initialize display manager");
     return false;
   }
+  esp_task_wdt_reset();
 
   // Initialize messaging system
+  ESP_LOGI(TAG, "WDT Reset: Initializing Message Bus...");
   if (!Messaging::MessageBus::Init()) {
     ESP_LOGE(TAG, "Failed to initialize messaging system");
     return false;
   }
+  esp_task_wdt_reset();
 
   // Determine if network manager is needed (for MQTT or OTA)
   bool networkNeeded = false;
@@ -64,6 +77,7 @@ bool init(void) {
     // NetworkManager)
     Hardware::Network::enableAutoReconnect(true);
   }
+  esp_task_wdt_reset();
 
   // Configure transport based on MessagingConfig.h settings
 #if MESSAGING_DEFAULT_TRANSPORT == 0
@@ -100,37 +114,53 @@ bool init(void) {
            MESSAGING_DEFAULT_TRANSPORT);
   return false;
 #endif
+  esp_task_wdt_reset();
 
   // Initialize audio status manager (requires MessageBus to be initialized)
+  ESP_LOGI(TAG, "WDT Reset: Initializing Audio Status Manager...");
   if (!Application::Audio::StatusManager::init()) {
     ESP_LOGE(TAG, "Failed to initialize audio status manager");
     return false;
   }
+  esp_task_wdt_reset();
 
 #if OTA_ENABLE_UPDATES
   // Initialize standard OTA
+  ESP_LOGI(TAG, "WDT Reset: Initializing OTA Manager...");
   if (!Hardware::OTA::init()) {
     ESP_LOGE(TAG, "Failed to initialize OTA manager");
     return false;
   }
   ESP_LOGI(TAG, "OTA manager initialized successfully");
+  esp_task_wdt_reset();
 #endif
 
   // Setup UI components
+  ESP_LOGI(TAG, "WDT Reset: Setting up UI components...");
   setupUiComponents();
+  esp_task_wdt_reset();
 
   // Initialize the multi-threaded task manager (includes LVGL Message Handler)
+  ESP_LOGI(TAG, "WDT Reset: Initializing Task Manager...");
   if (!TaskManager::init()) {
     ESP_LOGE(TAG, "Failed to initialize task manager");
     return false;
   }
+  esp_task_wdt_reset();
 
   // Send initial status request to get current audio information
-  ESP_LOGI(TAG, "Sending initial status request");
+  ESP_LOGI(TAG, "WDT Reset: Sending initial status request...");
   Application::Audio::StatusManager::publishAudioStatusRequest();
+  esp_task_wdt_reset();
 
   ESP_LOGI(TAG, "Application Controller initialized successfully "
                 "(Multi-threaded ESP32-S3)");
+
+  // De-initialize watchdog timer after successful startup
+  ESP_LOGI(TAG, "De-initializing startup watchdog timer.");
+  esp_task_wdt_delete(NULL);
+  esp_task_wdt_deinit();
+
   return true;
 }
 

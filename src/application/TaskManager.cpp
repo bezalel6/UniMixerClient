@@ -187,28 +187,41 @@ void resume(void) {
 
 void suspendForOTA(void) {
   if (tasksRunning) {
-    ESP_LOGI(TAG, "Suspending tasks for OTA update...");
-    // Suspend tasks that might interfere with OTA, but leave LVGL and OTA tasks
-    // running.
-    if (networkTaskHandle)
-      vTaskSuspend(networkTaskHandle);
-    if (messagingTaskHandle)
+    ESP_LOGI(TAG, "[TaskManager] Suspending tasks for OTA update...");
+    // DO NOT suspend networkTaskHandle, it's running the OTA process.
+    // DO NOT suspend otaTaskHandle, it's also part of the OTA process.
+    // DO NOT suspend lvglTaskHandle, it's updating the screen.
+
+    if (messagingTaskHandle != NULL &&
+        eTaskGetState(messagingTaskHandle) != eSuspended) {
+      ESP_LOGI(TAG, "[TaskManager] Suspending Messaging_Task...");
       vTaskSuspend(messagingTaskHandle);
-    if (audioTaskHandle)
+    }
+    if (audioTaskHandle != NULL &&
+        eTaskGetState(audioTaskHandle) != eSuspended) {
+      ESP_LOGI(TAG, "[TaskManager] Suspending Audio_Task...");
       vTaskSuspend(audioTaskHandle);
+    }
+    ESP_LOGI(TAG, "[TaskManager] Finished suspending tasks for OTA.");
   }
 }
 
 void resumeFromOTA(void) {
   if (tasksRunning) {
-    ESP_LOGI(TAG, "Resuming tasks after OTA update...");
-    // Resume tasks that were suspended for OTA.
-    if (networkTaskHandle)
-      vTaskResume(networkTaskHandle);
-    if (messagingTaskHandle)
+    ESP_LOGI(TAG, "[TaskManager] Resuming tasks after OTA update...");
+    // Network, OTA, and LVGL tasks were not suspended.
+
+    if (messagingTaskHandle != NULL &&
+        eTaskGetState(messagingTaskHandle) == eSuspended) {
+      ESP_LOGI(TAG, "[TaskManager] Resuming Messaging_Task...");
       vTaskResume(messagingTaskHandle);
-    if (audioTaskHandle)
+    }
+    if (audioTaskHandle != NULL &&
+        eTaskGetState(audioTaskHandle) == eSuspended) {
+      ESP_LOGI(TAG, "[TaskManager] Resuming Audio_Task...");
       vTaskResume(audioTaskHandle);
+    }
+    ESP_LOGI(TAG, "[TaskManager] Finished resuming tasks after OTA.");
   }
 }
 
@@ -363,10 +376,8 @@ void otaTask(void *parameter) {
   TickType_t lastWakeTime = xTaskGetTickCount();
 
   while (tasksRunning) {
-    // Only check for OTA updates if WiFi is connected
-    if (Hardware::Network::isConnected()) {
-      Hardware::OTA::update();
-    }
+    // Check for OTA updates or re-initialize if needed
+    Hardware::OTA::update();
 
     // Sleep until next update
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(OTA_UPDATE_INTERVAL));
@@ -391,7 +402,7 @@ void audioTask(void *parameter) {
     // Update FPS display less frequently for monitoring
     unsigned long currentTime = millis();
     if (currentTime - lastFpsUpdate >= 2000) { // Every 2 seconds
-      ESP_LOGD(TAG, "Audio task: Updating FPS display");
+      // ESP_LOGD(TAG, "Audio task: Updating FPS display");
 
       // Get actual FPS from display manager
       float currentFps = Display::getFPS();
@@ -402,7 +413,7 @@ void audioTask(void *parameter) {
     // Re-enable audio status updates
     static unsigned long lastAudioUpdate = 0;
     if (currentTime - lastAudioUpdate >= 500) { // Every 500ms
-      ESP_LOGD(TAG, "Audio task: Processing audio status");
+      // ESP_LOGD(TAG, "Audio task: Processing audio status");
       Application::Audio::StatusManager::onAudioLevelsChangedUI();
       lastAudioUpdate = currentTime;
     }
@@ -418,7 +429,7 @@ void audioTask(void *parameter) {
     // Additional debug logging to monitor task health
     static int heartbeat = 0;
     if (++heartbeat % 10 == 0) {
-      ESP_LOGI(TAG, "Audio task heartbeat: %d", heartbeat);
+      // ESP_LOGI(TAG, "Audio task heartbeat: %d", heartbeat);
     }
   }
 
