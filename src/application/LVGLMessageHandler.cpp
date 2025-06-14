@@ -331,5 +331,16 @@ bool hideOtaScreen(void) {
   return sendMessage(&message);
 }
 
+void updateOtaScreenDirectly(uint8_t progress, const char *msg) {
+  if (custom_ota_label) {
+    lv_label_set_text(custom_ota_label, msg);
+  }
+  if (custom_ota_bar) {
+    lv_bar_set_value(custom_ota_bar, progress, LV_ANIM_OFF);
+  }
+  // Force LVGL to process tasks and render the screen NOW to avoid conflict
+  lv_timer_handler();
+}
+
 } // namespace LVGLMessageHandler
 } // namespace Application

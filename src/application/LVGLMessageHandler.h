@@ -89,8 +89,9 @@ bool changeScreen(void *screen, int anim_type, int time, int delay);
 
 // Helper functions for the custom OTA screen
 bool showOtaScreen(void);
-bool updateOtaScreenProgress(uint8_t progress, const char *message);
+bool updateOtaScreenProgress(uint8_t progress, const char *msg);
 bool hideOtaScreen(void);
+void updateOtaScreenDirectly(uint8_t progress, const char *msg);
 
 } // namespace LVGLMessageHandler
 } // namespace Application

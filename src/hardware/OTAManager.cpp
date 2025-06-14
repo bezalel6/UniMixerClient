@@ -43,22 +43,21 @@ static void onOTAEnd() {
 }
 
 static void onOTAProgress(unsigned int progress, unsigned int total) {
-  unsigned int progressPercent = (total > 0) ? (progress / (total / 100)) : 0;
-  static unsigned int lastProgressPercent = 0;
-
-  if (progressPercent > lastProgressPercent || progressPercent == 100) {
-    ESP_LOGI(TAG, "OTA Progress: %u%%", progressPercent);
-    char progressText[64];
-    snprintf(progressText, sizeof(progressText), "Progress: %u%%",
-             progressPercent);
-    Application::LVGLMessageHandler::updateOtaScreenProgress(progressPercent,
-                                                             progressText);
-    lastProgressPercent = progressPercent;
-  }
+  uint8_t percentage = (progress / (total / 100));
+  char msg[64];
+  snprintf(msg, sizeof(msg), "Updating: %d%%", percentage);
+  Application::LVGLMessageHandler::updateOtaScreenDirectly(percentage, msg);
 }
 
 static void onOTAError(ota_error_t error) {
   ESP_LOGE(TAG, "OTA Error[%u]: ", error);
+
+  // Abort the update to ensure clean state
+  if (Update.isRunning()) {
+    ESP_LOGW(TAG, "An update was running. Aborting to clean up.");
+    Update.abort();
+  }
+
   const char *errorMsg = "Unknown error";
   switch (error) {
   case OTA_AUTH_ERROR:
