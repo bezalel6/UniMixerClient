@@ -10,21 +10,23 @@
 namespace Application {
 namespace LVGLMessageHandler {
 
-// Message types for UI updates
+// Message types
 typedef enum {
   MSG_UPDATE_WIFI_STATUS,
   MSG_UPDATE_NETWORK_INFO,
-  MSG_UPDATE_OTA_PROGRESS,
-  MSG_UPDATE_OTA_SCREEN,
-  MSG_UPDATE_AUDIO_LEVELS,
+  MSG_UPDATE_OTA_PROGRESS, // Kept for other potential uses
   MSG_UPDATE_FPS_DISPLAY,
-  MSG_SCREEN_CHANGE,
   MSG_UPDATE_VOLUME,
+  MSG_SCREEN_CHANGE,
   MSG_REQUEST_DATA,
-  MSG_MAX
+
+  // Dedicated messages for the custom, non-conflicting OTA screen
+  MSG_SHOW_OTA_SCREEN,
+  MSG_UPDATE_OTA_SCREEN_PROGRESS,
+  MSG_HIDE_OTA_SCREEN
 } LVGLMessageType_t;
 
-// Message structure
+// Message data structures
 typedef struct {
   LVGLMessageType_t type;
   union {
@@ -55,10 +57,15 @@ typedef struct {
 
     struct {
       void *screen;
-      int anim_type; // lv_screen_load_anim_t cast to int for message passing
+      int anim_type;
       int time;
       int delay;
     } screen_change;
+
+    struct {
+      uint8_t progress;
+      char message[64];
+    } ota_screen_progress;
   } data;
 } LVGLMessage_t;
 
@@ -79,6 +86,11 @@ bool updateOTAProgress(uint8_t progress, bool in_progress, bool success,
 bool updateFpsDisplay(float fps);
 bool updateVolumeLevel(int volume);
 bool changeScreen(void *screen, int anim_type, int time, int delay);
+
+// Helper functions for the custom OTA screen
+bool showOtaScreen(void);
+bool updateOtaScreenProgress(uint8_t progress, const char *message);
+bool hideOtaScreen(void);
 
 } // namespace LVGLMessageHandler
 } // namespace Application

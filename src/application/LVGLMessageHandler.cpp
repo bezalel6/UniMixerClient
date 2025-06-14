@@ -3,6 +3,11 @@
 #include <esp_log.h>
 #include <ui/ui.h>
 
+// Custom OTA screen elements, managed by the UI task
+static lv_obj_t *custom_ota_screen = NULL;
+static lv_obj_t *custom_ota_label = NULL;
+static lv_obj_t *custom_ota_bar = NULL;
+
 static const char *TAG = "LVGLMessageHandler";
 
 namespace Application {
@@ -184,6 +189,50 @@ void processMessageQueue(lv_timer_t *timer) {
       ESP_LOGI(TAG, "Data request triggered from UI");
       break;
 
+    case MSG_SHOW_OTA_SCREEN:
+      if (!custom_ota_screen) {
+        custom_ota_screen = lv_obj_create(NULL);
+        lv_obj_set_style_bg_color(custom_ota_screen, lv_color_hex(0x000000), 0);
+
+        custom_ota_label = lv_label_create(custom_ota_screen);
+        lv_label_set_text(custom_ota_label, "Starting OTA...");
+        lv_obj_set_style_text_color(custom_ota_label, lv_color_hex(0xFFFFFF),
+                                    0);
+        lv_obj_set_style_text_font(custom_ota_label, &lv_font_montserrat_26, 0);
+        lv_obj_align(custom_ota_label, LV_ALIGN_CENTER, 0, -20);
+
+        custom_ota_bar = lv_bar_create(custom_ota_screen);
+        lv_obj_set_size(custom_ota_bar, 200, 20);
+        lv_obj_align(custom_ota_bar, LV_ALIGN_CENTER, 0, 20);
+        lv_bar_set_value(custom_ota_bar, 0, LV_ANIM_OFF);
+      }
+      lv_scr_load(custom_ota_screen);
+      break;
+
+    case MSG_UPDATE_OTA_SCREEN_PROGRESS:
+      if (custom_ota_label) {
+        lv_label_set_text(custom_ota_label,
+                          message.data.ota_screen_progress.message);
+      }
+      if (custom_ota_bar) {
+        lv_bar_set_value(custom_ota_bar,
+                         message.data.ota_screen_progress.progress, LV_ANIM_ON);
+      }
+      break;
+
+    case MSG_HIDE_OTA_SCREEN:
+      if (custom_ota_screen) {
+        lv_obj_del(custom_ota_screen);
+        custom_ota_screen = NULL;
+        custom_ota_label = NULL;
+        custom_ota_bar = NULL;
+      }
+      // Restore the main screen
+      if (ui_screenMain) {
+        lv_scr_load(ui_screenMain);
+      }
+      break;
+
     default:
       ESP_LOGW(TAG, "Unknown message type: %d", message.type);
       break;
@@ -250,6 +299,35 @@ bool changeScreen(void *screen, int anim_type, int time, int delay) {
   message.data.screen_change.anim_type = anim_type;
   message.data.screen_change.time = time;
   message.data.screen_change.delay = delay;
+  return sendMessage(&message);
+}
+
+// Helper functions for the custom OTA screen
+bool showOtaScreen(void) {
+  LVGLMessage_t message;
+  message.type = MSG_SHOW_OTA_SCREEN;
+  return sendMessage(&message);
+}
+
+bool updateOtaScreenProgress(uint8_t progress, const char *msg) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_OTA_SCREEN_PROGRESS;
+  message.data.ota_screen_progress.progress = progress;
+  // Safely copy message string
+  if (msg) {
+    strncpy(message.data.ota_screen_progress.message, msg,
+            sizeof(message.data.ota_screen_progress.message) - 1);
+    message.data.ota_screen_progress
+        .message[sizeof(message.data.ota_screen_progress.message) - 1] = '\0';
+  } else {
+    message.data.ota_screen_progress.message[0] = '\0';
+  }
+  return sendMessage(&message);
+}
+
+bool hideOtaScreen(void) {
+  LVGLMessage_t message;
+  message.type = MSG_HIDE_OTA_SCREEN;
   return sendMessage(&message);
 }
 
