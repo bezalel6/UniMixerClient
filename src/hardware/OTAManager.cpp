@@ -3,10 +3,12 @@
 #if OTA_ENABLE_UPDATES
 
 #include "../application/LVGLMessageHandler.h"
+#include "../display/DisplayManager.h"
 #include <ESPmDNS.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <esp_log.h>
+#include <functional>
 #include <ui/ui.h>
 
 // Private variables
@@ -15,6 +17,90 @@ static bool otaInitialized = false;
 static String hostname = OTA_HOSTNAME;
 static String password = OTA_PASSWORD;
 static bool otaInProgress = false;
+
+// OTA callback functions
+static std::function<void()> onOTAStart = []() {
+  String type;
+  if (ArduinoOTA.getCommand() == U_FLASH) {
+    type = "sketch";
+  } else {
+    type = "filesystem";
+  }
+  ESP_LOGI(TAG, "Start updating %s", type.c_str());
+
+  otaInProgress = true;
+
+  // Use message handler for thread-safe UI updates
+  Application::LVGLMessageHandler::updateOTAProgress(0, true, false,
+                                                     "Starting update...");
+};
+
+static std::function<void()> onOTAEnd = []() {
+  ESP_LOGI(TAG, "OTA update completed successfully");
+
+  // Use message handler for thread-safe UI updates only
+  Application::LVGLMessageHandler::updateOTAProgress(
+      100, false, true, "Update completed! Restarting...");
+
+  otaInProgress = false;
+};
+
+static std::function<void(unsigned int, unsigned int)> onOTAProgress =
+    [](unsigned int progress, unsigned int total) {
+      unsigned int progressPercent = (progress / (total / 100));
+      static unsigned int lastProgressPercent = 0;
+
+      if (progressPercent >= lastProgressPercent + 1 ||
+          progressPercent == 100) {
+        ESP_LOGI(TAG, "OTA Progress: %u%%", progressPercent);
+
+        // Use message handler for thread-safe UI updates only
+        if (otaInProgress) {
+          char progressText[64];
+          snprintf(progressText, sizeof(progressText), "Progress: %u%%",
+                   progressPercent);
+          Application::LVGLMessageHandler::updateOTAProgress(
+              progressPercent, true, false, progressText);
+          // Manually update LVGL to show progress
+          lv_timer_handler();
+          Display::tickUpdate();
+          vTaskDelay(
+              pdMS_TO_TICKS(5)); // Add small delay to prevent watchdog timeout
+        }
+
+        lastProgressPercent = progressPercent;
+      }
+    };
+
+static std::function<void(ota_error_t)> onOTAError = [](ota_error_t error) {
+  ESP_LOGE(TAG, "OTA Error[%u]: ", error);
+  const char *errorMsg = "Unknown error";
+
+  if (error == OTA_AUTH_ERROR) {
+    ESP_LOGE(TAG, "Auth Failed");
+    errorMsg = "Authentication failed";
+  } else if (error == OTA_BEGIN_ERROR) {
+    ESP_LOGE(TAG, "Begin Failed");
+    errorMsg = "Begin failed";
+  } else if (error == OTA_CONNECT_ERROR) {
+    ESP_LOGE(TAG, "Connect Failed");
+    errorMsg = "Connection failed";
+  } else if (error == OTA_RECEIVE_ERROR) {
+    ESP_LOGE(TAG, "Receive Failed");
+    errorMsg = "Receive failed";
+  } else if (error == OTA_END_ERROR) {
+    ESP_LOGE(TAG, "End Failed");
+    errorMsg = "End failed";
+  }
+
+  // Use message handler for thread-safe UI updates only
+  if (otaInProgress) {
+    Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
+                                                       errorMsg);
+  }
+
+  otaInProgress = false;
+};
 
 namespace Hardware {
 namespace OTA {
@@ -55,7 +141,6 @@ bool init(void) {
     Application::LVGLMessageHandler::updateOTAProgress(0, true, false,
                                                        "Starting update...");
   });
-
   ArduinoOTA.onEnd([]() {
     ESP_LOGI(TAG, "OTA update completed successfully");
 
@@ -65,7 +150,6 @@ bool init(void) {
 
     otaInProgress = false;
   });
-
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     unsigned int progressPercent = (progress / (total / 100));
     static unsigned int lastProgressPercent = 0;
@@ -80,12 +164,16 @@ bool init(void) {
                  progressPercent);
         Application::LVGLMessageHandler::updateOTAProgress(
             progressPercent, true, false, progressText);
+        // Manually update LVGL to show progress
+        lv_timer_handler();
+        Display::tickUpdate();
+        vTaskDelay(
+            pdMS_TO_TICKS(5)); // Add small delay to prevent watchdog timeout
       }
 
       lastProgressPercent = progressPercent;
     }
   });
-
   ArduinoOTA.onError([](ota_error_t error) {
     ESP_LOGE(TAG, "OTA Error[%u]: ", error);
     const char *errorMsg = "Unknown error";
