@@ -121,7 +121,7 @@ void processMessageQueue(lv_timer_t *timer) {
         // Update progress bar
         if (ui_barOTAUpdateProgress) {
           lv_bar_set_value(ui_barOTAUpdateProgress,
-                           message.data.ota_progress.progress, LV_ANIM_ON);
+                           message.data.ota_progress.progress, LV_ANIM_OFF);
         }
 
         // Update status label
@@ -216,8 +216,12 @@ void processMessageQueue(lv_timer_t *timer) {
       }
       if (custom_ota_bar) {
         lv_bar_set_value(custom_ota_bar,
-                         message.data.ota_screen_progress.progress, LV_ANIM_ON);
+                         message.data.ota_screen_progress.progress,
+                         LV_ANIM_OFF);
       }
+      // For RGB displays: Force immediate refresh to minimize timing conflicts
+      // during OTA operations that may disable interrupts
+      // lv_refr_now(lv_disp_get_default());
       break;
 
     case MSG_HIDE_OTA_SCREEN:
@@ -332,14 +336,15 @@ bool hideOtaScreen(void) {
 }
 
 void updateOtaScreenDirectly(uint8_t progress, const char *msg) {
-  if (custom_ota_label) {
-    lv_label_set_text(custom_ota_label, msg);
-  }
-  if (custom_ota_bar) {
-    lv_bar_set_value(custom_ota_bar, progress, LV_ANIM_OFF);
-  }
-  // Force LVGL to process tasks and render the screen NOW to avoid conflict
-  lv_timer_handler();
+  // if (custom_ota_label) {
+  //   lv_label_set_text(custom_ota_label, msg);
+  // }
+  // if (custom_ota_bar) {
+  //   lv_bar_set_value(custom_ota_bar, progress, LV_ANIM_OFF);
+  // }
+  // // For RGB displays: Force immediate refresh to minimize timing conflicts
+  // // during OTA operations that may disable interrupts
+  // lv_refr_now(lv_disp_get_default());
 }
 
 } // namespace LVGLMessageHandler
