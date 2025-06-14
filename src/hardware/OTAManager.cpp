@@ -4,6 +4,7 @@
 #if OTA_ENABLE_UPDATES
 
 #include "../application/LVGLMessageHandler.h"
+#include "../application/TaskManager.h"
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -17,16 +18,7 @@ static String hostname = OTA_HOSTNAME;
 static String password = OTA_PASSWORD;
 static bool otaInProgress = false;
 
-// OTA callback functions, now using the decoupled message handler
 static void onOTAStart() {
-  // If a previous update has failed or is stale, the only reliable way
-  // to recover is to reboot the device.
-  if (Update.isRunning()) {
-    ESP_LOGE(TAG, "A stale update was detected. Rebooting to clear state...");
-    vTaskDelay(1000); // Allow time for the log message to be sent
-    ESP.restart();
-  }
-
   String type;
   if (ArduinoOTA.getCommand() == U_FLASH) {
     type = "sketch";
@@ -36,6 +28,7 @@ static void onOTAStart() {
   ESP_LOGI(TAG, "Start updating %s", type.c_str());
 
   otaInProgress = true;
+  Application::TaskManager::suspendForOTA();
   Application::LVGLMessageHandler::showOtaScreen();
 }
 
@@ -45,6 +38,7 @@ static void onOTAEnd() {
       100, "Update complete! Restarting...");
   vTaskDelay(pdMS_TO_TICKS(1000));
   Application::LVGLMessageHandler::hideOtaScreen();
+  Application::TaskManager::resumeFromOTA();
   otaInProgress = false;
 }
 
@@ -87,6 +81,7 @@ static void onOTAError(ota_error_t error) {
   Application::LVGLMessageHandler::updateOtaScreenProgress(0, errorMsg);
   vTaskDelay(pdMS_TO_TICKS(3000));
   Application::LVGLMessageHandler::hideOtaScreen();
+  Application::TaskManager::resumeFromOTA();
   otaInProgress = false;
 }
 

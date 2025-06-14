@@ -12,7 +12,7 @@ namespace Hardware {
 namespace Network {
 
 // Private variables
-static WifiConnectionStatus currentWifiStatus = WIFI_STATUS_DISCONNECTED;
+  static WifiConnectionStatus currentWifiStatus = WIFI_STATUS_DISCONNECTED;
 static unsigned long lastConnectionAttempt = 0;
 static unsigned long connectionStartTime = 0;
 static String currentIpAddress = "";

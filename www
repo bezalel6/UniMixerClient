@@ -1,0 +1,5 @@
+[33mcommit 04c41e0a490a697e26926bdf64c7a7ce3dbfd1ca[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: bezalel6 <bezalel3250@gmail.com>
+Date:   Sat Jun 14 03:29:14 2025 +0300
+
+    refactor(ota): Implement mutex for thread-safe UI updates

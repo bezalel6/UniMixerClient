@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_volumeslider.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\screens\ui_screenMain.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\screens\ui_screenOTA.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\screens\ui_screenDebug.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\ui.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_hook.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\ui_helpers.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="E:\SharedCo\UniMixerClient\src\ui\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{6A692DBD-3995-3645-9E9A-97C4ADABC292}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,11 +1,11 @@
 #ifndef AUDIO_STATUS_MANAGER_H
 #define AUDIO_STATUS_MANAGER_H
 
-#include "../../include/MessageProtocol.h"
 #include "../components/DeviceSelectorManager.h"
 #include "../events/UiEventHandlers.h"
 #include "../messaging/MessageBus.h"
 #include "AudioTypes.h"
+#include "WString.h"
 #include <Arduino.h>
 #include <lvgl.h>
 #include <memory>
