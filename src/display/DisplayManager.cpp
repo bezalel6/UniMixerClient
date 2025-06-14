@@ -1,6 +1,7 @@
 #include "DisplayManager.h"
 #include "../application/TaskManager.h"
 #include "../include/UIConstants.h"
+#include <SPI.h>
 #include <cinttypes>
 #include <ui/ui.h>
 
@@ -8,12 +9,16 @@ static const char *TAG = "DisplayManager";
 
 namespace Display {
 
+// HSPI bus (for high-speed display communication)
+SPIClass hspi(HSPI);
+
 // Private variables for ESP32-S3 optimization
 static unsigned long lvLastTick = 0;
 static unsigned long frameCount = 0;
 static unsigned long lastFpsTime = 0;
 static float currentFPS = 0.0f;
-static const unsigned long FPS_UPDATE_INTERVAL = 500; // Update FPS every 500ms
+static const unsigned long FPS_UPDATE_INTERVAL =
+    1000; // Update FPS every 1000ms
 
 // Performance monitoring
 static uint32_t renderTime = 0;
@@ -25,6 +30,9 @@ static uint32_t renderSamples = 0;
 static size_t psramUsed = 0;
 static size_t psramFree = 0;
 
+// Forward declaration for SPI configuration
+void configure_spi_bus();
+
 bool init(void) {
   ESP_LOGI(TAG, "Initializing Display Manager (ESP32-S3 Optimized)");
 
@@ -33,6 +41,9 @@ bool init(void) {
   size_t psramFreeSize = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   ESP_LOGI(TAG, "PSRAM: Total %d bytes, Free %d bytes", psramSize,
            psramFreeSize);
+
+  // Configure SPI bus for high-speed communication
+  configure_spi_bus();
 
   // Force cache flush for ESP32-S3 PSRAM issues
   ESP_LOGI(TAG, "Flushing caches for ESP32-S3 PSRAM stability");
@@ -75,11 +86,13 @@ void deinit(void) {
   ui_destroy();
 }
 
+void tick(void) {
+  // Update frame count for FPS calculation on every frame
+  frameCount++;
+}
+
 void update(void) {
   uint32_t startTime = millis();
-
-  // Update frame count for FPS calculation
-  frameCount++;
 
   unsigned long now = millis();
   if (now - lastFpsTime >= FPS_UPDATE_INTERVAL) {
@@ -98,26 +111,19 @@ void update(void) {
     frameCount = 0;
     lastFpsTime = now;
 
-    // Update PSRAM usage statistics
+    // Update PSRAM usage statistics less frequently for performance
     psramUsed = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) -
                 heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     psramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   }
 
-  // Track render performance
+  // Simplified render performance tracking
   uint32_t endTime = millis();
   renderTime = endTime - startTime;
 
   if (renderTime > maxRenderTime) {
     maxRenderTime = renderTime;
   }
-
-  // Calculate rolling average
-  if (renderSamples < 100) {
-    renderSamples++;
-  }
-  avgRenderTime =
-      (avgRenderTime * (renderSamples - 1) + renderTime) / renderSamples;
 }
 
 void setRotation(Rotation rotation) {
@@ -287,10 +293,8 @@ float getFPS(void) { return currentFPS; }
 
 void updateFpsDisplay(lv_obj_t *fpsLabel) {
   if (fpsLabel) {
-    char fpsText[64];
-    snprintf(fpsText, sizeof(fpsText),
-             "%.1f FPS | Render: %dms (Max: %dms) | PSRAM: %.1fKB", currentFPS,
-             avgRenderTime, maxRenderTime, psramUsed / 1024.0f);
+    char fpsText[32];
+    snprintf(fpsText, sizeof(fpsText), "%.1f FPS", currentFPS);
     lv_label_set_text(fpsLabel, fpsText);
   }
 }
@@ -335,6 +339,15 @@ void initializeLabelNone(lv_obj_t *label) {
   if (label) {
     lv_label_set_text(label, UI_LABEL_NONE);
   }
+}
+
+// Function to configure SPI bus for high-speed communication
+void configure_spi_bus() {
+  const int spi_bus_mhz = 80;
+  ESP_LOGI(TAG, "Setting SPI bus frequency to %dMHz for performance",
+           spi_bus_mhz);
+  hspi.begin(21, 22, 23, -1);
+  hspi.setFrequency(spi_bus_mhz * 1000000);
 }
 
 } // namespace Display

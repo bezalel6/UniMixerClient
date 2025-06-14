@@ -4,7 +4,6 @@
 #include <esp32_smartdisplay.h>
 #include <lvgl.h>
 
-
 namespace Display {
 
 // Display rotation management
@@ -27,6 +26,7 @@ typedef enum {
 // Display manager functions
 bool init(void);
 void deinit(void);
+void tick(void);
 void update(void);
 
 // FPS display

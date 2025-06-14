@@ -25,9 +25,8 @@ bool init(void) {
     return false;
   }
 
-  // Create LVGL timer to process messages every 50ms (reduced frequency to
-  // avoid conflicts)
-  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 50, NULL);
+  // Create LVGL timer to process messages every 20ms (improved responsiveness)
+  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 20, NULL);
   if (msgTimer == NULL) {
     ESP_LOGE(TAG, "Failed to create LVGL message processing timer");
     return false;
@@ -69,8 +68,14 @@ void processMessageQueue(lv_timer_t *timer) {
 
   LVGLMessage_t message;
 
-  // Process all available messages in the queue
-  while (xQueueReceive(lvglMessageQueue, &message, 0) == pdTRUE) {
+  // Process maximum 3 messages per cycle to avoid blocking rendering
+  int messagesProcessed = 0;
+  const int MAX_MESSAGES_PER_CYCLE = 3;
+
+  // Process available messages in the queue (limited per cycle)
+  while (messagesProcessed < MAX_MESSAGES_PER_CYCLE &&
+         xQueueReceive(lvglMessageQueue, &message, 0) == pdTRUE) {
+    messagesProcessed++;
 
     switch (message.type) {
     case MSG_UPDATE_WIFI_STATUS:

@@ -239,6 +239,8 @@ void lvglTask(void *parameter) {
   while (tasksRunning) {
     // Update LVGL tick system first (critical for animations)
     Display::tickUpdate();
+    // Update display frame counter for accurate FPS
+    Display::tick();
 
     // Handle LVGL tasks and rendering - this MUST run every cycle for smooth
     // animations The LVGLMessageHandler processes queue messages via LVGL timer
@@ -247,15 +249,15 @@ void lvglTask(void *parameter) {
     // Do less frequent operations to keep animation smooth
     unsigned long currentTime = millis();
 
-    // Update display stats only every 100ms (instead of every 16ms)
-    if (currentTime - lastDisplayUpdate >= 100) {
+    // Update display stats only every 200ms (reduced frequency for performance)
+    if (currentTime - lastDisplayUpdate >= 200) {
       Display::update();
       lastDisplayUpdate = currentTime;
     }
 
-    // Update LED colors much less frequently (every 200ms)
+    // Update LED colors less frequently (every 500ms)
 #ifdef BOARD_HAS_RGB_LED
-    if (currentTime - lastLedUpdate >= 200) {
+    if (currentTime - lastLedUpdate >= 500) {
       Hardware::Device::ledCycleColors();
       lastLedUpdate = currentTime;
     }
