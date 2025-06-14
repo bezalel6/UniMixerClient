@@ -1,4 +1,5 @@
 #include "OTAManager.h"
+#include <Update.h>
 
 #if OTA_ENABLE_UPDATES
 
@@ -32,6 +33,12 @@ static void update_ota_screen(int progress, const char *message);
 
 // OTA callback functions
 static void onOTAStart() {
+  // Forcefully end any lingering update process before starting a new one.
+  if (Update.isRunning()) {
+    ESP_LOGW(TAG, "An update was already running. Forcing cleanup...");
+    Update.end();
+  }
+
   String type;
   if (ArduinoOTA.getCommand() == U_FLASH) {
     type = "sketch";
@@ -76,8 +83,8 @@ static void onOTAError(ota_error_t error) {
     errorMsg = "Authentication failed";
     break;
   case OTA_BEGIN_ERROR:
-    ESP_LOGW(TAG, "Begin Failed (non-fatal), ignoring.");
-    return; // Not a fatal error, so we just return.
+    errorMsg = "Failed to start update";
+    break;
   case OTA_CONNECT_ERROR:
     errorMsg = "Connection failed";
     break;
