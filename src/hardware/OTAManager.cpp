@@ -2,14 +2,15 @@
 
 #if OTA_ENABLE_UPDATES
 
-#include "../application/LVGLMessageHandler.h"
 #include "../application/TaskManager.h"
 #include "../display/DisplayManager.h"
+#include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <esp_log.h>
 #include <functional>
+#include <lvgl.h>
 #include <ui/ui.h>
 
 // Private variables
@@ -19,8 +20,18 @@ static String hostname = OTA_HOSTNAME;
 static String password = OTA_PASSWORD;
 static bool otaInProgress = false;
 
+// OTA screen elements
+static lv_obj_t *ota_screen = NULL;
+static lv_obj_t *ota_label = NULL;
+static lv_obj_t *ota_bar = NULL;
+
+// Helper function forward declarations (for callbacks)
+static void show_ota_screen(const char *initial_message);
+static void hide_ota_screen();
+static void update_ota_screen(int progress, const char *message);
+
 // OTA callback functions
-static std::function<void()> onOTAStart = []() {
+static void onOTAStart() {
   String type;
   if (ArduinoOTA.getCommand() == U_FLASH) {
     type = "sketch";
@@ -30,87 +41,109 @@ static std::function<void()> onOTAStart = []() {
   ESP_LOGI(TAG, "Start updating %s", type.c_str());
 
   otaInProgress = true;
+  Application::TaskManager::suspend();
+  show_ota_screen("Starting update...");
+}
 
-  // Use message handler for thread-safe UI updates
-  Application::LVGLMessageHandler::updateOTAProgress(0, true, false,
-                                                     "Starting update...");
-};
-
-static std::function<void()> onOTAEnd = []() {
+static void onOTAEnd() {
   ESP_LOGI(TAG, "OTA update completed successfully");
-
-  // Use message handler for thread-safe UI updates only
-  Application::LVGLMessageHandler::updateOTAProgress(
-      100, false, true, "Update completed! Restarting...");
-
+  update_ota_screen(100, "Update complete! Restarting...");
+  vTaskDelay(pdMS_TO_TICKS(1000));
+  hide_ota_screen();
+  Application::TaskManager::resume();
   otaInProgress = false;
-};
+}
 
-static std::function<void(unsigned int, unsigned int)> onOTAProgress =
-    [](unsigned int progress, unsigned int total) {
-      unsigned int progressPercent = (progress / (total / 100));
-      static unsigned int lastProgressPercent = 0;
+static void onOTAProgress(unsigned int progress, unsigned int total) {
+  unsigned int progressPercent = (total > 0) ? (progress / (total / 100)) : 0;
+  static unsigned int lastProgressPercent = 0;
 
-      if (progressPercent >= lastProgressPercent + 1 ||
-          progressPercent == 100) {
-        ESP_LOGI(TAG, "OTA Progress: %u%%", progressPercent);
+  if (progressPercent > lastProgressPercent || progressPercent == 100) {
+    ESP_LOGI(TAG, "OTA Progress: %u%%", progressPercent);
+    char progressText[64];
+    snprintf(progressText, sizeof(progressText), "Progress: %u%%",
+             progressPercent);
+    update_ota_screen(progressPercent, progressText);
+    lastProgressPercent = progressPercent;
+  }
+}
 
-        // Use message handler for thread-safe UI updates only
-        if (otaInProgress) {
-          char progressText[64];
-          snprintf(progressText, sizeof(progressText), "Progress: %u%%",
-                   progressPercent);
-          Application::LVGLMessageHandler::updateOTAProgress(
-              progressPercent, true, false, progressText);
-          // Manually update LVGL to show progress, but in a thread-safe way
-          if (Application::TaskManager::lvglTryLock(10)) {
-            lv_timer_handler();
-            Display::tickUpdate();
-            Application::TaskManager::lvglUnlock();
-          }
-          vTaskDelay(
-              pdMS_TO_TICKS(5)); // Add small delay to prevent watchdog timeout
-        }
-
-        lastProgressPercent = progressPercent;
-      }
-    };
-
-static std::function<void(ota_error_t)> onOTAError = [](ota_error_t error) {
+static void onOTAError(ota_error_t error) {
   ESP_LOGE(TAG, "OTA Error[%u]: ", error);
-
-  // OTA_BEGIN_ERROR is sometimes reported erroneously, but the update can
-  // still succeed. We will log it as a warning and allow the update to
-  // continue.
-  if (error == OTA_BEGIN_ERROR) {
-    ESP_LOGW(TAG, "Begin Failed (non-fatal), allowing update to continue...");
-    // Do not set otaInProgress to false or send a failure message.
-    return;
-  }
-
   const char *errorMsg = "Unknown error";
-  if (error == OTA_AUTH_ERROR) {
-    ESP_LOGE(TAG, "Auth Failed");
+  switch (error) {
+  case OTA_AUTH_ERROR:
     errorMsg = "Authentication failed";
-  } else if (error == OTA_CONNECT_ERROR) {
-    ESP_LOGE(TAG, "Connect Failed");
+    break;
+  case OTA_BEGIN_ERROR:
+    ESP_LOGW(TAG, "Begin Failed (non-fatal), ignoring.");
+    return; // Not a fatal error, so we just return.
+  case OTA_CONNECT_ERROR:
     errorMsg = "Connection failed";
-  } else if (error == OTA_RECEIVE_ERROR) {
-    ESP_LOGE(TAG, "Receive Failed");
+    break;
+  case OTA_RECEIVE_ERROR:
     errorMsg = "Receive failed";
-  } else if (error == OTA_END_ERROR) {
-    ESP_LOGE(TAG, "End Failed");
+    break;
+  case OTA_END_ERROR:
     errorMsg = "End failed";
+    break;
   }
 
-  // For all other errors, treat them as fatal.
-  if (otaInProgress) {
-    Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
-                                                       errorMsg);
-  }
-
+  update_ota_screen(0, errorMsg);
+  vTaskDelay(pdMS_TO_TICKS(3000));
+  hide_ota_screen();
+  Application::TaskManager::resume();
   otaInProgress = false;
-};
+}
+
+// Helper function implementations
+static void show_ota_screen(const char *initial_message) {
+  if (Application::TaskManager::lvglTryLock(100)) {
+    if (!ota_screen) {
+      ota_screen = lv_obj_create(NULL);
+      lv_obj_set_style_bg_color(ota_screen, lv_color_hex(0x000000), 0);
+
+      ota_label = lv_label_create(ota_screen);
+      lv_label_set_text(ota_label, initial_message);
+      lv_obj_set_style_text_color(ota_label, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_set_style_text_font(ota_label, &lv_font_montserrat_26, 0);
+      lv_obj_align(ota_label, LV_ALIGN_CENTER, 0, -20);
+
+      ota_bar = lv_bar_create(ota_screen);
+      lv_obj_set_size(ota_bar, 200, 20);
+      lv_obj_align(ota_bar, LV_ALIGN_CENTER, 0, 20);
+      lv_bar_set_value(ota_bar, 0, LV_ANIM_OFF);
+    }
+    lv_scr_load(ota_screen);
+    Application::TaskManager::lvglUnlock();
+  }
+}
+
+static void hide_ota_screen() {
+  if (Application::TaskManager::lvglTryLock(100)) {
+    if (ota_screen) {
+      lv_obj_del(ota_screen);
+      ota_screen = NULL;
+      ota_label = NULL;
+      ota_bar = NULL;
+    }
+    lv_scr_load(ui_screenMain); // Restore main screen
+    Application::TaskManager::lvglUnlock();
+  }
+}
+
+static void update_ota_screen(int progress, const char *message) {
+  if (Application::TaskManager::lvglTryLock(10)) {
+    if (ota_label) {
+      lv_label_set_text(ota_label, message);
+    }
+    if (ota_bar) {
+      lv_bar_set_value(ota_bar, progress, LV_ANIM_ON);
+    }
+    lv_timer_handler(); // Manually update the screen
+    Application::TaskManager::lvglUnlock();
+  }
+}
 
 namespace Hardware {
 namespace OTA {
@@ -119,115 +152,27 @@ bool init(void) {
   ESP_LOGI(TAG, "Initializing OTA Manager");
 
   if (!WiFi.isConnected()) {
-    ESP_LOGW(TAG, "WiFi not connected - OTA will initialize when connection is "
-                  "available");
-    // Don't fail initialization, just mark as not ready yet
+    ESP_LOGW(TAG, "WiFi not connected - OTA will initialize later.");
     otaInitialized = false;
-    return true; // Return success, OTA will initialize later when WiFi connects
+    return true;
   }
 
-  // Configure Arduino OTA
   ArduinoOTA.setHostname(hostname.c_str());
   ArduinoOTA.setPort(OTA_PORT);
 
 #if OTA_REQUIRE_PASSWORD
   ArduinoOTA.setPassword(password.c_str());
-  ESP_LOGI(TAG, "OTA password protection enabled");
 #endif
 
-  // Set up Arduino OTA callbacks with thread-safe UI updates
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else {
-      type = "filesystem";
-    }
-    ESP_LOGI(TAG, "Start updating %s", type.c_str());
-
-    otaInProgress = true;
-
-    // Use message handler for thread-safe UI updates
-    Application::LVGLMessageHandler::updateOTAProgress(0, true, false,
-                                                       "Starting update...");
-  });
-  ArduinoOTA.onEnd([]() {
-    ESP_LOGI(TAG, "OTA update completed successfully");
-
-    // Use message handler for thread-safe UI updates only
-    Application::LVGLMessageHandler::updateOTAProgress(
-        100, false, true, "Update completed! Restarting...");
-
-    otaInProgress = false;
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    unsigned int progressPercent = (progress / (total / 100));
-    static unsigned int lastProgressPercent = 0;
-
-    if (progressPercent >= lastProgressPercent + 1 || progressPercent == 100) {
-      ESP_LOGI(TAG, "OTA Progress: %u%%", progressPercent);
-
-      // Use message handler for thread-safe UI updates only
-      if (otaInProgress) {
-        char progressText[64];
-        snprintf(progressText, sizeof(progressText), "Progress: %u%%",
-                 progressPercent);
-        Application::LVGLMessageHandler::updateOTAProgress(
-            progressPercent, true, false, progressText);
-        // Manually update LVGL to show progress, but in a thread-safe way
-        if (Application::TaskManager::lvglTryLock(10)) {
-          lv_timer_handler();
-          Display::tickUpdate();
-          Application::TaskManager::lvglUnlock();
-        }
-        vTaskDelay(
-            pdMS_TO_TICKS(5)); // Add small delay to prevent watchdog timeout
-      }
-
-      lastProgressPercent = progressPercent;
-    }
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    ESP_LOGE(TAG, "OTA Error[%u]: ", error);
-
-    // OTA_BEGIN_ERROR is sometimes reported erroneously, but the update can
-    // still succeed. We will log it as a warning and allow the update to
-    // continue.
-    if (error == OTA_BEGIN_ERROR) {
-      ESP_LOGW(TAG, "Begin Failed (non-fatal), allowing update to continue...");
-      // Do not set otaInProgress to false or send a failure message.
-      return;
-    }
-
-    const char *errorMsg = "Unknown error";
-    if (error == OTA_AUTH_ERROR) {
-      ESP_LOGE(TAG, "Auth Failed");
-      errorMsg = "Authentication failed";
-    } else if (error == OTA_CONNECT_ERROR) {
-      ESP_LOGE(TAG, "Connect Failed");
-      errorMsg = "Connection failed";
-    } else if (error == OTA_RECEIVE_ERROR) {
-      ESP_LOGE(TAG, "Receive Failed");
-      errorMsg = "Receive failed";
-    } else if (error == OTA_END_ERROR) {
-      ESP_LOGE(TAG, "End Failed");
-      errorMsg = "End failed";
-    }
-
-    // For all other errors, treat them as fatal.
-    if (otaInProgress) {
-      Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
-                                                         errorMsg);
-    }
-
-    otaInProgress = false;
-  });
+  ArduinoOTA.onStart(onOTAStart);
+  ArduinoOTA.onEnd(onOTAEnd);
+  ArduinoOTA.onProgress(onOTAProgress);
+  ArduinoOTA.onError(onOTAError);
 
   ArduinoOTA.begin();
 
-  // Set up mDNS
   if (!MDNS.begin(hostname.c_str())) {
-    ESP_LOGW(TAG, "Error setting up MDNS responder");
+    ESP_LOGW(TAG, "Error setting up mDNS responder");
   } else {
     ESP_LOGI(TAG, "mDNS responder started: %s.local", hostname.c_str());
   }
@@ -240,50 +185,39 @@ bool init(void) {
 
 void deinit(void) {
   ESP_LOGI(TAG, "Deinitializing OTA Manager");
-
   if (otaInitialized) {
     ArduinoOTA.end();
     otaInitialized = false;
   }
-
   MDNS.end();
 }
 
 void update(void) {
-  // If OTA is not initialized but WiFi is now connected, try to initialize
   if (!otaInitialized && WiFi.isConnected()) {
-    ESP_LOGI(TAG, "WiFi now connected - initializing OTA");
-
-    // Call the full initialization function to avoid code duplication
-    if (init()) {
-      ESP_LOGI(TAG, "OTA initialization on WiFi connection successful");
-    } else {
-      ESP_LOGW(TAG, "OTA initialization on WiFi connection failed");
+    ESP_LOGI(TAG, "WiFi connected, initializing OTA...");
+    if (!init()) {
+      ESP_LOGE(TAG, "OTA initialization failed.");
     }
     return;
   }
 
-  // Handle OTA updates if initialized and connected
-  if (otaInitialized && WiFi.isConnected()) {
+  if (otaInitialized) {
     ArduinoOTA.handle();
   }
 }
 
 bool isReady(void) { return otaInitialized && WiFi.isConnected(); }
-
 const char *getHostname(void) { return hostname.c_str(); }
 
 void setHostname(const char *newHostname) {
   if (newHostname && strlen(newHostname) > 0) {
     hostname = String(newHostname);
-    ESP_LOGI(TAG, "Hostname set to: %s", hostname.c_str());
   }
 }
 
 void setPassword(const char *newPassword) {
   if (newPassword && strlen(newPassword) > 0) {
     password = String(newPassword);
-    ESP_LOGI(TAG, "OTA password updated");
   }
 }
 
