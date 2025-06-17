@@ -460,10 +460,10 @@ void StatusManager::onAudioLevelsChangedUI(void) {
         currentAudioStatus.audioLevels);
   }
 
-  // Update default device label if available
-  if (currentAudioStatus.hasDefaultDevice && ui_lblPrimaryAudioDeviceValue) {
-    lv_label_set_text(ui_lblPrimaryAudioDeviceValue,
-                      currentAudioStatus.defaultDevice.friendlyName.c_str());
+  // Update default device label if available using thread-safe message handler
+  if (currentAudioStatus.hasDefaultDevice) {
+    Application::LVGLMessageHandler::updateDefaultDevice(
+        currentAudioStatus.defaultDevice.friendlyName.c_str());
   }
 
   // Update volume arc based on current tab
@@ -558,14 +558,30 @@ void StatusManager::updateVolumeArcFromSelectedDevice(void) {
     return;
   }
 
-  // Determine volume to set
+  // Determine volume to set based on current tab
   int resVolume = 0;
-  if (resVolume < 0) {
-    // Use current selected device volume
+  
+  if (currentTab == Events::UI::TabState::MASTER) {
+    // For MASTER tab, use default device volume
+    if (currentAudioStatus.hasDefaultDevice) {
+      resVolume = (int)(currentAudioStatus.defaultDevice.volume * 100.0f);
+      ESP_LOGD(TAG, "Using default device volume: %d", resVolume);
+    } else {
+      ESP_LOGW(TAG, "No default device available for master volume display");
+    }
+  } else {
+    // For other tabs, use current selected device volume
     String selectedDevice = getSelectedDevice();
-    AudioLevel *level = getAudioLevel(selectedDevice);
-    if (level) {
-      resVolume = level->volume;
+    if (!selectedDevice.isEmpty()) {
+      AudioLevel *level = getAudioLevel(selectedDevice);
+      if (level) {
+        resVolume = level->volume;
+        ESP_LOGD(TAG, "Using device '%s' volume: %d", selectedDevice.c_str(), resVolume);
+      } else {
+        ESP_LOGW(TAG, "Selected device '%s' not found in audio levels", selectedDevice.c_str());
+      }
+    } else {
+      ESP_LOGW(TAG, "No device selected for volume display");
     }
   }
 

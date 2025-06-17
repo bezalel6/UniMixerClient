@@ -44,9 +44,9 @@ bool init(void) {
   // Additional small delay to ensure timer system is stable
   vTaskDelay(pdMS_TO_TICKS(100));
 
-  // Create LVGL timer to process messages every 20ms (improved responsiveness)
+  // Create LVGL timer to process messages every 10ms (improved responsiveness)
   ESP_LOGI(TAG, "Creating LVGL message processing timer...");
-  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 20, NULL);
+  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 10, NULL);
   if (msgTimer == NULL) {
     ESP_LOGE(TAG, "Failed to create LVGL message processing timer");
     return false;
@@ -91,9 +91,9 @@ void processMessageQueue(lv_timer_t *timer) {
 
   LVGLMessage_t message;
 
-  // Process maximum 10 messages per cycle to avoid blocking rendering
+  // Process maximum 20 messages per cycle to reduce latency
   int messagesProcessed = 0;
-  const int MAX_MESSAGES_PER_CYCLE = 10;
+  const int MAX_MESSAGES_PER_CYCLE = 20;
 
   // Process available messages in the queue (limited per cycle)
   while (messagesProcessed < MAX_MESSAGES_PER_CYCLE &&
@@ -166,11 +166,12 @@ void processMessageQueue(lv_timer_t *timer) {
       break;
 
     case MSG_UPDATE_FPS_DISPLAY:
-      // Update FPS display
+      // Update FPS display with both task and actual render FPS
       if (ui_lblFPS) {
-        char fpsText[32];
-        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f",
-                 message.data.fps_display.fps);
+        char fpsText[64];
+        float actualFps = Display::getActualRenderFPS();
+        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f", 
+                 actualFps, message.data.fps_display.fps);
         lv_label_set_text(ui_lblFPS, fpsText);
       }
       break;
@@ -188,6 +189,28 @@ void processMessageQueue(lv_timer_t *timer) {
       if (ui_balanceVolumeSlider) {
         lv_arc_set_value(ui_balanceVolumeSlider,
                          message.data.volume_update.volume);
+      }
+      
+      // Update all volume labels with percentage text
+      char volumeText[16];
+      snprintf(volumeText, sizeof(volumeText), "%d%%", message.data.volume_update.volume);
+      
+      if (ui_lblPrimaryVolumeSlider) {
+        lv_label_set_text(ui_lblPrimaryVolumeSlider, volumeText);
+      }
+      if (ui_lblSingleVolumeSlider) {
+        lv_label_set_text(ui_lblSingleVolumeSlider, volumeText);
+      }
+      if (ui_lblBalanceVolumeSlider) {
+        lv_label_set_text(ui_lblBalanceVolumeSlider, volumeText);
+      }
+      break;
+
+    case MSG_UPDATE_DEFAULT_DEVICE:
+      // Update default device label
+      if (ui_lblPrimaryAudioDeviceValue) {
+        lv_label_set_text(ui_lblPrimaryAudioDeviceValue,
+                          message.data.default_device.device_name);
       }
       break;
 
@@ -311,6 +334,22 @@ bool updateVolumeLevel(int volume) {
   LVGLMessage_t message;
   message.type = MSG_UPDATE_VOLUME;
   message.data.volume_update.volume = volume;
+  return sendMessage(&message);
+}
+
+bool updateDefaultDevice(const char *device_name) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_DEFAULT_DEVICE;
+  
+  // Safely copy device name string
+  if (device_name) {
+    strncpy(message.data.default_device.device_name, device_name,
+            sizeof(message.data.default_device.device_name) - 1);
+    message.data.default_device.device_name[sizeof(message.data.default_device.device_name) - 1] = '\0';
+  } else {
+    message.data.default_device.device_name[0] = '\0';
+  }
+  
   return sendMessage(&message);
 }
 
