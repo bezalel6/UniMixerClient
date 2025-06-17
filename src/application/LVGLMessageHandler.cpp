@@ -189,6 +189,28 @@ void processMessageQueue(lv_timer_t *timer) {
         lv_arc_set_value(ui_balanceVolumeSlider,
                          message.data.volume_update.volume);
       }
+      
+      // Update all volume labels with percentage text
+      char volumeText[16];
+      snprintf(volumeText, sizeof(volumeText), "%d%%", message.data.volume_update.volume);
+      
+      if (ui_lblPrimaryVolumeSlider) {
+        lv_label_set_text(ui_lblPrimaryVolumeSlider, volumeText);
+      }
+      if (ui_lblSingleVolumeSlider) {
+        lv_label_set_text(ui_lblSingleVolumeSlider, volumeText);
+      }
+      if (ui_lblBalanceVolumeSlider) {
+        lv_label_set_text(ui_lblBalanceVolumeSlider, volumeText);
+      }
+      break;
+
+    case MSG_UPDATE_DEFAULT_DEVICE:
+      // Update default device label
+      if (ui_lblPrimaryAudioDeviceValue) {
+        lv_label_set_text(ui_lblPrimaryAudioDeviceValue,
+                          message.data.default_device.device_name);
+      }
       break;
 
     case MSG_SCREEN_CHANGE:
@@ -311,6 +333,22 @@ bool updateVolumeLevel(int volume) {
   LVGLMessage_t message;
   message.type = MSG_UPDATE_VOLUME;
   message.data.volume_update.volume = volume;
+  return sendMessage(&message);
+}
+
+bool updateDefaultDevice(const char *device_name) {
+  LVGLMessage_t message;
+  message.type = MSG_UPDATE_DEFAULT_DEVICE;
+  
+  // Safely copy device name string
+  if (device_name) {
+    strncpy(message.data.default_device.device_name, device_name,
+            sizeof(message.data.default_device.device_name) - 1);
+    message.data.default_device.device_name[sizeof(message.data.default_device.device_name) - 1] = '\0';
+  } else {
+    message.data.default_device.device_name[0] = '\0';
+  }
+  
   return sendMessage(&message);
 }
 

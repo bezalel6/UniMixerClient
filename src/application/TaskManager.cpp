@@ -508,17 +508,27 @@ void audioTask(void *parameter) {
     static unsigned long lastAudioUpdate = 0;
     if (currentTime - lastAudioUpdate >= 500) { // Every 500ms
       // ESP_LOGD(TAG, "Audio task: Processing audio status");
+      
+      // Reset watchdog before potentially long-running UI operation
+#ifdef CONFIG_ESP_TASK_WDT_EN
+      esp_task_wdt_reset();
+#endif
+
+      // Use LVGL mutex protection for thread-safe UI updates
+      lvglLock();
       Application::Audio::StatusManager::onAudioLevelsChangedUI();
+      lvglUnlock();
+      
+      // Reset watchdog after UI operation
+#ifdef CONFIG_ESP_TASK_WDT_EN
+      esp_task_wdt_reset();
+#endif
+      
       lastAudioUpdate = currentTime;
     }
 
     // Sleep until next update with much longer interval
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(AUDIO_UPDATE_INTERVAL));
-
-// Reset watchdog to prevent timeout
-#ifdef CONFIG_ESP_TASK_WDT_EN
-    esp_task_wdt_reset();
-#endif
 
     // Additional debug logging to monitor task health
     static int heartbeat = 0;
