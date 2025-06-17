@@ -65,18 +65,10 @@ public:
 
 private:
   // Helper functions
-  static int getProcessIdForDevice(const String &deviceName);
   static void initializeBalanceDropdownSelections(void);
-
-  // Message handler management
-  static void initializeMessageHandlers(void);
-  static void audioStatusMessageHandler(const char *messageType,
-                                        const char *payload);
-  static AudioStatus parseAudioStatusJson(const char *jsonPayload);
 
   // Internal state
   static AudioStatus currentAudioStatus;
-  static Messaging::Handler audioStatusHandler;
   static unsigned long lastUpdateTime;
   static bool initialized;
 

@@ -1,10 +1,10 @@
 #include "AudioStatusManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../include/UIConstants.h"
+#include "../messaging/TypedAudioHelpers.h"
 #include "DebugUtils.h"
 #include "LVGLMessageHandler.h"
 #include "ui/screens/ui_screenMain.h"
-#include <ArduinoJson.h>
 #include <esp_log.h>
 #include <memory>
 #include <ui/ui.h>
@@ -23,36 +23,11 @@ static const char *TAG = "AudioStatusManager";
     return;                                                                    \
   }
 
-// Updated macro for new protocol format
-#define AUDIO_COMMAND_BASE(command_type)                                       \
-  if (!Messaging::MessageBus::IsConnected()) {                                 \
-    ESP_LOGW(TAG, "Cannot publish command: No transport connected");           \
-    return;                                                                    \
-  }                                                                            \
-  JsonDocument doc;                                                            \
-  doc["commandType"] = command_type;                                           \
-  doc["processId"] = getProcessIdForDevice(deviceName);                        \
-  doc["processName"] = deviceName;                                             \
-  doc["requestId"] = Messaging::Protocol::generateRequestId();
-
-#define AUDIO_PUBLISH_COMMAND_FINISH(action_name)                              \
-  String jsonPayload;                                                          \
-  serializeJson(doc, jsonPayload);                                             \
-  bool published =                                                             \
-      Messaging::MessageBus::Publish("COMMAND", jsonPayload.c_str());          \
-  if (published) {                                                             \
-    ESP_LOGI(TAG, "Published " action_name " command for %s",                  \
-             deviceName.c_str());                                              \
-  } else {                                                                     \
-    ESP_LOGE(TAG, "Failed to publish " action_name " command");                \
-  }
-
 namespace Application {
 namespace Audio {
 
 // StatusManager implementation
 AudioStatus StatusManager::currentAudioStatus;
-Messaging::Handler StatusManager::audioStatusHandler;
 unsigned long StatusManager::lastUpdateTime = 0;
 bool StatusManager::initialized = false;
 bool StatusManager::suppressArcEvents = false;
@@ -277,12 +252,7 @@ bool StatusManager::init() {
         suppressDropdownEvents = false;
       });
 
-  // Initialize and register message handlers
-  initializeMessageHandlers();
-  if (!Messaging::MessageBus::RegisterHandler(audioStatusHandler)) {
-    ESP_LOGE(TAG, "Failed to register audio status message handler");
-    return false;
-  }
+  // Message handlers are now registered centrally by MessageHandlerRegistry
   initialized = true;
   ESP_LOGI(TAG, "AudioStatusManager initialized successfully");
   return true;
@@ -295,8 +265,7 @@ void StatusManager::deinit() {
 
   ESP_LOGI(TAG, "Deinitializing AudioStatusManager");
 
-  // Unregister message handlers
-  Messaging::MessageBus::UnregisterHandler(audioStatusHandler.Identifier);
+  // Message handlers are unregistered centrally by MessageHandlerRegistry
 
   // Clear data
   currentAudioStatus.audioLevels.clear();
@@ -342,15 +311,7 @@ void StatusManager::updateAudioLevel(const String &processName, int volume) {
            processName.c_str(), volume);
 }
 
-int StatusManager::getProcessIdForDevice(const String &deviceName) {
-  // In a real implementation, maintain a mapping of process names to IDs
-  // For now, use a simple hash of the process name
-  unsigned long hash = 0;
-  for (int i = 0; i < deviceName.length(); i++) {
-    hash = hash * 31 + deviceName.charAt(i);
-  }
-  return (int)(hash % 65536); // Keep it reasonable
-}
+
 
 void StatusManager::initializeBalanceDropdownSelections(void) {
   if (!deviceSelectorManager)
@@ -690,41 +651,14 @@ void StatusManager::publishStatusUpdate(void) {
     return;
   }
 
-  JsonDocument doc;
-  doc["messageType"] = Messaging::Protocol::MESSAGE_STATUS_UPDATE;
-  doc["requestId"] = Messaging::Protocol::generateRequestId();
-  doc["timestamp"] = Hardware::Device::getMillis();
-
-  // Add sessions array
-  JsonArray sessions = doc["sessions"].to<JsonArray>();
-  for (const auto &level : currentAudioStatus.audioLevels) {
-    JsonObject session = sessions.add<JsonObject>();
-    session["processName"] = level.processName;
-    session["volume"] = level.volume / 100.0f; // Convert to 0.0-1.0 range
-    session["isMuted"] = level.isMuted;
-    session["state"] = "Active";
-  }
-
-  // Add default device if available
-  if (currentAudioStatus.hasDefaultDevice) {
-    JsonObject defaultDevice = doc["defaultDevice"].to<JsonObject>();
-    defaultDevice["friendlyName"] =
-        currentAudioStatus.defaultDevice.friendlyName;
-    defaultDevice["volume"] = currentAudioStatus.defaultDevice.volume;
-    defaultDevice["isMuted"] = currentAudioStatus.defaultDevice.isMuted;
-    defaultDevice["dataFlow"] = currentAudioStatus.defaultDevice.state;
-    defaultDevice["deviceRole"] = "Console";
-  }
-
-  String jsonPayload;
-  serializeJson(doc, jsonPayload);
-  bool published =
-      Messaging::MessageBus::Publish("STATUS_UPDATE", jsonPayload.c_str());
+  // Use typed message system instead of manual JSON creation
+  bool published = Messaging::AudioHelpers::PublishStatusUpdate(currentAudioStatus);
+  
   if (published) {
-    ESP_LOGI(TAG, "Published status update with %d sessions",
+    ESP_LOGI(TAG, "Published typed status update with %d sessions",
              currentAudioStatus.audioLevels.size());
   } else {
-    ESP_LOGE(TAG, "Failed to publish status update");
+    ESP_LOGE(TAG, "Failed to publish typed status update");
   }
 }
 
@@ -765,148 +699,27 @@ void StatusManager::publishAudioStatusRequest(bool delayed) {
     return;
   }
 
-  // Create JSON request for getting status
-  JsonDocument doc;
-  doc["messageType"] = Messaging::Protocol::MESSAGE_GET_STATUS;
-  doc["requestId"] = Messaging::Protocol::generateRequestId();
-
-  // Serialize to string
-  String jsonPayload;
-  serializeJson(doc, jsonPayload);
-
-  // Publish the request (delayed or immediate)
+  // Use typed message system instead of manual JSON creation
   bool published;
   if (delayed) {
-    published = Messaging::MessageBus::PublishDelayed("STATUS_REQUEST",
-                                                      jsonPayload.c_str());
+    published = Messaging::AudioHelpers::PublishStatusRequestDelayed();
     if (published) {
-      ESP_LOGI(TAG, "Queued delayed audio status request");
+      ESP_LOGI(TAG, "Queued delayed typed audio status request");
     } else {
-      ESP_LOGE(TAG, "Failed to queue delayed audio status request");
+      ESP_LOGE(TAG, "Failed to queue delayed typed audio status request");
     }
   } else {
-    published =
-        Messaging::MessageBus::Publish("STATUS_REQUEST", jsonPayload.c_str());
+    published = Messaging::AudioHelpers::PublishStatusRequest();
     if (published) {
-      ESP_LOGI(TAG, "Published audio status request");
+      ESP_LOGI(TAG, "Published typed audio status request");
     } else {
-      ESP_LOGE(TAG, "Failed to publish audio status request");
+      ESP_LOGE(TAG, "Failed to publish typed audio status request");
     }
   }
 }
 
 // Private methods
-
-void StatusManager::initializeMessageHandlers(void) {
-  // Status message handler
-  audioStatusHandler.Identifier = "AudioStatusHandler";
-  audioStatusHandler.SubscribeTopic = "STATUS";
-  audioStatusHandler.PublishTopic = "";
-  audioStatusHandler.Callback = audioStatusMessageHandler;
-  audioStatusHandler.Active = true;
-}
-
-void StatusManager::audioStatusMessageHandler(const char *messageType,
-                                              const char *payload) {
-  if (!initialized) {
-    ESP_LOGW(TAG, "AudioStatusManager not initialized, ignoring message");
-    return;
-  }
-
-  AudioStatus status = parseAudioStatusJson(payload);
-
-  if (status.audioLevels.empty() && !status.hasDefaultDevice) {
-    ESP_LOGE(TAG, "Failed to parse audio status JSON or no valid data found");
-    return;
-  }
-
-  // Process the received audio status
-  onAudioStatusReceived(status);
-}
-
-AudioStatus StatusManager::parseAudioStatusJson(const char *jsonPayload) {
-  AudioStatus result;
-
-  if (!jsonPayload) {
-    ESP_LOGE(TAG, "Invalid JSON payload");
-    return result;
-  }
-
-  // Create a JSON document
-  JsonDocument doc;
-
-  // Parse the JSON
-  DeserializationError error = deserializeJson(doc, jsonPayload);
-
-  if (error) {
-    ESP_LOGE(TAG, "JSON parsing failed: %s", error.c_str());
-    return result;
-  }
-
-  // Check if the root is an object
-  if (!doc.is<JsonObject>()) {
-    ESP_LOGE(TAG, "JSON root is not an object");
-    return result;
-  }
-
-  JsonObject root = doc.as<JsonObject>();
-  unsigned long now = Hardware::Device::getMillis();
-  result.timestamp = now;
-
-  // Parse default device if present
-  JsonObject defaultDevice = root["defaultDevice"];
-  if (!defaultDevice.isNull()) {
-    String friendlyName = defaultDevice["friendlyName"] | "";
-    float volume = defaultDevice["volume"] | 0.0f;
-    bool isMuted = defaultDevice["isMuted"] | false;
-    String dataFlow = defaultDevice["dataFlow"] | "";
-    String deviceRole = defaultDevice["deviceRole"] | "";
-
-    if (friendlyName.length() > 0) {
-      result.defaultDevice.friendlyName = friendlyName;
-      result.defaultDevice.volume = volume;
-      result.defaultDevice.isMuted = isMuted;
-      result.defaultDevice.state = dataFlow + "/" + deviceRole;
-      result.hasDefaultDevice = true;
-
-      ESP_LOGI(TAG, "Parsed default device: %s = %.1f%% %s [%s]",
-               friendlyName.c_str(), volume * 100.0f, isMuted ? "(muted)" : "",
-               result.defaultDevice.state.c_str());
-    }
-  }
-
-  // Parse the new server status format
-  JsonArray sessions = root["sessions"];
-  if (sessions.isNull()) {
-    ESP_LOGW(TAG, "No sessions array in status message");
-    return result;
-  }
-
-  for (JsonObject session : sessions) {
-    String processName = session["processName"] | "";
-    String displayName = session["displayName"] | "";
-    float volume = session["volume"] | 0.0f;
-    bool isMuted = session["isMuted"] | false;
-    String state = session["state"] | "";
-
-    if (processName.length() > 0) {
-      AudioLevel level;
-      level.processName = processName;
-      level.volume = (int)(volume * 100.0f); // Convert from 0.0-1.0 to 0-100
-      level.isMuted = isMuted;
-      level.lastUpdate = now;
-      level.stale = false;
-
-      result.audioLevels.push_back(level);
-      ESP_LOGI(TAG, "Parsed audio session: %s = %d%% %s", processName.c_str(),
-               level.volume, isMuted ? "(muted)" : "");
-    }
-  }
-
-  ESP_LOGI(TAG, "Parsed %d audio sessions from status message",
-           result.audioLevels.size());
-  return result;
-}
+// Message handling is now centralized in MessageHandlerRegistry
 
 } // namespace Audio
 } // namespace Application

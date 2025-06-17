@@ -1,4 +1,5 @@
 #include "MessageBus.h"
+#include "Messages.h"
 #include <esp_log.h>
 
 static const char* TAG = "MessageBus";
@@ -256,6 +257,19 @@ bool MessageBus::PublishToTransport(Transport* transport, const char* topic, con
 
 void MessageBus::UpdateActivity() {
     lastActivity = millis();
+}
+
+// Typed convenience method implementations
+bool MessageBus::PublishAudioStatusRequest(const Messages::AudioStatusRequest& request) {
+    return PublishTyped("STATUS_REQUEST", request);
+}
+
+bool MessageBus::PublishAudioStatusResponse(const Messages::AudioStatusResponse& response) {
+    return PublishTyped("STATUS_UPDATE", response);
+}
+
+bool MessageBus::RegisterAudioStatusHandler(const String& identifier, TypedMessageCallback<Messages::AudioStatusResponse> callback) {
+    return RegisterTypedHandler<Messages::AudioStatusResponse>("STATUS", identifier, callback);
 }
 
 }  // namespace Messaging

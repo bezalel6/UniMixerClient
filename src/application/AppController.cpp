@@ -7,6 +7,7 @@
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
 #include "../messaging/MessageBus.h"
+#include "../messaging/MessageHandlerRegistry.h"
 #include "AudioStatusManager.h"
 #include "LVGLMessageHandler.h"
 #include "TaskManager.h"
@@ -116,7 +117,15 @@ bool init(void) {
 #endif
   esp_task_wdt_reset();
 
-  // Initialize audio status manager (requires MessageBus to be initialized)
+  // Register all message handlers centrally
+  ESP_LOGI(TAG, "WDT Reset: Registering message handlers...");
+  if (!Messaging::MessageHandlerRegistry::RegisterAllHandlers()) {
+    ESP_LOGE(TAG, "Failed to register message handlers");
+    return false;
+  }
+  esp_task_wdt_reset();
+
+  // Initialize audio status manager (requires MessageBus and handlers to be initialized)
   ESP_LOGI(TAG, "WDT Reset: Initializing Audio Status Manager...");
   if (!Application::Audio::StatusManager::init()) {
     ESP_LOGE(TAG, "Failed to initialize audio status manager");
@@ -175,6 +184,9 @@ void deinit(void) {
 #if OTA_ENABLE_UPDATES
   Hardware::OTA::deinit();
 #endif
+
+  // Unregister all message handlers
+  Messaging::MessageHandlerRegistry::UnregisterAllHandlers();
 
   // Deinitialize messaging system
   Messaging::MessageBus::Deinit();
