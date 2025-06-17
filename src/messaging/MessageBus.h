@@ -14,7 +14,7 @@ using PublishFunction = std::function<bool(const char* topic, const char* payloa
 using ConnectionFunction = std::function<bool()>;
 
 // Typed callback types
-template<typename T>
+template <typename T>
 using TypedMessageCallback = std::function<void(const T& message)>;
 
 // Connection status enum
@@ -61,14 +61,14 @@ class MessageBus {
     static bool PublishDelayed(const char* topic, const char* payload);
 
     // Typed publishing methods
-    template<typename T>
+    template <typename T>
     static bool PublishTyped(const char* topic, const T& message) {
         static_assert(std::is_base_of<Messages::BaseMessage, T>::value, "T must derive from BaseMessage");
         String payload = message.toJson();
         return Publish(topic, payload.c_str());
     }
 
-    template<typename T>
+    template <typename T>
     static bool PublishTypedDelayed(const char* topic, const T& message) {
         static_assert(std::is_base_of<Messages::BaseMessage, T>::value, "T must derive from BaseMessage");
         String payload = message.toJson();
@@ -89,22 +89,22 @@ class MessageBus {
     static bool UnregisterHandler(const String& identifier);
 
     // Typed handler registration methods
-    template<typename T>
+    template <typename T>
     static bool RegisterTypedHandler(const char* topic, const String& identifier, TypedMessageCallback<T> callback) {
         static_assert(std::is_base_of<Messages::BaseMessage, T>::value, "T must derive from BaseMessage");
-        
+
         Handler handler;
         handler.Identifier = identifier;
         handler.SubscribeTopic = topic;
         handler.PublishTopic = "";
         handler.Active = true;
-        
+
         // Create wrapper callback that deserializes JSON to typed message
         handler.Callback = [callback](const char* topic, const char* payload) {
             T message = T::fromJson(payload);
             callback(message);
         };
-        
+
         return RegisterHandler(handler);
     }
 
@@ -136,6 +136,9 @@ class MessageBus {
 namespace Transports {
 Transport* GetMqttTransport();
 Transport* GetSerialTransport();
+
+// Utility functions for transport debugging/recovery
+void FlushSerialTransportBuffers();  // Manual buffer flush for debugging and error recovery
 }  // namespace Transports
 
 }  // namespace Messaging

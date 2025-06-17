@@ -28,6 +28,10 @@ static String incomingBuffer = "";
 // Flag to indicate new data is available (set by callback, processed by Update)
 static volatile bool newDataAvailable = false;
 
+// Rate limiting for JSON processing to prevent stack overflow during data bursts
+static unsigned long lastJsonProcessTime = 0;
+static const unsigned long MIN_JSON_PROCESS_INTERVAL = 50;  // Minimum 50ms between JSON processing
+
 // Serial receive callback function (lightweight)
 static void onSerialReceive();
 
@@ -38,6 +42,11 @@ static void ProcessIncomingSerial();
 static void ParseSerialMessage(const String& message);
 static Handler* FindSerialHandler(const String& messageType);
 static bool IsSerialAvailable();
+
+// Buffer management functions
+static void FlushSerialRxBuffer();
+static void FlushSerialBuffers();
+static int GetAvailableDataCount();
 
 // Serial protocol implementation - updated for new CMD/STATUS/RESULT format
 static Transport SerialTransport = {
@@ -137,6 +146,9 @@ static Transport SerialTransport = {
         serialHandlers.clear();
         newDataAvailable = false;
 
+        // Flush any stale data from buffers on initialization
+        FlushSerialBuffers();
+
         // Register the serial receive callback using ESP32's native onReceive method
         HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
         dataSerial.onReceive(onSerialReceive);
@@ -150,13 +162,13 @@ static Transport SerialTransport = {
         bool dataAvailable = IsSerialAvailable();
         ESP_LOGI(TAG, "Serial transport initialized with lightweight callback - Data serial available: %s",
                  dataAvailable ? "true" : "false");
-        
+
         if (dataAvailable) {
             LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL INIT: SUCCESS - Connected"));
         } else {
             LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL INIT: WARNING - Not connected"));
         }
-        
+
         LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL CONFIG: ") + String(MESSAGING_SERIAL_BAUD_RATE) + String(" baud"));
     },
 
@@ -193,20 +205,26 @@ static void onSerialReceive() {
 // Process incoming serial data - moved from callback to avoid stack overflow
 static void ProcessIncomingSerial() {
     if (!IsSerialAvailable()) {
-        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL RX: Not available"));
-        return;
+        return;  // Reduced logging to prevent stack usage
     }
 
     HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
 
-    // Read all available characters
-    while (dataSerial.available() > 0) {
+    // Limit how much data we process per call to prevent UART overflow
+    const int MAX_CHARS_PER_CALL = 256;
+    int charsProcessed = 0;
+
+    // Read available characters with limits
+    while (dataSerial.available() > 0 && charsProcessed < MAX_CHARS_PER_CALL) {
         char c = dataSerial.read();
+        charsProcessed++;
 
         if (c == Protocol::SERIAL_TERMINATOR) {
             // Complete message received - process it
             if (incomingBuffer.length() > 0) {
-                LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL RX: Complete msg (") + String(incomingBuffer.length()) + String(" chars)"));
+                if (IsDebugModeEnabled()) {
+                    LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL RX: ") + String(incomingBuffer.length()) + String(" chars"));
+                }
                 ParseSerialMessage(incomingBuffer);
                 incomingBuffer = "";
             }
@@ -214,117 +232,106 @@ static void ProcessIncomingSerial() {
             incomingBuffer += c;
 
             // Prevent buffer overflow - use configured buffer size with margin
-            const int maxBufferSize = MESSAGING_SERIAL_BUFFER_SIZE + 50;  // Buffer size + margin
+            const int maxBufferSize = MESSAGING_SERIAL_BUFFER_SIZE;
             if (incomingBuffer.length() > maxBufferSize) {
-                ESP_LOGW(TAG, "Serial buffer overflow, clearing (limit: %d), lost data: '%.50s...'",
-                         maxBufferSize, incomingBuffer.c_str());
-                LOG_TO_UI(ui_txtAreaDebugLog, String("BUFFER OVERFLOW: ") + String(maxBufferSize) + String(" chars"));
-                LOG_TO_UI(ui_txtAreaDebugLog, String("Lost data: ") + incomingBuffer.substring(0, 50) + String("..."));
+                ESP_LOGW(TAG, "Serial buffer overflow, clearing (limit: %d)", maxBufferSize);
+                if (IsDebugModeEnabled()) {
+                    LOG_TO_UI(ui_txtAreaDebugLog, String("BUFFER OVERFLOW: Cleared"));
+                }
                 incomingBuffer = "";
+
+                // Flush RX buffer to prevent further overflow and recover
+                FlushSerialRxBuffer();
+
                 // Continue processing to recover from overflow
             }
         }
     }
+
+    // If we hit the processing limit and there's still data, flag for next update
+    if (dataSerial.available() > 0 && charsProcessed >= MAX_CHARS_PER_CALL) {
+        newDataAvailable = true;  // Process remaining data in next cycle
+    }
 }
 
 static void ParseSerialMessage(const String& message) {
+    // Rate limiting to prevent stack overflow during data bursts
+    unsigned long currentTime = millis();
+    if (currentTime - lastJsonProcessTime < MIN_JSON_PROCESS_INTERVAL) {
+        // Skip processing if too soon since last JSON parse
+        if (IsDebugModeEnabled()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("RATE LIMITED: Skipping JSON parse"));
+        }
+        return;
+    }
+    lastJsonProcessTime = currentTime;
+
     LOG_SERIAL_RX(message.c_str());
 
     // Message is already clean JSON content - no delimiter processing needed
     String jsonContent = message;
     jsonContent.trim();
 
-    // Check both compile-time and runtime debug mode flags
-    if (IsDebugModeEnabled()) {
-        // Debug mode: Comprehensive UI logging with minimal ESP_LOG
-        LOG_TO_UI(ui_txtAreaDebugLog, String("DEBUG MODE: Parsing ") + String(jsonContent.length()) + String(" chars"));
-
-        // Try to parse JSON for structure analysis
-        ArduinoJson::JsonDocument doc;
-        ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, jsonContent);
-
-        if (error) {
-            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON ERROR: ") + String(error.c_str()));
-            LOG_TO_UI(ui_txtAreaDebugLog, String("Raw JSON: ") + jsonContent);
-        } else {
-            // Reset error counter on successful parse
-            String keysList = "Keys: ";
-            int keyCount = 0;
-
-            // List all JSON keys
-            for (ArduinoJson::JsonPair kv : doc.as<ArduinoJson::JsonObject>()) {
-                if (keyCount > 0) keysList += ", ";
-                keysList += String(kv.key().c_str());
-                keyCount++;
-            }
-
-            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON OK: ") + String(keyCount) + String(" keys"));
-
-            // Show specific field values for debugging
-            if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
-                int sessionCount = doc["sessions"].size();
-                LOG_TO_UI(ui_txtAreaDebugLog, String("Sessions: ") + String(sessionCount) + String(" found"));
-
-                // Show first few session details
-                for (int i = 0; i < min(3, sessionCount); i++) {
-                    auto session = doc["sessions"][i];
-                    String sessionInfo = String("  [") + String(i) + String("] ");
-                    if (session["processName"].is<const char*>()) {
-                        sessionInfo += String(session["processName"].as<const char*>());
-                    }
-                    if (session["volume"].is<float>()) {
-                        sessionInfo += String(" vol:") + String(session["volume"].as<float>(), 2);
-                    }
-                    LOG_TO_UI(ui_txtAreaDebugLog, sessionInfo);
-                }
-            }
-        }
-
-        // Only log critical info to ESP_LOG in debug mode
-        ESP_LOGI(TAG, "Debug mode: Msg len=%d, JSON len=%d, Parse=%s", message.length(), jsonContent.length(), error ? "FAIL" : "OK");
-
-        // Continue processing even in debug mode (don't return early)
-        // Fall through to normal processing below
-    }
-
-    // Normal processing mode (or debug mode continuing) - Log key info to UI, minimal ESP_LOG
-    String messageType = "STATUS";
-    auto i = jsonContent.indexOf('{');
-    if (i < 0) i = 0;
-    String payload = jsonContent.substring(i);
-
-    if (payload.length() == 0) {
-        LOG_TO_UI(ui_txtAreaDebugLog, String("ERROR: Empty JSON content"));
+    if (jsonContent.length() == 0) {
         ESP_LOGW(TAG, "Empty JSON content");
         return;
     }
 
-    // Try to parse JSON for validation
-    ArduinoJson::JsonDocument doc;
-    ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, payload);
+    // Use static allocation to reduce stack usage - moved from stack to static memory
+    static ArduinoJson::StaticJsonDocument<MESSAGING_MAX_PAYLOAD_LENGTH> doc;
+    doc.clear();  // Clear previous content
 
-    if (!error) {
-        int keyCount = doc.as<ArduinoJson::JsonObject>().size();
+    ArduinoJson::DeserializationError error = ArduinoJson::deserializeJson(doc, jsonContent);
 
-        // Minimal ESP_LOG for normal processing
-        ESP_LOGI(TAG, "JSON OK, %d keys", keyCount);
-        LOG_TO_UI(ui_txtAreaDebugLog, String("JSON PARSE: OK (") + String(keyCount) + String(" keys)"));
-    } else {
-        LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
-        LOG_TO_UI(ui_txtAreaDebugLog, payload);
+    if (error) {
+        if (IsDebugModeEnabled()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
+        }
         ESP_LOGW(TAG, "JSON parse fail: %s", error.c_str());
+
+        // On JSON parse error, check if we have excessive data in RX buffer
+        // This might indicate a data stream corruption, so flush to recover
+        int availableData = GetAvailableDataCount();
+        if (availableData > 512) {  // If more than 512 bytes pending, likely corrupted stream
+            ESP_LOGW(TAG, "Excessive data (%d bytes) after JSON error, flushing RX buffer", availableData);
+            FlushSerialRxBuffer();
+            if (IsDebugModeEnabled()) {
+                LOG_TO_UI(ui_txtAreaDebugLog, String("JSON ERROR RECOVERY: Flushed RX buffer"));
+            }
+        }
+
+        return;
     }
+
+    // Minimal processing - only log essentials in debug mode
+    if (IsDebugModeEnabled()) {
+        int keyCount = doc.as<ArduinoJson::JsonObject>().size();
+        LOG_TO_UI(ui_txtAreaDebugLog, String("JSON OK: ") + String(keyCount) + String(" keys"));
+
+        // Simplified session info - only log count to reduce stack usage
+        if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
+            int sessionCount = doc["sessions"].size();
+            LOG_TO_UI(ui_txtAreaDebugLog, String("Sessions: ") + String(sessionCount));
+        }
+    }
+
+    // Normal processing - minimal logging
+    String messageType = "STATUS";
+    String payload = jsonContent;
 
     // Find appropriate handler
     Handler* handler = FindSerialHandler(messageType);
 
     if (handler && handler->Callback) {
         ESP_LOGI(TAG, "Handler: %s", handler->Identifier.c_str());
-        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER FOUND: ") + handler->Identifier + String(" processing..."));
+        if (IsDebugModeEnabled()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER: ") + handler->Identifier);
+        }
         handler->Callback(messageType.c_str(), payload.c_str());
-        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER DONE: ") + handler->Identifier);
     } else {
-        LOG_TO_UI(ui_txtAreaDebugLog, String("NO HANDLER for ") + messageType);
+        if (IsDebugModeEnabled()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("NO HANDLER for ") + messageType);
+        }
         ESP_LOGW(TAG, "No handler for: %s", messageType.c_str());
     }
 }
@@ -341,6 +348,78 @@ static Handler* FindSerialHandler(const String& messageType) {
 // Transport getter
 Transport* GetSerialTransport() {
     return &SerialTransport;
+}
+
+// Standalone utility function for manual buffer flushing (debugging/recovery)
+void FlushSerialTransportBuffers() {
+    if (serialInitialized) {
+        ESP_LOGI(TAG, "Manual buffer flush requested");
+        FlushSerialBuffers();
+    } else {
+        ESP_LOGW(TAG, "Cannot flush buffers - transport not initialized");
+        if (IsDebugModeEnabled()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("FLUSH FAILED: Transport not initialized"));
+        }
+    }
+}
+
+// Buffer management functions
+static void FlushSerialRxBuffer() {
+    if (!IsSerialAvailable()) {
+        return;
+    }
+
+    HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
+    int discardedBytes = 0;
+
+    // Read and discard all available data from RX buffer
+    while (dataSerial.available() > 0) {
+        dataSerial.read();
+        discardedBytes++;
+
+        // Safety check to prevent infinite loop
+        if (discardedBytes > 2048) {
+            ESP_LOGW(TAG, "FlushSerialRxBuffer: Too much data, breaking");
+            break;
+        }
+    }
+
+    if (discardedBytes > 0) {
+        ESP_LOGI(TAG, "Flushed RX buffer: %d bytes discarded", discardedBytes);
+        if (IsDebugModeEnabled()) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("RX BUFFER FLUSHED: ") + String(discardedBytes) + String(" bytes"));
+        }
+    }
+}
+
+static void FlushSerialBuffers() {
+    if (!IsSerialAvailable()) {
+        return;
+    }
+
+    HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
+
+    // Flush TX buffer (wait for outgoing data to be sent)
+    dataSerial.flush();
+
+    // Flush RX buffer (discard incoming data)
+    FlushSerialRxBuffer();
+
+    // Clear our internal buffer as well
+    incomingBuffer = "";
+
+    ESP_LOGI(TAG, "All serial buffers flushed");
+    if (IsDebugModeEnabled()) {
+        LOG_TO_UI(ui_txtAreaDebugLog, String("ALL BUFFERS FLUSHED"));
+    }
+}
+
+static int GetAvailableDataCount() {
+    if (!IsSerialAvailable()) {
+        return 0;
+    }
+
+    return Hardware::Device::getDataSerial().available();
 }
 
 }  // namespace Messaging::Transports

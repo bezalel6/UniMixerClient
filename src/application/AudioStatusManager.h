@@ -1,88 +1,70 @@
 #ifndef AUDIO_STATUS_MANAGER_H
 #define AUDIO_STATUS_MANAGER_H
 
-#include "../components/DeviceSelectorManager.h"
-#include "../events/UiEventHandlers.h"
-#include "../messaging/MessageBus.h"
+// Refactored AudioStatusManager - now includes the new simplified facade
+#include "AudioStateManager.h"
+#include "AudioUIController.h"
 #include "AudioTypes.h"
-#include "WString.h"
-#include <Arduino.h>
+#include "../events/UiEventHandlers.h"
 #include <lvgl.h>
-#include <memory>
-#include <vector>
 
 namespace Application {
 namespace Audio {
 
-// Forward declarations
-struct AudioLevel;
-struct AudioStatus;
-
-// Audio Status Manager class
+/**
+ * Simplified AudioStatusManager facade
+ * Provides backward compatibility while using the new state-driven architecture
+ */
 class StatusManager {
-public:
-  // Initialization and cleanup
-  static bool init(void);
-  static void deinit(void);
+   public:
+    // Lifecycle
+    static bool init();
+    static void deinit();
 
-  // Audio level management
-  static void updateAudioLevel(const String &processName, int volume);
-  static std::vector<AudioLevel> getAllAudioLevels(void);
-  static AudioLevel *getAudioLevel(const String &processName);
-  static AudioStatus getCurrentAudioStatus(void);
+    // Message handling (for compatibility with existing message routing)
+    static void onAudioStatusReceived(const AudioStatus& status);
 
-  // UI Updates
-  static void onAudioLevelsChangedUI(void);
-  static void updateVolumeArcFromSelectedDevice(void);
-  static void updateVolumeArcLabel(int volume);
+    // UI event handlers (called from existing LVGL event handlers)
+    static void setSelectedDeviceVolume(int volume);
+    static void muteSelectedDevice();
+    static void unmuteSelectedDevice();
+    static void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
+    static String getDropdownSelection(lv_obj_t* dropdown);
 
-  // Device selection management
-  static void setDropdownSelection(lv_obj_t *dropdown,
-                                   const String &deviceName);
-  static String getDropdownSelection(lv_obj_t *dropdown);
-  static String getSelectedDevice(void); // For backward compatibility
+    // State queries (for backward compatibility)
+    static String getSelectedDevice();
+    static AudioLevel* getAudioLevel(const String& processName);
+    static std::vector<AudioLevel> getAllAudioLevels();
+    static AudioStatus getCurrentAudioStatus();
 
-  // Volume control
-  static void setSelectedDeviceVolume(int volume);
-  static void muteSelectedDevice(void);
-  static void unmuteSelectedDevice(void);
-  static void publishStatusUpdate(void);
-  static bool isSuppressingArcEvents(void);
-  static bool isSuppressingDropdownEvents(void);
+    // Tab management
+    static Events::UI::TabState getCurrentTab();
+    static void setCurrentTab(Events::UI::TabState tab);
+    static const char* getTabName(Events::UI::TabState tab);
 
-  static lv_obj_t *getCurrentVolumeSlider(void);
+    // UI state control
+    static bool isSuppressingArcEvents();
+    static bool isSuppressingDropdownEvents();
 
-  // Tab state management
-  static Events::UI::TabState getCurrentTab(void);
-  static void setCurrentTab(Events::UI::TabState tab);
-  static const char *getTabName(Events::UI::TabState tab);
+    // Publishing
+    static void publishStatusUpdate();
+    static void publishAudioStatusRequest(bool delayed = false);
 
-  // Status callback
-  static void onAudioStatusReceived(const AudioStatus &status);
+    // Internal helpers (used by event handlers)
+    static void updateVolumeArcFromSelectedDevice();
+    static void updateVolumeArcLabel(int volume);
+    static lv_obj_t* getCurrentVolumeSlider();
 
-  // Command publishing methods
-  static void publishAudioStatusRequest(bool delayed = false);
+    // UI update trigger (used by TaskManager)
+    static void onAudioLevelsChangedUI();
 
-private:
-  // Helper functions
-  static void initializeBalanceDropdownSelections(void);
+   private:
+    StatusManager() = delete;  // Static class
 
-  // Internal state
-  static AudioStatus currentAudioStatus;
-  static unsigned long lastUpdateTime;
-  static bool initialized;
-
-  // UI state
-  static bool suppressArcEvents;
-  static bool suppressDropdownEvents;
-  static Events::UI::TabState currentTab;
-
-  // Device selector management
-  static std::unique_ptr<UI::Components::DeviceSelectorManager>
-      deviceSelectorManager;
+    static bool initialized;
 };
 
-} // namespace Audio
-} // namespace Application
+}  // namespace Audio
+}  // namespace Application
 
-#endif // AUDIO_STATUS_MANAGER_H
+#endif  // AUDIO_STATUS_MANAGER_H

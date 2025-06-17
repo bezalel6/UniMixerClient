@@ -20,7 +20,7 @@
 // Serial Configuration (ESP32-S3)
 // Standard Serial: Debug logs, ESP_LOG output, diagnostics, and messaging protocol
 #define MESSAGING_SERIAL_BAUD_RATE 115200  // Match server configuration
-#define MESSAGING_SERIAL_BUFFER_SIZE 2048  // Increased buffer size for reliable communication
+#define MESSAGING_SERIAL_BUFFER_SIZE 4096  // Increased from 2048 to 4096 for better UART handling
 #define MESSAGING_SERIAL_TIMEOUT_MS 1000   // Match server read/write timeout
 
 // Debug Configuration
@@ -31,6 +31,6 @@
 // Performance Configuration
 #define MESSAGING_MAX_HANDLERS 10          // Maximum number of message handlers
 #define MESSAGING_MAX_TOPIC_LENGTH 128     // Maximum topic name length
-#define MESSAGING_MAX_PAYLOAD_LENGTH 2048  // Maximum payload size for status messages
+#define MESSAGING_MAX_PAYLOAD_LENGTH 4096  // Increased from 2048 to match buffer size
 
 #endif  // MESSAGING_CONFIG_H

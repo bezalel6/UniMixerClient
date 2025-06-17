@@ -6,13 +6,14 @@ namespace Hardware {
 namespace Device {
 
 static const char* TAG = "DeviceManager";
+static bool serialInitialized = false;  // Track serial initialization state
 
 bool init(void) {
 #ifdef ARDUINO_USB_CDC_ON_BOOT
     delay(2000);  // Wait for Serial to be ready
 #endif
 
-    // Initialize Serial interface
+    // Initialize Serial interface (if not already done)
     if (!initSerial()) {
         return false;
     }
@@ -24,13 +25,48 @@ bool init(void) {
 }
 
 bool initSerial(void) {
-    // Initialize Serial interface
-    Serial.begin(115200);
+    // Check if we've already initialized Serial
+    if (serialInitialized) {
+        ESP_LOGI(TAG, "Serial already initialized - skipping duplicate initialization");
+        return true;
+    }
+
+    // Check if Serial is already running (initialized by framework/logging)
+    bool serialAlreadyRunning = Serial;
+
+    if (serialAlreadyRunning) {
+        ESP_LOGI(TAG, "Serial already initialized by system/logging - using existing configuration");
+        ESP_LOGI(TAG, "Note: Using default buffer sizes (typically RX=256, TX=256) - cannot resize after initialization");
+    } else {
+        // Serial not running yet - we can configure it properly
+        ESP_LOGI(TAG, "Initializing Serial with custom buffer configuration");
+
+        // Set buffer sizes BEFORE calling begin()
+        Serial.setRxBufferSize(1024);
+        Serial.setTxBufferSize(512);
+
+        // Now initialize with our baud rate
+        Serial.begin(115200);
+
+        ESP_LOGI(TAG, "Serial initialized with enhanced buffers (RX: 1024, TX: 512)");
+    }
+
+    // Set timeout for read operations (this works regardless of when Serial was initialized)
+    Serial.setTimeout(100);  // 100ms timeout for read operations
 
     // Wait for interface to be ready
     delay(100);
 
-    ESP_LOGI(TAG, "Serial interface initialized");
+    // Flush any stale data from hardware buffers on startup
+    Serial.flush();                   // Flush TX buffer
+    while (Serial.available() > 0) {  // Flush RX buffer
+        Serial.read();
+    }
+
+    ESP_LOGI(TAG, "Serial interface ready and flushed");
+
+    // Mark as initialized to prevent duplicate initialization
+    serialInitialized = true;
 
     return true;
 }
