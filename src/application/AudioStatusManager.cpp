@@ -225,17 +225,15 @@ void StatusManager::updateVolumeArcFromSelectedDevice() {
         return;
     }
 
-    // This is now handled automatically by the UI controller when state changes
-    // But we can trigger an update if needed
-    const auto& state = AudioStateManager::getInstance().getState();
-    int volume = state.getCurrentSelectedVolume();
-    updateVolumeArcLabel(volume);
+    // Label updates are now handled automatically by the visual event handler
+    // This method is kept for backward compatibility but no longer needs to update labels
+    // The UI controller automatically updates the display when state changes
 }
 
 void StatusManager::updateVolumeArcLabel(int volume) {
-    // Volume label updates are now handled by the LVGLMessageHandler
-    // This method is kept for backward compatibility but doesn't need to do anything
-    // since the UI controller automatically updates the display
+    // DEPRECATED: Volume label updates are now handled automatically by the visual event handler
+    // This method is kept for backward compatibility but no longer performs any operations
+    // Labels are updated in real-time during arc dragging by volumeArcVisualHandler
 }
 
 lv_obj_t* StatusManager::getCurrentVolumeSlider() {
