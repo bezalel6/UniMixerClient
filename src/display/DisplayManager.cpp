@@ -51,11 +51,17 @@ bool init(void) {
   // Initialize the smart display with ESP32-S3 optimizations
   smartdisplay_init();
 
-  // Add a small delay to let display settle
-  vTaskDelay(pdMS_TO_TICKS(100));
+  // CRITICAL: Increase delay to let display hardware fully settle
+  // This is especially important when ERROR logging level provides no debug delays
+  ESP_LOGI(TAG, "Allowing extended display hardware settling time...");
+  vTaskDelay(pdMS_TO_TICKS(500)); // Increased from 100ms to 500ms
 
   // Initialize the UI
   ui_init();
+
+  // Additional settling time after UI initialization
+  ESP_LOGI(TAG, "Allowing UI initialization settling time...");
+  vTaskDelay(pdMS_TO_TICKS(200));
 
   // Initialize tick tracking
   lvLastTick = millis();
@@ -73,6 +79,23 @@ bool init(void) {
 
     // Force a display refresh to ensure buffers are properly initialized
     lv_obj_invalidate(lv_scr_act());
+    
+    // Additional verification delay to ensure everything is truly ready
+    ESP_LOGI(TAG, "Performing final display readiness verification...");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    
+    // Verify display is not in rendering state (should be idle and ready)
+    if (disp->rendering_in_progress) {
+      ESP_LOGW(TAG, "Display still rendering during init - waiting for completion...");
+      // Wait up to 1 second for rendering to complete
+      for (int i = 0; i < 10; i++) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        if (!disp->rendering_in_progress) {
+          ESP_LOGI(TAG, "Display rendering completed after %d attempts", i + 1);
+          break;
+        }
+      }
+    }
   }
 
   ESP_LOGI(

@@ -30,12 +30,30 @@ bool init(void) {
     return false;
   }
 
+  // CRITICAL: Ensure LVGL timer system is ready before creating timers
+  // This prevents issues when ERROR logging level provides no debug delays
+  ESP_LOGI(TAG, "Verifying LVGL timer system readiness...");
+  
+  // Wait for LVGL to be properly initialized
+  lv_disp_t *disp = lv_disp_get_default();
+  if (disp == NULL) {
+    ESP_LOGE(TAG, "LVGL display not available - cannot create message timer");
+    return false;
+  }
+  
+  // Additional small delay to ensure timer system is stable
+  vTaskDelay(pdMS_TO_TICKS(100));
+
   // Create LVGL timer to process messages every 20ms (improved responsiveness)
+  ESP_LOGI(TAG, "Creating LVGL message processing timer...");
   lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 20, NULL);
   if (msgTimer == NULL) {
     ESP_LOGE(TAG, "Failed to create LVGL message processing timer");
     return false;
   }
+
+  // Verify timer was created successfully
+  ESP_LOGI(TAG, "LVGL message timer created successfully");
 
   ESP_LOGI(TAG, "LVGL Message Handler initialized successfully");
   return true;
