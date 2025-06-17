@@ -211,7 +211,7 @@ static void ProcessIncomingSerial() {
     HardwareSerial& dataSerial = Hardware::Device::getDataSerial();
 
     // Limit how much data we process per call to prevent UART overflow
-    const int MAX_CHARS_PER_CALL = 256;
+    const int MAX_CHARS_PER_CALL = 1024;
     int charsProcessed = 0;
 
     // Read available characters with limits
