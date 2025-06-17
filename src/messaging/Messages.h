@@ -21,15 +21,18 @@ struct BaseMessage {
 struct AudioStatusRequest : public BaseMessage {
     String messageType = Messaging::Protocol::MESSAGE_GET_STATUS;
     String requestId;
+    String deviceId;
     
     AudioStatusRequest() {
         requestId = Messaging::Protocol::generateRequestId();
+        deviceId = Messaging::Protocol::MY_DEVICE_ID;
     }
     
     String toJson() const override {
         JsonDocument doc;
         doc["messageType"] = messageType;
         doc["requestId"] = requestId;
+        doc["deviceId"] = deviceId;
         
         String result;
         serializeJson(doc, result);
@@ -47,6 +50,7 @@ struct AudioStatusRequest : public BaseMessage {
         if (deserializeJson(doc, json) == DeserializationError::Ok) {
             result.messageType = doc["messageType"] | Messaging::Protocol::MESSAGE_GET_STATUS;
             result.requestId = doc["requestId"] | "";
+            result.deviceId = doc["deviceId"] | "";
         }
         
         return result;
@@ -62,8 +66,15 @@ struct AudioStatusResponse : public BaseMessage {
     bool hasDefaultDevice = false;
     unsigned long timestamp;
     
+    // New protocol fields
+    String deviceId;
+    String reason;
+    String originatingRequestId;
+    String originatingDeviceId;
+    
     AudioStatusResponse() {
         timestamp = millis();
+        deviceId = Messaging::Protocol::MY_DEVICE_ID;
     }
     
     String toJson() const override {
@@ -71,6 +82,16 @@ struct AudioStatusResponse : public BaseMessage {
         doc["messageType"] = messageType;
         doc["requestId"] = requestId;
         doc["timestamp"] = timestamp;
+        doc["deviceId"] = deviceId;
+        doc["reason"] = reason;
+        
+        // Add optional fields only if they have values
+        if (originatingRequestId.length() > 0) {
+            doc["originatingRequestId"] = originatingRequestId;
+        }
+        if (originatingDeviceId.length() > 0) {
+            doc["originatingDeviceId"] = originatingDeviceId;
+        }
         
         // Add sessions array
         JsonArray sessionsArray = doc["sessions"].to<JsonArray>();
@@ -120,6 +141,12 @@ struct AudioStatusResponse : public BaseMessage {
         result.messageType = root["messageType"] | Messaging::Protocol::MESSAGE_STATUS_UPDATE;
         result.requestId = root["requestId"] | "";
         
+        // Parse new protocol fields
+        result.deviceId = root["deviceId"] | "";
+        result.reason = root["reason"] | "";
+        result.originatingRequestId = root["originatingRequestId"] | "";
+        result.originatingDeviceId = root["originatingDeviceId"] | "";
+        
         // Parse default device if present
         JsonObject defaultDeviceObj = root["defaultDevice"];
         if (!defaultDeviceObj.isNull()) {
@@ -162,6 +189,11 @@ struct AudioStatusResponse : public BaseMessage {
         }
         
         return result;
+    }
+    
+    // Helper method to check if this message should be ignored (self-originated)
+    bool shouldIgnore(const String& myDeviceId) const {
+        return originatingDeviceId.length() > 0 && originatingDeviceId == myDeviceId;
     }
 };
 
