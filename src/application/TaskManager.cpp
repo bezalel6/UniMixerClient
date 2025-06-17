@@ -343,17 +343,14 @@ void lvglTask(void *parameter) {
   // This prevents race conditions when logging level is ERROR (no debug delays)
   ESP_LOGI(TAG, "[LVGL_TASK] Waiting for display hardware stabilization...");
   
-  // Progressive stability check with increasing delays
-  for (int attempt = 0; attempt < 5; attempt++) {
-    vTaskDelay(pdMS_TO_TICKS(200 + (attempt * 100))); // 200ms, 300ms, 400ms, 500ms, 600ms
+  // Simplified stability check with reduced delays
+  for (int attempt = 0; attempt < 3; attempt++) {
+    vTaskDelay(pdMS_TO_TICKS(100 + (attempt * 50))); // 100ms, 150ms, 200ms
     
     // Verify LVGL default display is available and ready
     lv_disp_t *disp = lv_disp_get_default();
     if (disp != NULL) {
       ESP_LOGI(TAG, "[LVGL_TASK] Display found on attempt %d, verifying stability...", attempt + 1);
-      
-      // Additional small delay to ensure SPI/display controller is settled
-      vTaskDelay(pdMS_TO_TICKS(100));
       
       // Test basic LVGL operation safety
       if (!disp->rendering_in_progress) {
@@ -362,14 +359,14 @@ void lvglTask(void *parameter) {
       }
     }
     
-    if (attempt == 4) {
-      ESP_LOGW(TAG, "[LVGL_TASK] WARNING: Display stability check failed after 5 attempts, proceeding anyway");
+    if (attempt == 2) {
+      ESP_LOGW(TAG, "[LVGL_TASK] WARNING: Display stability check failed after 3 attempts, proceeding anyway");
     }
   }
 
-  // Additional safety delay for ERROR log level (no debug timing delays)
-  ESP_LOGI(TAG, "[LVGL_TASK] Applying final stability delay for ERROR log level...");
-  vTaskDelay(pdMS_TO_TICKS(300));
+  // Minimal final delay
+  ESP_LOGI(TAG, "[LVGL_TASK] Applying final stability delay...");
+  vTaskDelay(pdMS_TO_TICKS(50)); // Reduced from 300ms
   
   ESP_LOGI(TAG, "[LVGL_TASK] Starting main LVGL operations loop");
 
@@ -380,27 +377,31 @@ void lvglTask(void *parameter) {
   while (tasksRunning) {
     // Update LVGL tick system first (critical for animations)
     Display::tickUpdate();
-    // Update display frame counter for accurate FPS
-    Display::tick();
 
-    // Handle LVGL tasks and rendering - this MUST run every cycle for smooth
-    // animations The LVGLMessageHandler processes queue messages via LVGL timer
+    // Handle LVGL tasks and rendering - lv_timer_handler() is already optimized internally
     lvglLock();
     lv_timer_handler();
+    
+    // Track actual rendering for accurate FPS measurement
+    lv_disp_t *disp = lv_disp_get_default();
+    if (disp && !disp->rendering_in_progress) {
+      Display::onLvglRenderComplete();
+    }
+    
     lvglUnlock();
 
     // Do less frequent operations to keep animation smooth
     unsigned long currentTime = millis();
 
-    // Update display stats only every 200ms (reduced frequency for performance)
-    if (currentTime - lastDisplayUpdate >= 200) {
+    // Update display stats only every 500ms (reduced frequency for performance)
+    if (currentTime - lastDisplayUpdate >= 500) {
       Display::update();
       lastDisplayUpdate = currentTime;
     }
 
-    // Update LED colors less frequently (every 500ms)
+    // Update LED colors less frequently (every 1000ms)
 #ifdef BOARD_HAS_RGB_LED
-    if (currentTime - lastLedUpdate >= 500) {
+    if (currentTime - lastLedUpdate >= 1000) {
       Hardware::Device::ledCycleColors();
       lastLedUpdate = currentTime;
     }
@@ -490,12 +491,9 @@ void audioTask(void *parameter) {
   static unsigned long lastFpsUpdate = 0;
 
   while (tasksRunning) {
-    // Yield immediately to prevent watchdog issues
-    vTaskDelay(pdMS_TO_TICKS(10));
-
     // Update FPS display less frequently for monitoring
     unsigned long currentTime = millis();
-    if (currentTime - lastFpsUpdate >= 2000) { // Every 2 seconds
+    if (currentTime - lastFpsUpdate >= 3000) { // Every 3 seconds
       // ESP_LOGD(TAG, "Audio task: Updating FPS display");
 
       // Get actual FPS from display manager
@@ -504,9 +502,9 @@ void audioTask(void *parameter) {
       lastFpsUpdate = currentTime;
     }
 
-    // Re-enable audio status updates
+    // Reduce audio status update frequency for better performance
     static unsigned long lastAudioUpdate = 0;
-    if (currentTime - lastAudioUpdate >= 500) { // Every 500ms
+    if (currentTime - lastAudioUpdate >= 1000) { // Every 1 second
       // ESP_LOGD(TAG, "Audio task: Processing audio status");
       
       // Reset watchdog before potentially long-running UI operation

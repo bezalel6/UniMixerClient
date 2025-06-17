@@ -27,11 +27,14 @@ typedef enum {
 bool init(void);
 void deinit(void);
 void tick(void);
+void onLvglRenderComplete(void);
 void update(void);
 
 // FPS display
 void updateFpsDisplay(lv_obj_t *fpsLabel);
 float getFPS(void);
+float getActualRenderFPS(void);
+uint32_t getUIResponseTime(void);
 
 // Display control
 void setRotation(Rotation rotation);
