@@ -378,22 +378,17 @@ void lvglTask(void *parameter) {
     // Update LVGL tick system first (critical for animations)
     Display::tickUpdate();
 
-    // Handle LVGL tasks and rendering with minimal mutex overhead
-    // Check if rendering is actually needed before locking
-    bool needsUpdate = lv_timer_ready();
+    // Handle LVGL tasks and rendering - lv_timer_handler() is already optimized internally
+    lvglLock();
+    lv_timer_handler();
     
-    if (needsUpdate) {
-      lvglLock();
-      lv_timer_handler();
-      
-      // Only count FPS when actual rendering occurs
-      lv_disp_t *disp = lv_disp_get_default();
-      if (disp && !disp->rendering_in_progress) {
-        Display::onLvglRenderComplete();
-      }
-      
-      lvglUnlock();
+    // Track actual rendering for accurate FPS measurement
+    lv_disp_t *disp = lv_disp_get_default();
+    if (disp && !disp->rendering_in_progress) {
+      Display::onLvglRenderComplete();
     }
+    
+    lvglUnlock();
 
     // Do less frequent operations to keep animation smooth
     unsigned long currentTime = millis();
