@@ -44,9 +44,9 @@ bool init(void) {
   // Additional small delay to ensure timer system is stable
   vTaskDelay(pdMS_TO_TICKS(100));
 
-  // Create LVGL timer to process messages every 20ms (improved responsiveness)
+  // Create LVGL timer to process messages every 10ms (improved responsiveness)
   ESP_LOGI(TAG, "Creating LVGL message processing timer...");
-  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 20, NULL);
+  lv_timer_t *msgTimer = lv_timer_create(processMessageQueue, 10, NULL);
   if (msgTimer == NULL) {
     ESP_LOGE(TAG, "Failed to create LVGL message processing timer");
     return false;
@@ -91,9 +91,9 @@ void processMessageQueue(lv_timer_t *timer) {
 
   LVGLMessage_t message;
 
-  // Process maximum 10 messages per cycle to avoid blocking rendering
+  // Process maximum 20 messages per cycle to reduce latency
   int messagesProcessed = 0;
-  const int MAX_MESSAGES_PER_CYCLE = 10;
+  const int MAX_MESSAGES_PER_CYCLE = 20;
 
   // Process available messages in the queue (limited per cycle)
   while (messagesProcessed < MAX_MESSAGES_PER_CYCLE &&
@@ -166,11 +166,12 @@ void processMessageQueue(lv_timer_t *timer) {
       break;
 
     case MSG_UPDATE_FPS_DISPLAY:
-      // Update FPS display
+      // Update FPS display with both task and actual render FPS
       if (ui_lblFPS) {
-        char fpsText[32];
-        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f",
-                 message.data.fps_display.fps);
+        char fpsText[64];
+        float actualFps = Display::getActualRenderFPS();
+        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f", 
+                 actualFps, message.data.fps_display.fps);
         lv_label_set_text(ui_lblFPS, fpsText);
       }
       break;

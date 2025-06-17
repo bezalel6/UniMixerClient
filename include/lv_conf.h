@@ -66,7 +66,7 @@
  *====================*/
 
 /*Default display refresh, input device read and animation step period.*/
-#define LV_DEF_REFR_PERIOD  33      /*[ms] - 30fps for testing flex conflicts (was 16ms/60fps)*/
+#define LV_DEF_REFR_PERIOD  16      /*[ms] - Match task timing for 60fps*/
 
 /*Animation configuration for smooth arc widgets*/
 #define LV_USE_ANIM_TIMELINE 1      /*Enable timeline animations*/
@@ -108,14 +108,14 @@
  * and can't be drawn in chunks. */
 
 /*The target buffer size for simple layer chunks.*/
-#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE    (24 * 1024)   /*[bytes] - Conservative for ESP32-S3 stability*/
+#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE    (64 * 1024)   /*[bytes] - Increased for ESP32-S3 performance*/
 
 #define LV_USE_DRAW_SW 1
 #if LV_USE_DRAW_SW == 1
     /* Set the number of draw unit.
      * > 1 requires an operating system enabled in `LV_USE_OS`
      * > 1 means multiply threads will render the screen in parallel */
-    #define LV_DRAW_SW_DRAW_UNIT_CNT    1   /* Disable parallel rendering to fix text glitches */
+    #define LV_DRAW_SW_DRAW_UNIT_CNT    1   /* Keep at 1 for stability */
 
     /* Use Arm-2D to accelerate the sw render */
     #define LV_USE_DRAW_ARM2D_SYNC      0
@@ -131,13 +131,13 @@
         /*Allow buffering some shadow calculation.
         *LV_DRAW_SW_SHADOW_CACHE_SIZE is the max. shadow size to buffer, where shadow size is `shadow_width + radius`
         *Caching has LV_DRAW_SW_SHADOW_CACHE_SIZE^2 RAM cost*/
-        #define LV_DRAW_SW_SHADOW_CACHE_SIZE 2  /* Reduced to prioritize animation memory */
+        #define LV_DRAW_SW_SHADOW_CACHE_SIZE 4  /* Increased for performance */
 
         /* Set number of maximally cached circle data.
         * The circumference of 1/4 circle are saved for anti-aliasing
         * radius * 4 bytes are used per circle (the most often used radiuses are saved)
         * 0: to disable caching */
-        #define LV_DRAW_SW_CIRCLE_CACHE_SIZE 16  /* Increased for smooth arc animations */
+        #define LV_DRAW_SW_CIRCLE_CACHE_SIZE 32  /* Increased for smooth arcs */
     #endif
 
     #define  LV_USE_DRAW_SW_ASM     LV_DRAW_SW_ASM_NONE
@@ -596,10 +596,10 @@
     #define LV_THEME_DEFAULT_DARK 0
 
     /*1: Enable grow on press*/
-    #define LV_THEME_DEFAULT_GROW 0  /* Disabled to prevent visual distortion on touch */
+    #define LV_THEME_DEFAULT_GROW 0  /* Disabled for snappy UI response */
 
     /*Default transition time in [ms]*/
-    #define LV_THEME_DEFAULT_TRANSITION_TIME 0  /* Disabled to prevent visual effects on touch */
+    #define LV_THEME_DEFAULT_TRANSITION_TIME 0  /* Disabled for instant response */
 #endif /*LV_USE_THEME_DEFAULT*/
 
 /*A very simple theme that is a good starting point for a custom theme*/

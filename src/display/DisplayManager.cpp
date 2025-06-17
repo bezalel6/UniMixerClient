@@ -25,6 +25,10 @@ static uint32_t renderTime = 0;
 static uint32_t maxRenderTime = 0;
 static uint32_t avgRenderTime = 0;
 static uint32_t renderSamples = 0;
+static uint32_t actualRenderCount = 0;
+static uint32_t lastActualRenderTime = 0;
+static float actualRenderFPS = 0.0f;
+static uint32_t uiResponseTime = 0;
 
 // PSRAM usage monitoring
 static size_t psramUsed = 0;
@@ -51,17 +55,16 @@ bool init(void) {
   // Initialize the smart display with ESP32-S3 optimizations
   smartdisplay_init();
 
-  // CRITICAL: Increase delay to let display hardware fully settle
-  // This is especially important when ERROR logging level provides no debug delays
-  ESP_LOGI(TAG, "Allowing extended display hardware settling time...");
-  vTaskDelay(pdMS_TO_TICKS(500)); // Increased from 100ms to 500ms
+  // Minimal delay for hardware settling - reduced for faster startup
+  ESP_LOGI(TAG, "Allowing display hardware settling time...");
+  vTaskDelay(pdMS_TO_TICKS(100)); // Reduced from 500ms
 
   // Initialize the UI
   ui_init();
 
-  // Additional settling time after UI initialization
+  // Minimal settling time after UI initialization
   ESP_LOGI(TAG, "Allowing UI initialization settling time...");
-  vTaskDelay(pdMS_TO_TICKS(200));
+  vTaskDelay(pdMS_TO_TICKS(50)); // Reduced from 200ms
 
   // Initialize tick tracking
   lvLastTick = millis();
@@ -110,7 +113,8 @@ void deinit(void) {
 }
 
 void tick(void) {
-  // Update frame count for FPS calculation on every frame
+  // This function should only be called when LVGL actually renders a frame
+  // NOT on every task cycle - this was causing fake FPS readings
   frameCount++;
 }
 
@@ -146,6 +150,21 @@ void update(void) {
 
   if (renderTime > maxRenderTime) {
     maxRenderTime = renderTime;
+  }
+}
+
+// New function to track actual LVGL rendering
+void onLvglRenderComplete(void) {
+  // Call this only when LVGL actually completes a frame render
+  frameCount++;
+  actualRenderCount++;
+  
+  // Track actual render FPS
+  unsigned long now = millis();
+  if (now - lastActualRenderTime >= 1000) {
+    actualRenderFPS = (float)actualRenderCount * 1000.0f / (float)(now - lastActualRenderTime);
+    actualRenderCount = 0;
+    lastActualRenderTime = now;
   }
 }
 
@@ -362,6 +381,14 @@ void initializeLabelNone(lv_obj_t *label) {
   if (label) {
     lv_label_set_text(label, UI_LABEL_NONE);
   }
+}
+
+float getActualRenderFPS(void) { 
+  return actualRenderFPS; 
+}
+
+uint32_t getUIResponseTime(void) { 
+  return uiResponseTime; 
 }
 
 // Function to configure SPI bus for high-speed communication
