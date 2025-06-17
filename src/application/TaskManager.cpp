@@ -38,6 +38,7 @@ static OTAProgressData_t currentOTAProgress = {0, false, false, "Ready"};
 bool init(void) {
   ESP_LOGI(TAG, "[INIT] Starting Task Manager initialization for ESP32-S3 dual-core");
 
+  tasksRunning = true;
   // Create LVGL mutex for thread safety
   ESP_LOGI(TAG, "[INIT] Creating LVGL mutex...");
   lvglMutex = xSemaphoreCreateRecursiveMutex();
@@ -123,7 +124,6 @@ bool init(void) {
   }
   ESP_LOGI(TAG, "[INIT] Audio task created successfully");
 
-  tasksRunning = true;
   ESP_LOGI(TAG, "[INIT] SUCCESS: All tasks created successfully with dual-core configuration");
 
   // Print initial task configuration

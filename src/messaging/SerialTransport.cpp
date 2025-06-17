@@ -44,6 +44,7 @@ static Transport SerialTransport = {
     .Publish = [](const char* messageType, const char* payload) -> bool {
         if (!IsSerialAvailable()) {
             ESP_LOGW(TAG, "Serial not available for publishing");
+            LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL TX FAIL: Not available"));
             return false;
         }
 
@@ -55,11 +56,13 @@ static Transport SerialTransport = {
 
         // Always log TX to UI for debugging, minimal ESP_LOG
         ESP_LOGI(TAG, "TX: %d chars", String(payload).length());
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL TX: ") + String(payload).length() + String(" chars"));
         return true;
     },
 
     .PublishDelayed = [](const char* messageType, const char* payload) -> bool {
         // For serial, immediate publishing is fine (no connection state to worry about)
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL DELAYED TX: ") + String(payload).length() + String(" chars"));
         return SerialTransport.Publish(messageType, payload);
     },
 
@@ -75,6 +78,7 @@ static Transport SerialTransport = {
         for (const auto& existingHandler : serialHandlers) {
             if (existingHandler.Identifier == handler.Identifier) {
                 ESP_LOGW(TAG, "Handler %s already registered", handler.Identifier.c_str());
+                LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER DUPLICATE: ") + handler.Identifier);
                 return false;
             }
         }
@@ -82,6 +86,7 @@ static Transport SerialTransport = {
         // Add to our handler list
         serialHandlers.push_back(handler);
         ESP_LOGI(TAG, "Successfully registered serial handler: %s", handler.Identifier.c_str());
+        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER REGISTERED: ") + handler.Identifier + String(" -> ") + handler.SubscribeTopic);
         return true;
     },
 
@@ -92,11 +97,13 @@ static Transport SerialTransport = {
             if (it->Identifier == identifier) {
                 serialHandlers.erase(it);
                 ESP_LOGI(TAG, "Successfully unregistered serial handler: %s", identifier.c_str());
+                LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER REMOVED: ") + identifier);
                 return true;
             }
         }
 
         ESP_LOGW(TAG, "Handler not found: %s", identifier.c_str());
+        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER NOT FOUND: ") + identifier);
         return false;
     },
 
@@ -122,6 +129,7 @@ static Transport SerialTransport = {
 
     .Init = []() -> void {
         ESP_LOGI(TAG, "Initializing Serial transport");
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL INIT: Starting..."));
 
         // Serial is already initialized by DeviceManager, so we just set our flag
         serialInitialized = true;
@@ -142,10 +150,19 @@ static Transport SerialTransport = {
         bool dataAvailable = IsSerialAvailable();
         ESP_LOGI(TAG, "Serial transport initialized with lightweight callback - Data serial available: %s",
                  dataAvailable ? "true" : "false");
+        
+        if (dataAvailable) {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL INIT: SUCCESS - Connected"));
+        } else {
+            LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL INIT: WARNING - Not connected"));
+        }
+        
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL CONFIG: ") + String(MESSAGING_SERIAL_BAUD_RATE) + String(" baud"));
     },
 
     .Deinit = []() -> void {
         ESP_LOGI(TAG, "Deinitializing Serial transport");
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL DEINIT: Shutting down..."));
 
         // Unregister the serial receive callback
         if (serialInitialized) {
@@ -158,6 +175,7 @@ static Transport SerialTransport = {
         incomingBuffer = "";
 
         ESP_LOGI(TAG, "Serial transport deinitialized");
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL DEINIT: Complete"));
     }};
 
 // Helper function implementations
@@ -175,6 +193,7 @@ static void onSerialReceive() {
 // Process incoming serial data - moved from callback to avoid stack overflow
 static void ProcessIncomingSerial() {
     if (!IsSerialAvailable()) {
+        LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL RX: Not available"));
         return;
     }
 
@@ -187,6 +206,7 @@ static void ProcessIncomingSerial() {
         if (c == Protocol::SERIAL_TERMINATOR) {
             // Complete message received - process it
             if (incomingBuffer.length() > 0) {
+                LOG_TO_UI(ui_txtAreaDebugLog, String("SERIAL RX: Complete msg (") + String(incomingBuffer.length()) + String(" chars)"));
                 ParseSerialMessage(incomingBuffer);
                 incomingBuffer = "";
             }
@@ -217,6 +237,7 @@ static void ParseSerialMessage(const String& message) {
     // Check both compile-time and runtime debug mode flags
     if (IsDebugModeEnabled()) {
         // Debug mode: Comprehensive UI logging with minimal ESP_LOG
+        LOG_TO_UI(ui_txtAreaDebugLog, String("DEBUG MODE: Parsing ") + String(jsonContent.length()) + String(" chars"));
 
         // Try to parse JSON for structure analysis
         ArduinoJson::JsonDocument doc;
@@ -237,9 +258,12 @@ static void ParseSerialMessage(const String& message) {
                 keyCount++;
             }
 
+            LOG_TO_UI(ui_txtAreaDebugLog, String("JSON OK: ") + String(keyCount) + String(" keys"));
+
             // Show specific field values for debugging
             if (doc["sessions"].is<ArduinoJson::JsonArray>()) {
                 int sessionCount = doc["sessions"].size();
+                LOG_TO_UI(ui_txtAreaDebugLog, String("Sessions: ") + String(sessionCount) + String(" found"));
 
                 // Show first few session details
                 for (int i = 0; i < min(3, sessionCount); i++) {
@@ -251,6 +275,7 @@ static void ParseSerialMessage(const String& message) {
                     if (session["volume"].is<float>()) {
                         sessionInfo += String(" vol:") + String(session["volume"].as<float>(), 2);
                     }
+                    LOG_TO_UI(ui_txtAreaDebugLog, sessionInfo);
                 }
             }
         }
@@ -283,6 +308,7 @@ static void ParseSerialMessage(const String& message) {
 
         // Minimal ESP_LOG for normal processing
         ESP_LOGI(TAG, "JSON OK, %d keys", keyCount);
+        LOG_TO_UI(ui_txtAreaDebugLog, String("JSON PARSE: OK (") + String(keyCount) + String(" keys)"));
     } else {
         LOG_TO_UI(ui_txtAreaDebugLog, String("JSON FAIL: ") + String(error.c_str()));
         LOG_TO_UI(ui_txtAreaDebugLog, payload);
@@ -294,7 +320,9 @@ static void ParseSerialMessage(const String& message) {
 
     if (handler && handler->Callback) {
         ESP_LOGI(TAG, "Handler: %s", handler->Identifier.c_str());
+        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER FOUND: ") + handler->Identifier + String(" processing..."));
         handler->Callback(messageType.c_str(), payload.c_str());
+        LOG_TO_UI(ui_txtAreaDebugLog, String("HANDLER DONE: ") + handler->Identifier);
     } else {
         LOG_TO_UI(ui_txtAreaDebugLog, String("NO HANDLER for ") + messageType);
         ESP_LOGW(TAG, "No handler for: %s", messageType.c_str());
