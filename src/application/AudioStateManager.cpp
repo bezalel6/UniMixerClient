@@ -61,7 +61,7 @@ void AudioStateManager::updateAudioStatus(const AudioStatus& newStatus) {
     ESP_LOGI(TAG, "Updating audio status with %d devices", newStatus.audioLevels.size());
 
     // Mark existing devices as stale
-    markDevicesAsStale();
+    // markDevicesAsStale();
 
     // Update status
     state.status = newStatus;
