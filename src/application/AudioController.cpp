@@ -1,31 +1,38 @@
-#include "AudioUIController.h"
+#include "AudioController.h"
 #include "DebugUtils.h"
 #include "ui/screens/ui_screenMain.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 
-static const char* TAG = "AudioUIController";
+static const char* TAG = "AudioController";
 
 namespace Application {
 namespace Audio {
 
-AudioUIController& AudioUIController::getInstance() {
-    static AudioUIController instance;
+AudioController& AudioController::getInstance() {
+    static AudioController instance;
     return instance;
 }
 
-bool AudioUIController::init() {
+bool AudioController::init() {
     if (initialized) {
-        ESP_LOGW(TAG, "AudioUIController already initialized");
+        ESP_LOGW(TAG, "AudioController already initialized");
         return true;
     }
 
-    ESP_LOGI(TAG, "Initializing AudioUIController");
+    ESP_LOGI(TAG, "Initializing AudioController");
+
+    // Initialize the core components
+    if (!AudioStateManager::getInstance().init()) {
+        ESP_LOGE(TAG, "Failed to initialize AudioStateManager");
+        return false;
+    }
 
     // Initialize device selector manager
     deviceSelectorManager = std::make_unique<UI::Components::DeviceSelectorManager>();
     if (!deviceSelectorManager) {
         ESP_LOGE(TAG, "Failed to create device selector manager");
+        AudioStateManager::getInstance().deinit();
         return false;
     }
 
@@ -39,28 +46,217 @@ bool AudioUIController::init() {
         });
 
     initialized = true;
-    ESP_LOGI(TAG, "AudioUIController initialized successfully");
+    ESP_LOGI(TAG, "AudioController initialized successfully");
     return true;
 }
 
-void AudioUIController::deinit() {
+void AudioController::deinit() {
     if (!initialized) {
         return;
     }
 
-    ESP_LOGI(TAG, "Deinitializing AudioUIController");
+    ESP_LOGI(TAG, "Deinitializing AudioController");
 
     // Clear device selector manager
     if (deviceSelectorManager) {
         deviceSelectorManager.reset();
     }
 
+    // Deinitialize components
+    AudioStateManager::getInstance().deinit();
+
     initialized = false;
 }
 
-void AudioUIController::onVolumeSliderChanged(int volume) {
+// === External Interface Methods (from AudioStatusManager) ===
+
+void AudioController::onAudioStatusReceived(const AudioStatus& status) {
     if (!initialized) {
-        ESP_LOGW(TAG, "AudioUIController not initialized");
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Received audio status update with %d processes", status.audioLevels.size());
+    AudioStateManager::getInstance().updateAudioStatus(status);
+}
+
+void AudioController::publishStatusUpdate() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return;
+    }
+
+    AudioStateManager::getInstance().publishStatusUpdate();
+}
+
+void AudioController::publishAudioStatusRequest(bool delayed) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return;
+    }
+
+    AudioStateManager::getInstance().publishStatusRequest(delayed);
+}
+
+String AudioController::getSelectedDevice() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return "";
+    }
+
+    return AudioStateManager::getInstance().getCurrentDevice();
+}
+
+AudioLevel* AudioController::getAudioLevel(const String& processName) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return nullptr;
+    }
+
+    return AudioStateManager::getInstance().getDevice(processName);
+}
+
+std::vector<AudioLevel> AudioController::getAllAudioLevels() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return {};
+    }
+
+    return AudioStateManager::getInstance().getAllDevices();
+}
+
+AudioStatus AudioController::getCurrentAudioStatus() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return {};
+    }
+
+    return AudioStateManager::getInstance().getState().status;
+}
+
+Events::UI::TabState AudioController::getCurrentTab() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return Events::UI::TabState::MASTER;
+    }
+
+    return AudioStateManager::getInstance().getState().currentTab;
+}
+
+void AudioController::setCurrentTab(Events::UI::TabState tab) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return;
+    }
+
+    AudioStateManager::getInstance().setTab(tab);
+}
+
+const char* AudioController::getTabName(Events::UI::TabState tab) {
+    switch (tab) {
+        case Events::UI::TabState::MASTER:
+            return "Master";
+        case Events::UI::TabState::SINGLE:
+            return "Single";
+        case Events::UI::TabState::BALANCE:
+            return "Balance";
+        default:
+            return "Unknown";
+    }
+}
+
+bool AudioController::isSuppressingArcEvents() const {
+    if (!initialized) {
+        return false;
+    }
+
+    return AudioStateManager::getInstance().isSuppressingArcEvents();
+}
+
+bool AudioController::isSuppressingDropdownEvents() const {
+    if (!initialized) {
+        return false;
+    }
+
+    return AudioStateManager::getInstance().isSuppressingDropdownEvents();
+}
+
+String AudioController::getDropdownSelection(lv_obj_t* dropdown) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return "";
+    }
+
+    const auto& state = AudioStateManager::getInstance().getState();
+
+    // Determine which dropdown this is and return appropriate selection
+    if (dropdown == ui_selectAudioDevice) {
+        return state.selectedMainDevice;
+    } else if (dropdown == ui_selectAudioDevice1) {
+        return state.selectedDevice1;
+    } else if (dropdown == ui_selectAudioDevice2) {
+        return state.selectedDevice2;
+    }
+
+    return "";
+}
+
+void AudioController::updateVolumeArcFromSelectedDevice() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return;
+    }
+
+    // Label updates are now handled automatically by the visual event handler
+    // This method is kept for backward compatibility but no longer needs to update labels
+    // The UI controller automatically updates the display when state changes
+}
+
+void AudioController::updateVolumeArcLabel(int volume) {
+    // DEPRECATED: Volume label updates are now handled automatically by the visual event handler
+    // This method is kept for backward compatibility but no longer performs any operations
+    // Labels are updated in real-time during arc dragging by volumeArcVisualHandler
+}
+
+lv_obj_t* AudioController::getCurrentVolumeSlider() const {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return nullptr;
+    }
+
+    const auto& state = AudioStateManager::getInstance().getState();
+
+    switch (state.currentTab) {
+        case Events::UI::TabState::MASTER:
+            return ui_primaryVolumeSlider;
+        case Events::UI::TabState::SINGLE:
+            return ui_singleVolumeSlider;
+        case Events::UI::TabState::BALANCE:
+            return ui_balanceVolumeSlider;
+        default:
+            ESP_LOGW(TAG, "Unknown tab state for volume slider");
+            return nullptr;
+    }
+}
+
+void AudioController::onAudioLevelsChangedUI() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
+        return;
+    }
+
+    // This method is called periodically by TaskManager to refresh UI
+    // In the new architecture, this should trigger a comprehensive UI update
+    // The UI controller automatically updates when state changes, but this provides
+    // a way to force a refresh if needed
+    updateVolumeArcFromSelectedDevice();
+}
+
+// === UI Event Handlers ===
+
+void AudioController::onVolumeSliderChanged(int volume) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioController not initialized");
         return;
     }
 
@@ -68,13 +264,13 @@ void AudioUIController::onVolumeSliderChanged(int volume) {
     AudioStateManager::getInstance().setVolumeForCurrentDevice(volume);
 }
 
-void AudioUIController::onDeviceDropdownChanged(lv_obj_t* dropdown, const String& deviceName) {
+void AudioController::onDeviceDropdownChanged(lv_obj_t* dropdown, const String& deviceName) {
     if (!initialized) {
-        ESP_LOGW(TAG, "AudioUIController not initialized");
+        ESP_LOGW(TAG, "AudioController not initialized");
         return;
     }
 
-    if (shouldSuppressDropdownEvents()) {
+    if (isSuppressingDropdownEvents()) {
         ESP_LOGD(TAG, "Suppressing dropdown event");
         return;
     }
@@ -97,9 +293,9 @@ void AudioUIController::onDeviceDropdownChanged(lv_obj_t* dropdown, const String
     }
 }
 
-void AudioUIController::onTabChanged(Events::UI::TabState newTab) {
+void AudioController::onTabChanged(Events::UI::TabState newTab) {
     if (!initialized) {
-        ESP_LOGW(TAG, "AudioUIController not initialized");
+        ESP_LOGW(TAG, "AudioController not initialized");
         return;
     }
 
@@ -107,9 +303,9 @@ void AudioUIController::onTabChanged(Events::UI::TabState newTab) {
     AudioStateManager::getInstance().setTab(newTab);
 }
 
-void AudioUIController::onMuteButtonPressed() {
+void AudioController::onMuteButtonPressed() {
     if (!initialized) {
-        ESP_LOGW(TAG, "AudioUIController not initialized");
+        ESP_LOGW(TAG, "AudioController not initialized");
         return;
     }
 
@@ -117,9 +313,9 @@ void AudioUIController::onMuteButtonPressed() {
     AudioStateManager::getInstance().muteCurrentDevice();
 }
 
-void AudioUIController::onUnmuteButtonPressed() {
+void AudioController::onUnmuteButtonPressed() {
     if (!initialized) {
-        ESP_LOGW(TAG, "AudioUIController not initialized");
+        ESP_LOGW(TAG, "AudioController not initialized");
         return;
     }
 
@@ -127,17 +323,9 @@ void AudioUIController::onUnmuteButtonPressed() {
     AudioStateManager::getInstance().unmuteCurrentDevice();
 }
 
-bool AudioUIController::shouldSuppressArcEvents() const {
-    return AudioStateManager::getInstance().isSuppressingArcEvents();
-}
+// === Private Methods ===
 
-bool AudioUIController::shouldSuppressDropdownEvents() const {
-    return AudioStateManager::getInstance().isSuppressingDropdownEvents();
-}
-
-// Private methods
-
-void AudioUIController::onAudioStateChanged(const AudioStateChangeEvent& event) {
+void AudioController::onAudioStateChanged(const AudioStateChangeEvent& event) {
     ESP_LOGD(TAG, "Handling audio state change event: %d", (int)event.type);
 
     switch (event.type) {
@@ -167,7 +355,7 @@ void AudioUIController::onAudioStateChanged(const AudioStateChangeEvent& event) 
     }
 }
 
-void AudioUIController::updateVolumeDisplay() {
+void AudioController::updateVolumeDisplay() {
     const auto& state = AudioStateManager::getInstance().getState();
     int currentVolume = state.getCurrentSelectedVolume();
 
@@ -177,7 +365,7 @@ void AudioUIController::updateVolumeDisplay() {
     ESP_LOGD(TAG, "Updated volume display to: %d", currentVolume);
 }
 
-void AudioUIController::updateDeviceSelectors() {
+void AudioController::updateDeviceSelectors() {
     if (!deviceSelectorManager) {
         return;
     }
@@ -193,7 +381,7 @@ void AudioUIController::updateDeviceSelectors() {
     ESP_LOGD(TAG, "Updated device selectors with %d devices", devices.size());
 }
 
-void AudioUIController::updateDefaultDeviceLabel() {
+void AudioController::updateDefaultDeviceLabel() {
     const auto& state = AudioStateManager::getInstance().getState();
 
     if (state.status.hasDefaultDevice) {
@@ -204,13 +392,13 @@ void AudioUIController::updateDefaultDeviceLabel() {
     }
 }
 
-void AudioUIController::updateMuteButtons() {
+void AudioController::updateMuteButtons() {
     // This could be expanded to update mute button states
     // For now, mute state is handled implicitly through volume display
     ESP_LOGD(TAG, "Updated mute buttons");
 }
 
-void AudioUIController::updateAllUI() {
+void AudioController::updateAllUI() {
     updateDeviceSelectors();
     updateVolumeDisplay();
     updateDefaultDeviceLabel();
@@ -218,7 +406,7 @@ void AudioUIController::updateAllUI() {
     ESP_LOGD(TAG, "Updated all UI elements");
 }
 
-void AudioUIController::setupDeviceSelectorCallbacks() {
+void AudioController::setupDeviceSelectorCallbacks() {
     if (!deviceSelectorManager) {
         return;
     }
@@ -232,7 +420,7 @@ void AudioUIController::setupDeviceSelectorCallbacks() {
                           selection.getValue() + String("'"));
 
             // Update main dropdown if not suppressing events
-            if (!shouldSuppressDropdownEvents() && ui_selectAudioDevice) {
+            if (!isSuppressingDropdownEvents() && ui_selectAudioDevice) {
                 AudioStateManager::getInstance().setSuppressDropdownEvents(true);
                 // Find and set dropdown index based on selection
                 updateDropdownSelections();
@@ -248,7 +436,7 @@ void AudioUIController::setupDeviceSelectorCallbacks() {
                      selection.device2.getValue().c_str());
             LOG_TO_UI(ui_txtAreaDebugLog, String("DeviceSelector: Balance selection changed"));
 
-            if (!shouldSuppressDropdownEvents()) {
+            if (!isSuppressingDropdownEvents()) {
                 AudioStateManager::getInstance().setSuppressDropdownEvents(true);
                 updateDropdownSelections();
                 AudioStateManager::getInstance().setSuppressDropdownEvents(false);
@@ -282,7 +470,7 @@ void AudioUIController::setupDeviceSelectorCallbacks() {
         });
 }
 
-void AudioUIController::updateDropdownOptions(const std::vector<AudioLevel>& devices) {
+void AudioController::updateDropdownOptions(const std::vector<AudioLevel>& devices) {
     // Build options string for dropdowns (LVGL format: "Option1\nOption2\nOption3")
     String optionsString = "";
     if (devices.empty()) {
@@ -315,7 +503,7 @@ void AudioUIController::updateDropdownOptions(const std::vector<AudioLevel>& dev
     AudioStateManager::getInstance().setSuppressDropdownEvents(false);
 }
 
-void AudioUIController::updateDropdownSelections() {
+void AudioController::updateDropdownSelections() {
     const auto& state = AudioStateManager::getInstance().getState();
     const auto& devices = state.status.audioLevels;
 
@@ -347,23 +535,7 @@ void AudioUIController::updateDropdownSelections() {
     }
 }
 
-lv_obj_t* AudioUIController::getCurrentVolumeSlider() const {
-    const auto& state = AudioStateManager::getInstance().getState();
-
-    switch (state.currentTab) {
-        case Events::UI::TabState::MASTER:
-            return ui_primaryVolumeSlider;
-        case Events::UI::TabState::SINGLE:
-            return ui_singleVolumeSlider;
-        case Events::UI::TabState::BALANCE:
-            return ui_balanceVolumeSlider;
-        default:
-            ESP_LOGW(TAG, "Unknown tab state for volume slider");
-            return nullptr;
-    }
-}
-
-String AudioUIController::getCurrentTabName() const {
+String AudioController::getCurrentTabName() const {
     const auto& state = AudioStateManager::getInstance().getState();
 
     switch (state.currentTab) {

@@ -1,5 +1,5 @@
 #include "MessageHandlerRegistry.h"
-#include "../application/AudioStatusManager.h"
+#include "../application/AudioController.h"
 #include <esp_log.h>
 #include "DebugUtils.h"
 #include <ui/ui.h>
@@ -68,7 +68,7 @@ void MessageHandlerRegistry::HandleAudioStatusResponse(const Messages::AudioStat
     if (message.reason == Protocol::REASON_UPDATE_RESPONSE && message.originatingDeviceId == String(Protocol::MY_DEVICE_ID)) {
         return;
     }
-    // Convert typed message to AudioStatus structure expected by AudioStatusManager
+    // Convert typed message to AudioStatus structure expected by AudioController
 
     Application::Audio::AudioStatus status;
     status.timestamp = message.timestamp;
@@ -76,8 +76,8 @@ void MessageHandlerRegistry::HandleAudioStatusResponse(const Messages::AudioStat
     status.defaultDevice = message.defaultDevice;
     status.hasDefaultDevice = message.hasDefaultDevice;
 
-    // Forward to AudioStatusManager using existing interface
-    Application::Audio::StatusManager::onAudioStatusReceived(status);
+    // Forward to AudioController using existing interface
+    Application::Audio::AudioController::getInstance().onAudioStatusReceived(status);
 }
 
 }  // namespace Messaging

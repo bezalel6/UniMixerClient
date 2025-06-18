@@ -8,7 +8,7 @@
 #include "../hardware/OTAManager.h"
 #include "../messaging/MessageBus.h"
 #include "../messaging/MessageHandlerRegistry.h"
-#include "AudioStatusManager.h"
+#include "AudioController.h"
 #include "LVGLMessageHandler.h"
 #include "TaskManager.h"
 #include <esp_log.h>
@@ -127,8 +127,8 @@ bool init(void) {
 
     // Initialize audio status manager (requires MessageBus and handlers to be initialized)
     ESP_LOGI(TAG, "WDT Reset: Initializing Audio Status Manager...");
-    if (!Application::Audio::StatusManager::init()) {
-        ESP_LOGE(TAG, "Failed to initialize audio status manager");
+    if (!Application::Audio::AudioController::getInstance().init()) {
+        ESP_LOGE(TAG, "Failed to initialize AudioController");
         return false;
     }
     esp_task_wdt_reset();
@@ -159,7 +159,7 @@ bool init(void) {
 
     // Send initial status request to get current audio information
     ESP_LOGI(TAG, "WDT Reset: Sending initial status request...");
-    Application::Audio::StatusManager::publishAudioStatusRequest();
+    Application::Audio::AudioController::getInstance().publishAudioStatusRequest();
     esp_task_wdt_reset();
 
     ESP_LOGI(TAG,
@@ -180,7 +180,7 @@ void deinit(void) {
     // Deinitialize task manager first (this stops all tasks)
     TaskManager::deinit();
 
-    Application::Audio::StatusManager::deinit();
+    Application::Audio::AudioController::getInstance().deinit();
 
 #if OTA_ENABLE_UPDATES
     Hardware::OTA::deinit();

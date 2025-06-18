@@ -1,5 +1,5 @@
 #include "UiEventHandlers.h"
-#include "../application/AudioStatusManager.h"
+#include "../application/AudioController.h"
 #include "../hardware/DeviceManager.h"
 #include "../messaging/MessageBus.h"
 #include <ArduinoJson.h>
@@ -94,8 +94,8 @@ void btnRequestDataClickedHandler(lv_event_t *e) {
 
     UI_LOG("UIEventHandlers", "Button clicked - requesting audio status");
 
-    // Use AudioStatusManager to publish the request
-    Application::Audio::StatusManager::publishAudioStatusRequest();
+    // Use AudioController to publish the request
+    Application::Audio::AudioController::getInstance().publishAudioStatusRequest();
 }
 
 // Audio device dropdown selection change handler
@@ -103,20 +103,19 @@ void audioDeviceDropdownChangedHandler(lv_event_t *e) {
     ON_EVENT_GET_WIDGET(LV_EVENT_VALUE_CHANGED, dropdown);
 
     // Check if dropdown events are suppressed to prevent infinite loops
-    if (Application::Audio::StatusManager::isSuppressingDropdownEvents()) {
+    if (Application::Audio::AudioController::getInstance().isSuppressingDropdownEvents()) {
+        ESP_LOGD(TAG, "Suppressing dropdown event");
         return;
     }
 
     // Get the selected audio device name using the new method
-    String selectedDevice =
-        Application::Audio::StatusManager::getDropdownSelection(dropdown);
-
-    UI_LOG("UIEventHandlers", "Audio device dropdown changed: %s",
-           selectedDevice.c_str());
+    String selectedText =
+        Application::Audio::AudioController::getInstance().getDropdownSelection(dropdown);
+    ESP_LOGI(TAG, "Dropdown changed to: %s", selectedText.c_str());
 
     // Update the selection using the clean centralized interface
-    Application::Audio::StatusManager::setDropdownSelection(dropdown,
-                                                            selectedDevice);
+    Application::Audio::AudioController::getInstance().setDropdownSelection(dropdown,
+                                                                            selectedText);
 }
 
 // Volume arc visual handler - updates labels in real-time during dragging
@@ -147,7 +146,8 @@ void volumeArcChangedHandler(lv_event_t *e) {
     ON_EVENT(LV_EVENT_RELEASED);
 
     // Check if events are suppressed to prevent infinite loops
-    if (Application::Audio::StatusManager::isSuppressingArcEvents()) {
+    if (Application::Audio::AudioController::getInstance().isSuppressingArcEvents()) {
+        ESP_LOGD(TAG, "Suppressing arc event during value change");
         return;
     }
 
@@ -159,7 +159,7 @@ void volumeArcChangedHandler(lv_event_t *e) {
     UI_LOG("UIEventHandlers", "Volume arc released - setting volume: %d", volume);
 
     // Set the volume for the selected device
-    Application::Audio::StatusManager::setSelectedDeviceVolume(volume);
+    Application::Audio::AudioController::getInstance().setSelectedDeviceVolume(volume);
 }
 
 // Tab switch event handler
@@ -170,23 +170,23 @@ void tabSwitchHandler(lv_event_t *e) {
            getEventName(code), code, target);
 
     uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
-    Application::Audio::StatusManager::setCurrentTab(
+    Application::Audio::AudioController::getInstance().setCurrentTab(
         static_cast<TabState>(activeTab));
 }
 
 // Get current tab state
 TabState getCurrentTab(void) {
-    return Application::Audio::StatusManager::getCurrentTab();
+    return Application::Audio::AudioController::getInstance().getCurrentTab();
 }
 
 // Set current tab state
 void setCurrentTab(TabState tab) {
-    Application::Audio::StatusManager::setCurrentTab(tab);
+    Application::Audio::AudioController::getInstance().setCurrentTab(tab);
 }
 
 // Get tab name string
 const char *getTabName(TabState tab) {
-    return Application::Audio::StatusManager::getTabName(tab);
+    return Application::Audio::AudioController::getInstance().getTabName(tab);
 }
 
 }  // namespace UI
