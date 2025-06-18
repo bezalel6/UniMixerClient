@@ -473,15 +473,15 @@ void processMessageQueue(lv_timer_t *timer) {
                     uint32_t uptime_hr = uptime_min / 60;
 
                     snprintf(system_text, sizeof(system_text),
-                             "🔧 SYSTEM STATUS\n"
-                             "💾 Heap: %lu KB\n"
-                             "🧠 PSRAM: %lu KB\n"
-                             "⚡ CPU: %lu MHz\n"
-                             "⏱️ Uptime: %02luh:%02lum:%02lus\n"
-                             "📊 Memory: %s",
+                             "=== SYSTEM STATUS ===\n"
+                             "Heap: %lu KB\n"
+                             "PSRAM: %lu KB\n"
+                             "CPU: %lu MHz\n"
+                             "Uptime: %02luh:%02lum:%02lus\n"
+                             "Memory: %s",
                              heap_kb, psram_kb, message.data.state_overview.cpu_freq,
                              uptime_hr, uptime_min % 60, uptime_sec % 60,
-                             heap_kb > 100 ? "✅ OK" : "⚠️ LOW");
+                             heap_kb > 100 ? "[OK]" : "[LOW]");
                     lv_label_set_text(state_system_label, system_text);
 
                     // Update heap progress bar (percentage of available heap)
@@ -503,24 +503,24 @@ void processMessageQueue(lv_timer_t *timer) {
                 // Update network info with status indicators
                 if (state_network_label) {
                     char network_text[512];
-                    const char *wifi_icon = strstr(message.data.state_overview.wifi_status, "Connected") ? "📶" : "📵";
+                    const char *wifi_icon = strstr(message.data.state_overview.wifi_status, "Connected") ? "[+]" : "[x]";
                     const char *wifi_quality = "";
                     if (message.data.state_overview.wifi_rssi > -50)
-                        wifi_quality = "🟢 Excellent";
+                        wifi_quality = "Excellent";
                     else if (message.data.state_overview.wifi_rssi > -60)
-                        wifi_quality = "🟡 Good";
+                        wifi_quality = "Good";
                     else if (message.data.state_overview.wifi_rssi > -70)
-                        wifi_quality = "🟠 Fair";
+                        wifi_quality = "Fair";
                     else
-                        wifi_quality = "🔴 Poor";
+                        wifi_quality = "Poor";
 
-                    const char *mqtt_icon = strstr(message.data.state_overview.mqtt_status, "Connected") ? "✅" : "❌";
+                    const char *mqtt_icon = strstr(message.data.state_overview.mqtt_status, "Connected") ? "[+]" : "[x]";
 
                     snprintf(network_text, sizeof(network_text),
-                             "🌐 NETWORK STATUS\n"
+                             "=== NETWORK STATUS ===\n"
                              "%s WiFi: %s\n"
-                             "📊 Signal: %s (%d dBm)\n"
-                             "🏠 IP: %s\n"
+                             "Signal: %s (%d dBm)\n"
+                             "IP: %s\n"
                              "%s MQTT: %s",
                              wifi_icon, message.data.state_overview.wifi_status,
                              wifi_quality, message.data.state_overview.wifi_rssi,
@@ -567,23 +567,23 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // Header with current tab info
                     int written = snprintf(pos, remaining,
-                                           "🎵 AUDIO STATUS\n"
-                                           "📋 Active Tab: %s\n"
-                                           "🎯 Selected: %s\n"
-                                           "🔊 Volume: %d%% %s\n\n"
-                                           "📱 ALL DEVICES:\n",
+                                           "=== AUDIO STATUS ===\n"
+                                           "Active Tab: %s\n"
+                                           "Selected: %s\n"
+                                           "Volume: %d%% %s\n\n"
+                                           "ALL DEVICES:\n",
                                            message.data.state_overview.current_tab,
                                            strlen(message.data.state_overview.selected_device) > 0 ? message.data.state_overview.selected_device : "None",
                                            message.data.state_overview.current_volume,
-                                           message.data.state_overview.is_muted ? "🔇" : "🔊");
+                                           message.data.state_overview.is_muted ? "[MUTE]" : "[ON]");
                     pos += written;
                     remaining -= written;
 
                     // Show default device if available
                     if (fullStatus.hasDefaultDevice && remaining > 50) {
-                        const char *default_icon = fullStatus.defaultDevice.isMuted ? "🔇" : "🔊";
+                        const char *default_icon = fullStatus.defaultDevice.isMuted ? "[MUTE]" : "[ON]";
                         written = snprintf(pos, remaining,
-                                           "🎯 Default: %s %.0f%% %s\n",
+                                           "* Default: %s %.0f%% %s\n",
                                            fullStatus.defaultDevice.friendlyName.c_str(),
                                            fullStatus.defaultDevice.volume,
                                            default_icon);
@@ -596,9 +596,9 @@ void processMessageQueue(lv_timer_t *timer) {
                     for (const auto &device : fullStatus.audioLevels) {
                         if (remaining < 30 || deviceCount >= 5) break;  // Limit devices shown
 
-                        const char *volume_icon = device.isMuted ? "🔇" : (device.volume > 75 ? "🔊" : device.volume > 25 ? "🔉"
-                                                                                                                          : "🔈");
-                        const char *status_icon = device.volume > 0 ? "🟢" : "⚫";
+                        const char *volume_icon = device.isMuted ? "[MUTE]" : (device.volume > 75 ? "[HIGH]" : device.volume > 25 ? "[MID]"
+                                                                                                                                  : "[LOW]");
+                        const char *status_icon = device.volume > 0 ? "+" : "-";
 
                         // Truncate long device names
                         String deviceName = device.processName;
