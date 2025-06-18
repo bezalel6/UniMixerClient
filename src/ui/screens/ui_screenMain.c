@@ -104,10 +104,9 @@ void ui_screenMain_screen_init(void)
     lv_label_set_text(ui_lblPrimaryAudioDeviceValue, "-");
 
     ui_containerPrimaryVolumeSlider = ui_VolumeSlider_create(ui_Master);
-    lv_obj_set_width(ui_containerPrimaryVolumeSlider, 290);
-    lv_obj_set_height(ui_containerPrimaryVolumeSlider, 290);
     lv_obj_set_x(ui_containerPrimaryVolumeSlider, 0);
-    lv_obj_set_y(ui_containerPrimaryVolumeSlider, -40);
+    lv_obj_set_y(ui_containerPrimaryVolumeSlider, -20);
+    lv_obj_add_flag(ui_containerPrimaryVolumeSlider, LV_OBJ_FLAG_OVERFLOW_VISIBLE);     /// Flags
 
     lv_obj_set_width(ui_comp_get_child(ui_containerPrimaryVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER), 200);
     lv_obj_set_height(ui_comp_get_child(ui_containerPrimaryVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER),
@@ -124,7 +123,7 @@ void ui_screenMain_screen_init(void)
     lv_obj_remove_flag(ui_pnlSingleSelectAudioDevice, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_selectAudioDevice = lv_dropdown_create(ui_pnlSingleSelectAudioDevice);
-    lv_dropdown_set_options(ui_selectAudioDevice, "None");
+    lv_dropdown_set_options(ui_selectAudioDevice, "None 1\nNone 2\nNone 3");
     lv_obj_set_width(ui_selectAudioDevice, lv_pct(50));
     lv_obj_set_height(ui_selectAudioDevice, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_selectAudioDevice, LV_ALIGN_CENTER);

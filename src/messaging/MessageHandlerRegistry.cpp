@@ -2,6 +2,7 @@
 #include "../application/AudioController.h"
 #include <esp_log.h>
 #include "DebugUtils.h"
+#include "BTLogger.hpp"
 #include <ui/ui.h>
 static const char* TAG = "MessageHandlerRegistry";
 
@@ -11,6 +12,8 @@ namespace Messaging {
 std::vector<String> MessageHandlerRegistry::registeredHandlers;
 
 bool MessageHandlerRegistry::RegisterAllHandlers() {
+    // BTLoggerSender::begin("WeatherStation_v2.1", true, BTLogLevel::BT_INFO);
+
     ESP_LOGI(TAG, "Registering all message handlers...");
 
     bool success = true;
