@@ -109,7 +109,7 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_style_outline_pad(lv_tabview_get_tab_bar(ui_tabsModeSwitch), 2,  LV_PART_ITEMS | LV_STATE_DEFAULT);
 
     ui_Master = lv_tabview_add_tab(ui_tabsModeSwitch, "Master");
-    lv_obj_remove_flag(ui_Master, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_remove_flag(ui_Master, LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_pnlPrimaryAudioDevice = lv_obj_create(ui_Master);
     lv_obj_set_height(ui_pnlPrimaryAudioDevice, 50);
@@ -135,6 +135,7 @@ void ui_screenMain_screen_init(void)
                            LV_LABEL_LONG_CLIP);
 
     ui_Single = lv_tabview_add_tab(ui_tabsModeSwitch, "Single");
+    lv_obj_remove_flag(ui_Single, LV_OBJ_FLAG_GESTURE_BUBBLE);      /// Flags
 
     ui_pnlSingleSelectAudioDevice = lv_obj_create(ui_Single);
     lv_obj_set_height(ui_pnlSingleSelectAudioDevice, 50);
@@ -160,7 +161,7 @@ void ui_screenMain_screen_init(void)
                            LV_LABEL_LONG_CLIP);
 
     ui_Balance = lv_tabview_add_tab(ui_tabsModeSwitch, "Balance");
-    lv_obj_remove_flag(ui_Balance, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_remove_flag(ui_Balance, LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_pnlBalanceAudioDevices = lv_obj_create(ui_Balance);
     lv_obj_set_height(ui_pnlBalanceAudioDevices, 50);

@@ -43,6 +43,8 @@ static lv_obj_t *state_overlay_panel = NULL;
 static lv_obj_t *state_system_label = NULL;
 static lv_obj_t *state_network_label = NULL;
 static lv_obj_t *state_audio_label = NULL;
+static lv_obj_t *state_heap_bar = NULL;
+static lv_obj_t *state_wifi_bar = NULL;
 
 static const char *TAG = "LVGLMessageHandler";
 
@@ -375,23 +377,60 @@ void processMessageQueue(lv_timer_t *timer) {
                     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_ROW);
                     lv_obj_set_flex_align(content, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-                    // System info column
-                    state_system_label = lv_label_create(content);
+                    // System info column with progress bar
+                    lv_obj_t *system_container = lv_obj_create(content);
+                    lv_obj_set_size(system_container, LV_PCT(32), LV_PCT(100));
+                    lv_obj_set_style_bg_opa(system_container, 0, 0);
+                    lv_obj_set_style_border_opa(system_container, 0, 0);
+                    lv_obj_set_style_pad_all(system_container, 5, 0);
+
+                    state_system_label = lv_label_create(system_container);
                     lv_obj_set_style_text_color(state_system_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_system_label, &lv_font_montserrat_14, 0);
-                    lv_obj_set_width(state_system_label, LV_PCT(32));
+                    lv_obj_set_width(state_system_label, LV_PCT(100));
+                    lv_obj_align(state_system_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
-                    // Network info column
-                    state_network_label = lv_label_create(content);
+                    // Heap usage progress bar
+                    state_heap_bar = lv_bar_create(system_container);
+                    lv_obj_set_size(state_heap_bar, LV_PCT(90), 8);
+                    lv_obj_align(state_heap_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+                    lv_obj_set_style_bg_color(state_heap_bar, lv_color_hex(0x404040), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(state_heap_bar, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+                    lv_bar_set_range(state_heap_bar, 0, 100);
+
+                    // Network info column with signal bar
+                    lv_obj_t *network_container = lv_obj_create(content);
+                    lv_obj_set_size(network_container, LV_PCT(32), LV_PCT(100));
+                    lv_obj_set_style_bg_opa(network_container, 0, 0);
+                    lv_obj_set_style_border_opa(network_container, 0, 0);
+                    lv_obj_set_style_pad_all(network_container, 5, 0);
+
+                    state_network_label = lv_label_create(network_container);
                     lv_obj_set_style_text_color(state_network_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_network_label, &lv_font_montserrat_14, 0);
-                    lv_obj_set_width(state_network_label, LV_PCT(32));
+                    lv_obj_set_width(state_network_label, LV_PCT(100));
+                    lv_obj_align(state_network_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
-                    // Audio info column
-                    state_audio_label = lv_label_create(content);
+                    // WiFi signal strength bar
+                    state_wifi_bar = lv_bar_create(network_container);
+                    lv_obj_set_size(state_wifi_bar, LV_PCT(90), 8);
+                    lv_obj_align(state_wifi_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+                    lv_obj_set_style_bg_color(state_wifi_bar, lv_color_hex(0x404040), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(state_wifi_bar, lv_color_hex(0x0088FF), LV_PART_INDICATOR);
+                    lv_bar_set_range(state_wifi_bar, 0, 100);
+
+                    // Audio info column (scrollable for many devices)
+                    lv_obj_t *audio_container = lv_obj_create(content);
+                    lv_obj_set_size(audio_container, LV_PCT(32), LV_PCT(100));
+                    lv_obj_set_style_bg_opa(audio_container, 0, 0);
+                    lv_obj_set_style_border_opa(audio_container, 0, 0);
+                    lv_obj_set_style_pad_all(audio_container, 5, 0);
+                    lv_obj_set_scroll_dir(audio_container, LV_DIR_VER);
+
+                    state_audio_label = lv_label_create(audio_container);
                     lv_obj_set_style_text_color(state_audio_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_14, 0);
-                    lv_obj_set_width(state_audio_label, LV_PCT(32));
+                    lv_obj_set_width(state_audio_label, LV_PCT(100));
 
                     // Add click handlers for closing
                     lv_obj_add_event_cb(state_overlay, [](lv_event_t *e) {
@@ -424,37 +463,165 @@ void processMessageQueue(lv_timer_t *timer) {
                 break;
 
             case MSG_UPDATE_STATE_OVERVIEW:
+                // Update system info with visual elements
                 if (state_system_label) {
-                    char system_text[256];
+                    char system_text[512];
+                    uint32_t heap_kb = message.data.state_overview.free_heap / 1024;
+                    uint32_t psram_kb = message.data.state_overview.free_psram / 1024;
+                    uint32_t uptime_sec = message.data.state_overview.uptime_ms / 1000;
+                    uint32_t uptime_min = uptime_sec / 60;
+                    uint32_t uptime_hr = uptime_min / 60;
+
                     snprintf(system_text, sizeof(system_text),
-                             "SYSTEM\nHeap: %lu KB\nPSRAM: %lu KB\nCPU: %lu MHz\nUptime: %lu.%02lu s",
-                             message.data.state_overview.free_heap / 1024,
-                             message.data.state_overview.free_psram / 1024,
-                             message.data.state_overview.cpu_freq,
-                             message.data.state_overview.uptime_ms / 1000,
-                             (message.data.state_overview.uptime_ms % 1000) / 10);
+                             "🔧 SYSTEM STATUS\n"
+                             "💾 Heap: %lu KB\n"
+                             "🧠 PSRAM: %lu KB\n"
+                             "⚡ CPU: %lu MHz\n"
+                             "⏱️ Uptime: %02luh:%02lum:%02lus\n"
+                             "📊 Memory: %s",
+                             heap_kb, psram_kb, message.data.state_overview.cpu_freq,
+                             uptime_hr, uptime_min % 60, uptime_sec % 60,
+                             heap_kb > 100 ? "✅ OK" : "⚠️ LOW");
                     lv_label_set_text(state_system_label, system_text);
+
+                    // Update heap progress bar (percentage of available heap)
+                    if (state_heap_bar) {
+                        int heap_percent = (heap_kb > 500) ? 100 : (heap_kb * 100 / 500);  // Assume 500KB is "full"
+                        lv_bar_set_value(state_heap_bar, heap_percent, LV_ANIM_OFF);
+
+                        // Change color based on heap level
+                        if (heap_percent > 60) {
+                            lv_obj_set_style_bg_color(state_heap_bar, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+                        } else if (heap_percent > 30) {
+                            lv_obj_set_style_bg_color(state_heap_bar, lv_color_hex(0xFFAA00), LV_PART_INDICATOR);
+                        } else {
+                            lv_obj_set_style_bg_color(state_heap_bar, lv_color_hex(0xFF0000), LV_PART_INDICATOR);
+                        }
+                    }
                 }
 
+                // Update network info with status indicators
                 if (state_network_label) {
-                    char network_text[256];
+                    char network_text[512];
+                    const char *wifi_icon = strstr(message.data.state_overview.wifi_status, "Connected") ? "📶" : "📵";
+                    const char *wifi_quality = "";
+                    if (message.data.state_overview.wifi_rssi > -50)
+                        wifi_quality = "🟢 Excellent";
+                    else if (message.data.state_overview.wifi_rssi > -60)
+                        wifi_quality = "🟡 Good";
+                    else if (message.data.state_overview.wifi_rssi > -70)
+                        wifi_quality = "🟠 Fair";
+                    else
+                        wifi_quality = "🔴 Poor";
+
+                    const char *mqtt_icon = strstr(message.data.state_overview.mqtt_status, "Connected") ? "✅" : "❌";
+
                     snprintf(network_text, sizeof(network_text),
-                             "NETWORK\nWiFi: %s\nRSSI: %d dBm\nIP: %s\nMQTT: %s",
-                             message.data.state_overview.wifi_status,
-                             message.data.state_overview.wifi_rssi,
+                             "🌐 NETWORK STATUS\n"
+                             "%s WiFi: %s\n"
+                             "📊 Signal: %s (%d dBm)\n"
+                             "🏠 IP: %s\n"
+                             "%s MQTT: %s",
+                             wifi_icon, message.data.state_overview.wifi_status,
+                             wifi_quality, message.data.state_overview.wifi_rssi,
                              message.data.state_overview.ip_address,
-                             message.data.state_overview.mqtt_status);
+                             mqtt_icon, message.data.state_overview.mqtt_status);
                     lv_label_set_text(state_network_label, network_text);
+
+                    // Update WiFi signal strength bar
+                    if (state_wifi_bar) {
+                        // Convert RSSI to percentage (typical range -30 to -90 dBm)
+                        int rssi = message.data.state_overview.wifi_rssi;
+                        int signal_percent = 0;
+                        if (rssi >= -30)
+                            signal_percent = 100;
+                        else if (rssi >= -90)
+                            signal_percent = (rssi + 90) * 100 / 60;
+                        else
+                            signal_percent = 0;
+
+                        lv_bar_set_value(state_wifi_bar, signal_percent, LV_ANIM_OFF);
+
+                        // Change color based on signal strength
+                        if (signal_percent > 75) {
+                            lv_obj_set_style_bg_color(state_wifi_bar, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+                        } else if (signal_percent > 50) {
+                            lv_obj_set_style_bg_color(state_wifi_bar, lv_color_hex(0xAAFF00), LV_PART_INDICATOR);
+                        } else if (signal_percent > 25) {
+                            lv_obj_set_style_bg_color(state_wifi_bar, lv_color_hex(0xFFAA00), LV_PART_INDICATOR);
+                        } else {
+                            lv_obj_set_style_bg_color(state_wifi_bar, lv_color_hex(0xFF0000), LV_PART_INDICATOR);
+                        }
+                    }
                 }
 
+                // Enhanced audio info with full device status
                 if (state_audio_label) {
-                    char audio_text[256];
-                    snprintf(audio_text, sizeof(audio_text),
-                             "AUDIO\nTab: %s\nDevice: %s\nVolume: %d%%\nMuted: %s",
-                             message.data.state_overview.current_tab,
-                             message.data.state_overview.selected_device,
-                             message.data.state_overview.current_volume,
-                             message.data.state_overview.is_muted ? "Yes" : "No");
+                    // Get full audio status for comprehensive display
+                    Application::Audio::AudioController &audioController = Application::Audio::AudioController::getInstance();
+                    auto fullStatus = audioController.getCurrentAudioStatus();
+
+                    char audio_text[1024];
+                    char *pos = audio_text;
+                    int remaining = sizeof(audio_text);
+
+                    // Header with current tab info
+                    int written = snprintf(pos, remaining,
+                                           "🎵 AUDIO STATUS\n"
+                                           "📋 Active Tab: %s\n"
+                                           "🎯 Selected: %s\n"
+                                           "🔊 Volume: %d%% %s\n\n"
+                                           "📱 ALL DEVICES:\n",
+                                           message.data.state_overview.current_tab,
+                                           strlen(message.data.state_overview.selected_device) > 0 ? message.data.state_overview.selected_device : "None",
+                                           message.data.state_overview.current_volume,
+                                           message.data.state_overview.is_muted ? "🔇" : "🔊");
+                    pos += written;
+                    remaining -= written;
+
+                    // Show default device if available
+                    if (fullStatus.hasDefaultDevice && remaining > 50) {
+                        const char *default_icon = fullStatus.defaultDevice.isMuted ? "🔇" : "🔊";
+                        written = snprintf(pos, remaining,
+                                           "🎯 Default: %s %.0f%% %s\n",
+                                           fullStatus.defaultDevice.friendlyName.c_str(),
+                                           fullStatus.defaultDevice.volume,
+                                           default_icon);
+                        pos += written;
+                        remaining -= written;
+                    }
+
+                    // Show individual audio devices (limit to fit)
+                    int deviceCount = 0;
+                    for (const auto &device : fullStatus.audioLevels) {
+                        if (remaining < 30 || deviceCount >= 5) break;  // Limit devices shown
+
+                        const char *volume_icon = device.isMuted ? "🔇" : (device.volume > 75 ? "🔊" : device.volume > 25 ? "🔉"
+                                                                                                                          : "🔈");
+                        const char *status_icon = device.volume > 0 ? "🟢" : "⚫";
+
+                        // Truncate long device names
+                        String deviceName = device.processName;
+                        if (deviceName.length() > 12) {
+                            deviceName = deviceName.substring(0, 9) + "...";
+                        }
+
+                        written = snprintf(pos, remaining,
+                                           "%s %s: %d%% %s\n",
+                                           status_icon, deviceName.c_str(),
+                                           device.volume, volume_icon);
+                        pos += written;
+                        remaining -= written;
+                        deviceCount++;
+                    }
+
+                    // Add summary if there are more devices
+                    if (fullStatus.audioLevels.size() > deviceCount && remaining > 20) {
+                        snprintf(pos, remaining,
+                                 "... +%d more devices",
+                                 (int)(fullStatus.audioLevels.size() - deviceCount));
+                    }
+
                     lv_label_set_text(state_audio_label, audio_text);
                 }
                 break;
@@ -468,6 +635,8 @@ void processMessageQueue(lv_timer_t *timer) {
                     state_system_label = NULL;
                     state_network_label = NULL;
                     state_audio_label = NULL;
+                    state_heap_bar = NULL;
+                    state_wifi_bar = NULL;
                 }
                 break;
 
