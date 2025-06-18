@@ -43,13 +43,65 @@ static lv_obj_t *state_overlay_panel = NULL;
 static lv_obj_t *state_system_label = NULL;
 static lv_obj_t *state_network_label = NULL;
 static lv_obj_t *state_audio_label = NULL;
+static lv_obj_t *state_gesture_container = NULL;
+static lv_obj_t *state_gesture_list = NULL;
 static lv_obj_t *state_heap_bar = NULL;
 static lv_obj_t *state_wifi_bar = NULL;
+
+// Gesture logging
+#define MAX_GESTURE_ENTRIES 15
+static int gesture_entry_count = 0;
 
 static const char *TAG = "LVGLMessageHandler";
 
 namespace Application {
 namespace LVGLMessageHandler {
+
+// Helper function to add gesture entry to visual list
+void addGestureEntry(const char *gesture_text) {
+    if (!state_gesture_list) return;
+
+    // Create timestamp
+    uint32_t timestamp = Hardware::Device::getMillis() / 1000;  // Convert to seconds
+    uint32_t minutes = (timestamp / 60) % 60;
+    uint32_t seconds = timestamp % 60;
+
+    // Create new gesture entry
+    lv_obj_t *entry = lv_label_create(state_gesture_list);
+
+    // Format with timestamp and gesture info
+    char entry_text[128];
+    snprintf(entry_text, sizeof(entry_text), "[%02u:%02u] %s", minutes, seconds, gesture_text);
+
+    lv_label_set_text(entry, entry_text);
+    lv_obj_set_width(entry, LV_PCT(100));
+    lv_obj_set_style_text_color(entry, lv_color_hex(0xE0E0E0), 0);
+    lv_obj_set_style_text_font(entry, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_pad_bottom(entry, 2, 0);
+
+    // Move to top of list
+    lv_obj_move_to_index(entry, 0);
+
+    gesture_entry_count++;
+
+    // Remove old entries if we exceed the limit
+    if (gesture_entry_count > MAX_GESTURE_ENTRIES) {
+        // Find and delete the oldest entry (last child)
+        uint32_t child_count = lv_obj_get_child_count(state_gesture_list);
+        if (child_count > 0) {
+            lv_obj_t *oldest_child = lv_obj_get_child(state_gesture_list, child_count - 1);
+            if (oldest_child) {
+                lv_obj_delete(oldest_child);
+                gesture_entry_count--;
+            }
+        }
+    }
+
+    // Scroll to top to show the newest entry
+    lv_obj_scroll_to_y(state_gesture_container, 0, LV_ANIM_ON);
+
+    ESP_LOGI(TAG, "Gesture Log: %s", entry_text);
+}
 #define VOLUME_CASE(enum_name, field_name) \
     case MSG_UPDATE_##enum_name:           \
         return &msg->data.field_name.volume;
@@ -379,7 +431,7 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // System info column with progress bar
                     lv_obj_t *system_container = lv_obj_create(content);
-                    lv_obj_set_size(system_container, LV_PCT(32), LV_PCT(100));
+                    lv_obj_set_size(system_container, LV_PCT(23), LV_PCT(100));
                     lv_obj_set_style_bg_opa(system_container, 0, 0);
                     lv_obj_set_style_border_opa(system_container, 0, 0);
                     lv_obj_set_style_pad_all(system_container, 5, 0);
@@ -400,7 +452,7 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // Network info column with signal bar
                     lv_obj_t *network_container = lv_obj_create(content);
-                    lv_obj_set_size(network_container, LV_PCT(32), LV_PCT(100));
+                    lv_obj_set_size(network_container, LV_PCT(23), LV_PCT(100));
                     lv_obj_set_style_bg_opa(network_container, 0, 0);
                     lv_obj_set_style_border_opa(network_container, 0, 0);
                     lv_obj_set_style_pad_all(network_container, 5, 0);
@@ -421,7 +473,7 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // Audio info column (scrollable for many devices)
                     lv_obj_t *audio_container = lv_obj_create(content);
-                    lv_obj_set_size(audio_container, LV_PCT(32), LV_PCT(100));
+                    lv_obj_set_size(audio_container, LV_PCT(23), LV_PCT(100));
                     lv_obj_set_style_bg_opa(audio_container, 0, 0);
                     lv_obj_set_style_border_opa(audio_container, 0, 0);
                     lv_obj_set_style_pad_all(audio_container, 5, 0);
@@ -432,16 +484,113 @@ void processMessageQueue(lv_timer_t *timer) {
                     lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_14, 0);
                     lv_obj_set_width(state_audio_label, LV_PCT(100));
 
-                    // Add click handlers for closing
-                    lv_obj_add_event_cb(state_overlay, [](lv_event_t *e) {
-                        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                            hideStateOverview();
-                        } }, LV_EVENT_CLICKED, NULL);
+                    // Gesture log column (scrollable list)
+                    state_gesture_container = lv_obj_create(content);
+                    lv_obj_set_size(state_gesture_container, LV_PCT(23), LV_PCT(100));
+                    lv_obj_set_style_bg_opa(state_gesture_container, 0, 0);
+                    lv_obj_set_style_border_opa(state_gesture_container, 0, 0);
+                    lv_obj_set_style_pad_all(state_gesture_container, 5, 0);
+                    lv_obj_set_scroll_dir(state_gesture_container, LV_DIR_VER);
+                    lv_obj_set_flex_flow(state_gesture_container, LV_FLEX_FLOW_COLUMN);
+                    lv_obj_set_flex_align(state_gesture_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
+                    // Reset gesture counter
+                    gesture_entry_count = 0;
+
+                    // Add initial welcome message to gesture log
+                    addGestureEntry("Overlay opened");
+
+                    // Add comprehensive gesture and event logging
+                    lv_obj_add_event_cb(state_overlay, [](lv_event_t *e) {
+                        lv_event_code_t code = lv_event_get_code(e);
+                        lv_indev_t *indev = lv_event_get_indev(e);
+                        
+                        switch(code){
+                            case LV_EVENT_CLICKED:
+                                addGestureEntry("CLICKED - Closing overlay");
+                                hideStateOverview();
+                                break;
+                                
+                            case LV_EVENT_LONG_PRESSED:
+                                addGestureEntry("LONG_PRESSED detected");
+                                break;
+                                
+                            case LV_EVENT_PRESSED:
+                                addGestureEntry("PRESSED - Touch start");
+                                break;
+                                
+                            case LV_EVENT_RELEASED:
+                                addGestureEntry("RELEASED - Touch end");
+                                break;
+                                
+                            case LV_EVENT_GESTURE: {
+                                if (indev) {
+                                    lv_dir_t gesture = lv_indev_get_gesture_dir(indev);
+                                    const char* gesture_name = "UNKNOWN";
+                                    
+                                    switch(gesture) {
+                                        case LV_DIR_LEFT:
+                                            gesture_name = "SWIPE_LEFT";
+                                            break;
+                                        case LV_DIR_RIGHT:
+                                            gesture_name = "SWIPE_RIGHT";
+                                            break;
+                                        case LV_DIR_TOP:
+                                            gesture_name = "SWIPE_UP";
+                                            break;
+                                        case LV_DIR_BOTTOM:
+                                            gesture_name = "SWIPE_DOWN";
+                                            break;
+                                        default:
+                                            gesture_name = "GESTURE_OTHER";
+                                            break;
+                                    }
+                                    
+                                    char gesture_text[64];
+                                    snprintf(gesture_text, sizeof(gesture_text), "GESTURE - %s", gesture_name);
+                                    addGestureEntry(gesture_text);
+                                    
+                                    if (gesture == LV_DIR_BOTTOM){
+                                        addGestureEntry("Swipe down → closing");
+                                        hideStateOverview();
+                                    }
+                                }
+                                break;
+                            }
+                            
+                            case LV_EVENT_SCROLL_BEGIN:
+                                addGestureEntry("SCROLL_BEGIN");
+                                break;
+                                
+                            case LV_EVENT_SCROLL_END:
+                                addGestureEntry("SCROLL_END");
+                                break;
+                                
+                            default:
+                                if (code >= LV_EVENT_PRESSED && code <= LV_EVENT_SCROLL_END) {
+                                    char event_text[32];
+                                    snprintf(event_text, sizeof(event_text), "Event code %d", code);
+                                    addGestureEntry(event_text);
+                                }
+                                break;
+                        }
+                        
+                        // Log touch coordinates for specific touch events
+                        if (indev && (code == LV_EVENT_PRESSED || code == LV_EVENT_RELEASED || code == LV_EVENT_GESTURE)) {
+                            lv_point_t point;
+                            lv_indev_get_point(indev, &point);
+                            char coord_text[48];
+                            snprintf(coord_text, sizeof(coord_text), "Touch at (%d, %d)", point.x, point.y);
+                            addGestureEntry(coord_text);
+                        } }, LV_EVENT_ALL, NULL);
+
+                    // Add close button functionality
                     lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
-                        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                        lv_event_code_t code = lv_event_get_code(e);
+                        
+                        if (code == LV_EVENT_CLICKED) {
                             hideStateOverview();
-                        } }, LV_EVENT_CLICKED, NULL);
+                        } }, LV_EVENT_ALL, NULL);
                 }
                 // Request initial state update and set up periodic updates
                 updateStateOverview();
@@ -460,10 +609,12 @@ void processMessageQueue(lv_timer_t *timer) {
                     },
                                                           2000, NULL);
                 }
+
+                ESP_LOGI(TAG, "State Overlay: CREATED and SHOWN with gesture logging enabled");
                 break;
 
             case MSG_UPDATE_STATE_OVERVIEW:
-                // Update system info with visual elements
+                // Update system info with visual elements and icons
                 if (state_system_label) {
                     char system_text[512];
                     uint32_t heap_kb = message.data.state_overview.free_heap / 1024;
@@ -473,15 +624,10 @@ void processMessageQueue(lv_timer_t *timer) {
                     uint32_t uptime_hr = uptime_min / 60;
 
                     snprintf(system_text, sizeof(system_text),
-                             "=== SYSTEM STATUS ===\n"
-                             "Heap: %lu KB\n"
-                             "PSRAM: %lu KB\n"
-                             "CPU: %lu MHz\n"
-                             "Uptime: %02luh:%02lum:%02lus\n"
-                             "Memory: %s",
-                             heap_kb, psram_kb, message.data.state_overview.cpu_freq,
-                             uptime_hr, uptime_min % 60, uptime_sec % 60,
-                             heap_kb > 100 ? "[OK]" : "[LOW]");
+                             LV_SYMBOL_SETTINGS " SYSTEM STATUS\n" LV_SYMBOL_FILE " Heap: %u KB\n" LV_SYMBOL_DRIVE " PSRAM: %u KB\n" LV_SYMBOL_CHARGE " CPU: %u MHz\n" LV_SYMBOL_LOOP
+                                                " Uptime: %u:%u:%u\n" LV_SYMBOL_WIFI " WiFi: %s\n" LV_SYMBOL_SETTINGS " Signal: %d dBm\n" LV_SYMBOL_HOME " IP: %s",
+                             heap_kb, psram_kb, message.data.state_overview.cpu_freq, uptime_hr, uptime_min % 60, uptime_sec % 60,
+                             message.data.state_overview.wifi_status, message.data.state_overview.wifi_rssi, message.data.state_overview.ip_address);
                     lv_label_set_text(state_system_label, system_text);
 
                     // Update heap progress bar (percentage of available heap)
@@ -500,10 +646,10 @@ void processMessageQueue(lv_timer_t *timer) {
                     }
                 }
 
-                // Update network info with status indicators
+                // Update network info with status indicators and icons
                 if (state_network_label) {
                     char network_text[512];
-                    const char *wifi_icon = strstr(message.data.state_overview.wifi_status, "Connected") ? "[+]" : "[x]";
+                    const char *wifi_icon = strstr(message.data.state_overview.wifi_status, "Connected") ? LV_SYMBOL_WIFI : LV_SYMBOL_WARNING;
                     const char *wifi_quality = "";
                     if (message.data.state_overview.wifi_rssi > -50)
                         wifi_quality = "Excellent";
@@ -514,13 +660,13 @@ void processMessageQueue(lv_timer_t *timer) {
                     else
                         wifi_quality = "Poor";
 
-                    const char *mqtt_icon = strstr(message.data.state_overview.mqtt_status, "Connected") ? "[+]" : "[x]";
+                    const char *mqtt_icon = strstr(message.data.state_overview.mqtt_status, "Connected") ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE;
 
                     snprintf(network_text, sizeof(network_text),
-                             "=== NETWORK STATUS ===\n"
-                             "%s WiFi: %s\n"
-                             "Signal: %s (%d dBm)\n"
-                             "IP: %s\n"
+                             LV_SYMBOL_WIFI
+                             " NETWORK STATUS\n"
+                             "%s WiFi: %s\n" LV_SYMBOL_CALL " Signal: %s (%d dBm)\n" LV_SYMBOL_GPS
+                             " IP: %s\n"
                              "%s MQTT: %s",
                              wifi_icon, message.data.state_overview.wifi_status,
                              wifi_quality, message.data.state_overview.wifi_rssi,
@@ -555,7 +701,7 @@ void processMessageQueue(lv_timer_t *timer) {
                     }
                 }
 
-                // Enhanced audio info with full device status
+                // Enhanced audio info with icons and full device status
                 if (state_audio_label) {
                     // Get full audio status for comprehensive display
                     Application::Audio::AudioController &audioController = Application::Audio::AudioController::getInstance();
@@ -565,28 +711,24 @@ void processMessageQueue(lv_timer_t *timer) {
                     char *pos = audio_text;
                     int remaining = sizeof(audio_text);
 
-                    // Header with current tab info
+                    // Header with current tab info and icons
                     int written = snprintf(pos, remaining,
-                                           "=== AUDIO STATUS ===\n"
-                                           "Active Tab: %s\n"
-                                           "Selected: %s\n"
-                                           "Volume: %d%% %s\n\n"
-                                           "ALL DEVICES:\n",
+                                           LV_SYMBOL_AUDIO " AUDIO STATUS\n" LV_SYMBOL_LIST " Active Tab: %s\n" LV_SYMBOL_AUDIO " Selected: %s\n" LV_SYMBOL_AUDIO " Volume: %d%% %s\n\n" LV_SYMBOL_HOME " ALL DEVICES:\n",
                                            message.data.state_overview.current_tab,
                                            strlen(message.data.state_overview.selected_device) > 0 ? message.data.state_overview.selected_device : "None",
                                            message.data.state_overview.current_volume,
-                                           message.data.state_overview.is_muted ? "[MUTE]" : "[ON]");
+                                           message.data.state_overview.is_muted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO);
                     pos += written;
                     remaining -= written;
 
                     // Show default device if available
                     if (fullStatus.hasDefaultDevice && remaining > 50) {
-                        const char *default_icon = fullStatus.defaultDevice.isMuted ? "[MUTE]" : "[ON]";
+                        const char *default_icon = fullStatus.defaultDevice.isMuted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO;
                         written = snprintf(pos, remaining,
-                                           "* Default: %s %.0f%% %s\n",
+                                           "%s Default: %s %.0f%%\n",
+                                           default_icon,
                                            fullStatus.defaultDevice.friendlyName.c_str(),
-                                           fullStatus.defaultDevice.volume,
-                                           default_icon);
+                                           fullStatus.defaultDevice.volume);
                         pos += written;
                         remaining -= written;
                     }
@@ -596,9 +738,9 @@ void processMessageQueue(lv_timer_t *timer) {
                     for (const auto &device : fullStatus.audioLevels) {
                         if (remaining < 30 || deviceCount >= 5) break;  // Limit devices shown
 
-                        const char *volume_icon = device.isMuted ? "[MUTE]" : (device.volume > 75 ? "[HIGH]" : device.volume > 25 ? "[MID]"
-                                                                                                                                  : "[LOW]");
-                        const char *status_icon = device.volume > 0 ? "+" : "-";
+                        const char *volume_icon = device.isMuted ? LV_SYMBOL_MUTE : (device.volume > 75 ? LV_SYMBOL_AUDIO : device.volume > 25 ? LV_SYMBOL_AUDIO
+                                                                                                                                               : LV_SYMBOL_AUDIO);
+                        const char *status_icon = device.volume > 0 ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE;
 
                         // Truncate long device names
                         String deviceName = device.processName;
@@ -618,7 +760,7 @@ void processMessageQueue(lv_timer_t *timer) {
                     // Add summary if there are more devices
                     if (fullStatus.audioLevels.size() > deviceCount && remaining > 20) {
                         snprintf(pos, remaining,
-                                 "... +%d more devices",
+                                 LV_SYMBOL_PLUS " ... +%d more devices",
                                  (int)(fullStatus.audioLevels.size() - deviceCount));
                     }
 
@@ -627,6 +769,7 @@ void processMessageQueue(lv_timer_t *timer) {
                 break;
 
             case MSG_HIDE_STATE_OVERVIEW:
+                ESP_LOGI(TAG, "State Overlay: MSG_HIDE_STATE_OVERVIEW received");
                 if (state_overlay) {
                     lv_obj_del(state_overlay);
                     state_overlay = NULL;
@@ -635,9 +778,15 @@ void processMessageQueue(lv_timer_t *timer) {
                     state_system_label = NULL;
                     state_network_label = NULL;
                     state_audio_label = NULL;
+                    state_gesture_container = NULL;
+                    state_gesture_list = NULL;
                     state_heap_bar = NULL;
                     state_wifi_bar = NULL;
+
+                    // Reset gesture counter
+                    gesture_entry_count = 0;
                 }
+                ESP_LOGI(TAG, "State Overlay: HIDDEN successfully");
                 break;
 
             default:
@@ -915,6 +1064,7 @@ bool updateStateOverview(void) {
 }
 
 bool hideStateOverview(void) {
+    ESP_LOGI(TAG, "State Overlay: hideStateOverview() called - sending hide message");
     LVGLMessage_t message;
     message.type = MSG_HIDE_STATE_OVERVIEW;
     return sendMessage(&message);
