@@ -192,7 +192,7 @@ const char *getTabName(TabState tab) {
 
 // State overview long-press handler
 void stateOverviewLongPressHandler(lv_event_t *e) {
-    ON_EVENT(LV_EVENT_LONG_PRESSED);
+    // ON_EVENT(LV_EVENT_LONG_PRESSED);
 
     UI_LOG("UIEventHandlers", "Long press detected - showing state overview");
 

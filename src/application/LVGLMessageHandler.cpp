@@ -330,39 +330,76 @@ void processMessageQueue(lv_timer_t *timer) {
 
             case MSG_SHOW_STATE_OVERVIEW:
                 if (!state_overlay) {
-                    // Create overlay background
+                    // Create full-screen overlay with proper z-index
                     state_overlay = lv_obj_create(lv_scr_act());
                     lv_obj_set_size(state_overlay, LV_PCT(100), LV_PCT(100));
+                    lv_obj_set_pos(state_overlay, 0, 0);
                     lv_obj_set_style_bg_color(state_overlay, lv_color_hex(0x000000), 0);
-                    lv_obj_set_style_bg_opa(state_overlay, 150, 0);  // Semi-transparent
+                    lv_obj_set_style_bg_opa(state_overlay, 180, 0);  // More opaque
                     lv_obj_remove_flag(state_overlay, LV_OBJ_FLAG_SCROLLABLE);
+                    lv_obj_move_foreground(state_overlay);  // Ensure on top
 
-                    // Create content panel
+                    // Create modern content panel
                     state_overlay_panel = lv_obj_create(state_overlay);
-                    lv_obj_set_size(state_overlay_panel, LV_PCT(80), LV_PCT(60));
+                    lv_obj_set_size(state_overlay_panel, LV_PCT(95), LV_PCT(80));
                     lv_obj_center(state_overlay_panel);
-                    lv_obj_set_style_bg_color(state_overlay_panel, lv_color_hex(0x1E1E1E), 0);
-                    lv_obj_set_style_border_color(state_overlay_panel, lv_color_hex(0x404040), 0);
-                    lv_obj_set_style_border_width(state_overlay_panel, 2, 0);
+                    lv_obj_set_style_bg_color(state_overlay_panel, lv_color_hex(0x2A2A2A), 0);
+                    lv_obj_set_style_border_color(state_overlay_panel, lv_color_hex(0x606060), 0);
+                    lv_obj_set_style_border_width(state_overlay_panel, 1, 0);
+                    lv_obj_set_style_radius(state_overlay_panel, 8, 0);
+                    lv_obj_set_style_pad_all(state_overlay_panel, 15, 0);
 
-                    // Create labels for different state categories
-                    state_system_label = lv_label_create(state_overlay_panel);
-                    lv_obj_set_style_text_color(state_system_label, lv_color_hex(0xFFFFFF), 0);
+                    // Create title and close button
+                    lv_obj_t *title_label = lv_label_create(state_overlay_panel);
+                    lv_label_set_text(title_label, "System Overview");
+                    lv_obj_set_style_text_color(title_label, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
+                    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 5);
+
+                    lv_obj_t *close_btn = lv_button_create(state_overlay_panel);
+                    lv_obj_set_size(close_btn, 50, 30);
+                    lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
+                    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0xFF4444), 0);
+                    lv_obj_t *close_label = lv_label_create(close_btn);
+                    lv_label_set_text(close_label, "×");
+                    lv_obj_set_style_text_font(close_label, &lv_font_montserrat_14, 0);
+                    lv_obj_center(close_label);
+
+                    // Create horizontal layout for data columns
+                    lv_obj_t *content = lv_obj_create(state_overlay_panel);
+                    lv_obj_set_size(content, LV_PCT(100), LV_PCT(85));
+                    lv_obj_align(content, LV_ALIGN_BOTTOM_MID, 0, -5);
+                    lv_obj_set_style_bg_opa(content, 0, 0);
+                    lv_obj_set_style_border_opa(content, 0, 0);
+                    lv_obj_set_style_pad_all(content, 5, 0);
+                    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_ROW);
+                    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+
+                    // System info column
+                    state_system_label = lv_label_create(content);
+                    lv_obj_set_style_text_color(state_system_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_system_label, &lv_font_montserrat_14, 0);
-                    lv_obj_align(state_system_label, LV_ALIGN_TOP_LEFT, 10, 10);
+                    lv_obj_set_width(state_system_label, LV_PCT(32));
 
-                    state_network_label = lv_label_create(state_overlay_panel);
-                    lv_obj_set_style_text_color(state_network_label, lv_color_hex(0xFFFFFF), 0);
+                    // Network info column
+                    state_network_label = lv_label_create(content);
+                    lv_obj_set_style_text_color(state_network_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_network_label, &lv_font_montserrat_14, 0);
-                    lv_obj_align(state_network_label, LV_ALIGN_TOP_LEFT, 10, 80);
+                    lv_obj_set_width(state_network_label, LV_PCT(32));
 
-                    state_audio_label = lv_label_create(state_overlay_panel);
-                    lv_obj_set_style_text_color(state_audio_label, lv_color_hex(0xFFFFFF), 0);
+                    // Audio info column
+                    state_audio_label = lv_label_create(content);
+                    lv_obj_set_style_text_color(state_audio_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_14, 0);
-                    lv_obj_align(state_audio_label, LV_ALIGN_TOP_LEFT, 10, 150);
+                    lv_obj_set_width(state_audio_label, LV_PCT(32));
 
-                    // Add click handler to close overlay
+                    // Add click handlers for closing
                     lv_obj_add_event_cb(state_overlay, [](lv_event_t *e) {
+                        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                            hideStateOverview();
+                        } }, LV_EVENT_CLICKED, NULL);
+
+                    lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
                         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
                             hideStateOverview();
                         } }, LV_EVENT_CLICKED, NULL);
@@ -686,7 +723,7 @@ bool updateStateOverview(void) {
     message.data.state_overview.selected_device[sizeof(message.data.state_overview.selected_device) - 1] = '\0';
 
     // For volume and mute status, we need to get the current device info
-    AudioStatus currentStatus = audioController.getCurrentAudioStatus();
+    auto currentStatus = audioController.getCurrentAudioStatus();
     message.data.state_overview.current_volume = 0;
     message.data.state_overview.is_muted = false;
 
@@ -694,14 +731,14 @@ bool updateStateOverview(void) {
     if (!selectedDevice.isEmpty()) {
         for (const auto &level : currentStatus.audioLevels) {
             if (level.processName == selectedDevice) {
-                message.data.state_overview.current_volume = level.level;
+                message.data.state_overview.current_volume = level.volume;
                 message.data.state_overview.is_muted = level.isMuted;
                 break;
             }
         }
     } else if (currentStatus.hasDefaultDevice) {
         // Use default device if no specific device selected
-        message.data.state_overview.current_volume = currentStatus.defaultDevice.level;
+        message.data.state_overview.current_volume = currentStatus.defaultDevice.volume;
         message.data.state_overview.is_muted = currentStatus.defaultDevice.isMuted;
     }
 

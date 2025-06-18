@@ -232,8 +232,11 @@ void setupUiComponents(void) {
 
     // Register button click event handler
     lv_obj_add_event_cb(ui_btnRequestData,
-                        Events::UI::btnRequestDataClickedHandler,
+                        Events::UI::stateOverviewLongPressHandler,
                         LV_EVENT_CLICKED, NULL);
+    // lv_obj_add_event_cb(ui_btnRequestData,
+    //                         Events::UI::btnRequestDataClickedHandler,
+    //                         LV_EVENT_CLICKED, NULL);
 
     // Register audio device dropdown event handlers
     lv_obj_add_event_cb(ui_selectAudioDevice,
@@ -302,10 +305,31 @@ void setupUiComponents(void) {
     ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex,
              Events::UI::getTabName(Events::UI::getCurrentTab()));
 
-    // Add long-press handler to main screen for state overview
-    ESP_LOGI(TAG, "Registering long-press handler for state overview on main screen: %p", ui_screenMain);
-    lv_obj_add_event_cb(ui_screenMain, Events::UI::stateOverviewLongPressHandler,
+    // Add long-press handler to accessible UI elements for state overview
+    ESP_LOGI(TAG, "Registering long-press handler for state overview on tabview: %p", ui_tabsModeSwitch);
+    lv_obj_add_event_cb(ui_tabsModeSwitch, Events::UI::stateOverviewLongPressHandler,
                         LV_EVENT_LONG_PRESSED, NULL);
+
+    // Also add to network panel for easy access
+    if (ui_pnlNetwork) {
+        ESP_LOGI(TAG, "Registering long-press handler for state overview on network panel: %p", ui_pnlNetwork);
+        lv_obj_add_event_cb(ui_pnlNetwork, Events::UI::stateOverviewLongPressHandler,
+                            LV_EVENT_LONG_PRESSED, NULL);
+    }
+
+    // Add to individual tab content areas for maximum accessibility
+    if (ui_Master) {
+        lv_obj_add_event_cb(ui_Master, Events::UI::stateOverviewLongPressHandler,
+                            LV_EVENT_LONG_PRESSED, NULL);
+    }
+    if (ui_Single) {
+        lv_obj_add_event_cb(ui_Single, Events::UI::stateOverviewLongPressHandler,
+                            LV_EVENT_LONG_PRESSED, NULL);
+    }
+    if (ui_Balance) {
+        lv_obj_add_event_cb(ui_Balance, Events::UI::stateOverviewLongPressHandler,
+                            LV_EVENT_LONG_PRESSED, NULL);
+    }
 
     // Setup OTA UI elements if available
 #if OTA_ENABLE_UPDATES
