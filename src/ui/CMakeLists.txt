@@ -3,6 +3,7 @@ SET(SOURCES components/ui_comp_volumeslider.c
     screens/ui_screenMain.c
     screens/ui_screenOTA.c
     screens/ui_screenDebug.c
+    screens/ui_screenStateOverview.c
     ui.c
     components/ui_comp_hook.c
     ui_helpers.c)

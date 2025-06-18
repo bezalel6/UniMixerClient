@@ -35,6 +35,7 @@ void ui_init(void)
     ui_screenMain_screen_init();
     ui_screenOTA_screen_init();
     ui_screenDebug_screen_init();
+    ui_screenStateOverview_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
     lv_disp_load_scr(ui_screenMain);
 }
@@ -44,4 +45,5 @@ void ui_destroy(void)
     ui_screenMain_screen_destroy();
     ui_screenOTA_screen_destroy();
     ui_screenDebug_screen_destroy();
+    ui_screenStateOverview_screen_destroy();
 }

@@ -50,6 +50,9 @@ TabState getCurrentTab(void);
 void setCurrentTab(TabState tab);
 const char *getTabName(TabState tab);
 
+// State overview handler
+void stateOverviewLongPressHandler(lv_event_t *e);
+
 }  // namespace UI
 }  // namespace Events
 

@@ -32,7 +32,12 @@ typedef enum {
     // Dedicated messages for the custom, non-conflicting OTA screen
     MSG_SHOW_OTA_SCREEN,
     MSG_UPDATE_OTA_SCREEN_PROGRESS,
-    MSG_HIDE_OTA_SCREEN
+    MSG_HIDE_OTA_SCREEN,
+
+    // State overview messages
+    MSG_SHOW_STATE_OVERVIEW,
+    MSG_UPDATE_STATE_OVERVIEW,
+    MSG_HIDE_STATE_OVERVIEW
 } LVGLMessageType_t;
 
 // Message data structures
@@ -98,6 +103,22 @@ typedef struct {
             uint8_t progress;
             char message[64];
         } ota_screen_progress;
+
+        // State overview data
+        struct {
+            uint32_t free_heap;
+            uint32_t free_psram;
+            uint32_t cpu_freq;
+            uint32_t uptime_ms;
+            char wifi_status[32];
+            int wifi_rssi;
+            char ip_address[16];
+            char mqtt_status[16];
+            char current_tab[16];
+            char selected_device[64];
+            int current_volume;
+            bool is_muted;
+        } state_overview;
     } data;
 } LVGLMessage_t;
 
@@ -136,6 +157,11 @@ bool showOtaScreen(void);
 bool updateOtaScreenProgress(uint8_t progress, const char *msg);
 bool hideOtaScreen(void);
 void updateOtaScreenDirectly(uint8_t progress, const char *msg);
+
+// Helper functions for state overview
+bool showStateOverview(void);
+bool updateStateOverview(void);
+bool hideStateOverview(void);
 
 }  // namespace LVGLMessageHandler
 }  // namespace Application

@@ -302,6 +302,11 @@ void setupUiComponents(void) {
     ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex,
              Events::UI::getTabName(Events::UI::getCurrentTab()));
 
+    // Add long-press handler to main screen for state overview
+    ESP_LOGI(TAG, "Registering long-press handler for state overview on main screen: %p", ui_screenMain);
+    lv_obj_add_event_cb(ui_screenMain, Events::UI::stateOverviewLongPressHandler,
+                        LV_EVENT_LONG_PRESSED, NULL);
+
     // Setup OTA UI elements if available
 #if OTA_ENABLE_UPDATES
     // Use message handler for thread-safe UI initialization

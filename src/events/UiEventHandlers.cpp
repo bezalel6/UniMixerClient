@@ -1,5 +1,6 @@
 #include "UiEventHandlers.h"
 #include "../application/AudioController.h"
+#include "../application/LVGLMessageHandler.h"
 #include "../hardware/DeviceManager.h"
 #include "../messaging/MessageBus.h"
 #include <ArduinoJson.h>
@@ -187,6 +188,16 @@ void setCurrentTab(TabState tab) {
 // Get tab name string
 const char *getTabName(TabState tab) {
     return Application::Audio::AudioController::getInstance().getTabName(tab);
+}
+
+// State overview long-press handler
+void stateOverviewLongPressHandler(lv_event_t *e) {
+    ON_EVENT(LV_EVENT_LONG_PRESSED);
+
+    UI_LOG("UIEventHandlers", "Long press detected - showing state overview");
+
+    // Show state overview overlay
+    Application::LVGLMessageHandler::showStateOverview();
 }
 
 }  // namespace UI

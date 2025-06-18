@@ -24,6 +24,10 @@
 
 #include "LVGLMessageHandler.h"
 #include "../display/DisplayManager.h"
+#include "../hardware/DeviceManager.h"
+#include "../hardware/NetworkManager.h"
+#include "../hardware/MqttManager.h"
+#include "AudioController.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 
@@ -31,6 +35,14 @@
 static lv_obj_t *custom_ota_screen = NULL;
 static lv_obj_t *custom_ota_label = NULL;
 static lv_obj_t *custom_ota_bar = NULL;
+
+// State overview overlay elements
+static lv_obj_t *state_overlay = NULL;
+static lv_obj_t *state_overlay_bg = NULL;
+static lv_obj_t *state_overlay_panel = NULL;
+static lv_obj_t *state_system_label = NULL;
+static lv_obj_t *state_network_label = NULL;
+static lv_obj_t *state_audio_label = NULL;
 
 static const char *TAG = "LVGLMessageHandler";
 
@@ -316,6 +328,112 @@ void processMessageQueue(lv_timer_t *timer) {
                 }
                 break;
 
+            case MSG_SHOW_STATE_OVERVIEW:
+                if (!state_overlay) {
+                    // Create overlay background
+                    state_overlay = lv_obj_create(lv_scr_act());
+                    lv_obj_set_size(state_overlay, LV_PCT(100), LV_PCT(100));
+                    lv_obj_set_style_bg_color(state_overlay, lv_color_hex(0x000000), 0);
+                    lv_obj_set_style_bg_opa(state_overlay, 150, 0);  // Semi-transparent
+                    lv_obj_remove_flag(state_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+                    // Create content panel
+                    state_overlay_panel = lv_obj_create(state_overlay);
+                    lv_obj_set_size(state_overlay_panel, LV_PCT(80), LV_PCT(60));
+                    lv_obj_center(state_overlay_panel);
+                    lv_obj_set_style_bg_color(state_overlay_panel, lv_color_hex(0x1E1E1E), 0);
+                    lv_obj_set_style_border_color(state_overlay_panel, lv_color_hex(0x404040), 0);
+                    lv_obj_set_style_border_width(state_overlay_panel, 2, 0);
+
+                    // Create labels for different state categories
+                    state_system_label = lv_label_create(state_overlay_panel);
+                    lv_obj_set_style_text_color(state_system_label, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_text_font(state_system_label, &lv_font_montserrat_14, 0);
+                    lv_obj_align(state_system_label, LV_ALIGN_TOP_LEFT, 10, 10);
+
+                    state_network_label = lv_label_create(state_overlay_panel);
+                    lv_obj_set_style_text_color(state_network_label, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_text_font(state_network_label, &lv_font_montserrat_14, 0);
+                    lv_obj_align(state_network_label, LV_ALIGN_TOP_LEFT, 10, 80);
+
+                    state_audio_label = lv_label_create(state_overlay_panel);
+                    lv_obj_set_style_text_color(state_audio_label, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_14, 0);
+                    lv_obj_align(state_audio_label, LV_ALIGN_TOP_LEFT, 10, 150);
+
+                    // Add click handler to close overlay
+                    lv_obj_add_event_cb(state_overlay, [](lv_event_t *e) {
+                        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                            hideStateOverview();
+                        } }, LV_EVENT_CLICKED, NULL);
+                }
+                // Request initial state update and set up periodic updates
+                updateStateOverview();
+
+                // Create a timer to refresh state data every 2 seconds while overlay is visible
+                static lv_timer_t *state_refresh_timer = NULL;
+                if (!state_refresh_timer) {
+                    state_refresh_timer = lv_timer_create([](lv_timer_t *timer) {
+                        if (state_overlay) {
+                            updateStateOverview();
+                        } else {
+                            // Delete timer when overlay is not visible
+                            lv_timer_delete(timer);
+                            timer = NULL;
+                        }
+                    },
+                                                          2000, NULL);
+                }
+                break;
+
+            case MSG_UPDATE_STATE_OVERVIEW:
+                if (state_system_label) {
+                    char system_text[256];
+                    snprintf(system_text, sizeof(system_text),
+                             "SYSTEM\nHeap: %lu KB\nPSRAM: %lu KB\nCPU: %lu MHz\nUptime: %lu.%02lu s",
+                             message.data.state_overview.free_heap / 1024,
+                             message.data.state_overview.free_psram / 1024,
+                             message.data.state_overview.cpu_freq,
+                             message.data.state_overview.uptime_ms / 1000,
+                             (message.data.state_overview.uptime_ms % 1000) / 10);
+                    lv_label_set_text(state_system_label, system_text);
+                }
+
+                if (state_network_label) {
+                    char network_text[256];
+                    snprintf(network_text, sizeof(network_text),
+                             "NETWORK\nWiFi: %s\nRSSI: %d dBm\nIP: %s\nMQTT: %s",
+                             message.data.state_overview.wifi_status,
+                             message.data.state_overview.wifi_rssi,
+                             message.data.state_overview.ip_address,
+                             message.data.state_overview.mqtt_status);
+                    lv_label_set_text(state_network_label, network_text);
+                }
+
+                if (state_audio_label) {
+                    char audio_text[256];
+                    snprintf(audio_text, sizeof(audio_text),
+                             "AUDIO\nTab: %s\nDevice: %s\nVolume: %d%%\nMuted: %s",
+                             message.data.state_overview.current_tab,
+                             message.data.state_overview.selected_device,
+                             message.data.state_overview.current_volume,
+                             message.data.state_overview.is_muted ? "Yes" : "No");
+                    lv_label_set_text(state_audio_label, audio_text);
+                }
+                break;
+
+            case MSG_HIDE_STATE_OVERVIEW:
+                if (state_overlay) {
+                    lv_obj_del(state_overlay);
+                    state_overlay = NULL;
+                    state_overlay_bg = NULL;
+                    state_overlay_panel = NULL;
+                    state_system_label = NULL;
+                    state_network_label = NULL;
+                    state_audio_label = NULL;
+                }
+                break;
+
             default:
                 ESP_LOGW(TAG, "Unknown message type: %d", message.type);
                 break;
@@ -520,6 +638,80 @@ bool updateCurrentTabVolume(int volume) {
         ESP_LOGW(TAG, "Tab view not available, defaulting to Master volume");
         return updateMasterVolume(volume);  // Default to Master tab
     }
+}
+
+// Helper functions for state overview
+bool showStateOverview(void) {
+    LVGLMessage_t message;
+    message.type = MSG_SHOW_STATE_OVERVIEW;
+    return sendMessage(&message);
+}
+
+bool updateStateOverview(void) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_STATE_OVERVIEW;
+
+    // Collect current system state
+    message.data.state_overview.free_heap = Hardware::Device::getFreeHeap();
+    message.data.state_overview.free_psram = Hardware::Device::getPsramSize();
+    message.data.state_overview.cpu_freq = Hardware::Device::getCpuFrequency();
+    message.data.state_overview.uptime_ms = Hardware::Device::getMillis();
+
+    // Collect network state
+    strncpy(message.data.state_overview.wifi_status, Hardware::Network::getWifiStatusString(),
+            sizeof(message.data.state_overview.wifi_status) - 1);
+    message.data.state_overview.wifi_status[sizeof(message.data.state_overview.wifi_status) - 1] = '\0';
+
+    message.data.state_overview.wifi_rssi = Hardware::Network::getSignalStrength();
+
+    strncpy(message.data.state_overview.ip_address, Hardware::Network::getIpAddress(),
+            sizeof(message.data.state_overview.ip_address) - 1);
+    message.data.state_overview.ip_address[sizeof(message.data.state_overview.ip_address) - 1] = '\0';
+
+    strncpy(message.data.state_overview.mqtt_status, Hardware::Mqtt::getStatusString(),
+            sizeof(message.data.state_overview.mqtt_status) - 1);
+    message.data.state_overview.mqtt_status[sizeof(message.data.state_overview.mqtt_status) - 1] = '\0';
+
+    // Collect audio state
+    Application::Audio::AudioController &audioController = Application::Audio::AudioController::getInstance();
+
+    const char *tabName = audioController.getTabName(audioController.getCurrentTab());
+    strncpy(message.data.state_overview.current_tab, tabName,
+            sizeof(message.data.state_overview.current_tab) - 1);
+    message.data.state_overview.current_tab[sizeof(message.data.state_overview.current_tab) - 1] = '\0';
+
+    String selectedDevice = audioController.getSelectedDevice();
+    strncpy(message.data.state_overview.selected_device, selectedDevice.c_str(),
+            sizeof(message.data.state_overview.selected_device) - 1);
+    message.data.state_overview.selected_device[sizeof(message.data.state_overview.selected_device) - 1] = '\0';
+
+    // For volume and mute status, we need to get the current device info
+    AudioStatus currentStatus = audioController.getCurrentAudioStatus();
+    message.data.state_overview.current_volume = 0;
+    message.data.state_overview.is_muted = false;
+
+    // Try to find current device in the audio status
+    if (!selectedDevice.isEmpty()) {
+        for (const auto &level : currentStatus.audioLevels) {
+            if (level.processName == selectedDevice) {
+                message.data.state_overview.current_volume = level.level;
+                message.data.state_overview.is_muted = level.isMuted;
+                break;
+            }
+        }
+    } else if (currentStatus.hasDefaultDevice) {
+        // Use default device if no specific device selected
+        message.data.state_overview.current_volume = currentStatus.defaultDevice.level;
+        message.data.state_overview.is_muted = currentStatus.defaultDevice.isMuted;
+    }
+
+    return sendMessage(&message);
+}
+
+bool hideStateOverview(void) {
+    LVGLMessage_t message;
+    message.type = MSG_HIDE_STATE_OVERVIEW;
+    return sendMessage(&message);
 }
 
 }  // namespace LVGLMessageHandler
