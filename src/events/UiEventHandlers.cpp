@@ -111,7 +111,7 @@ void audioDeviceDropdownChangedHandler(lv_event_t *e) {
     // Get the selected audio device name using the new method
     String selectedText =
         Application::Audio::AudioController::getInstance().getDropdownSelection(dropdown);
-    ESP_LOGI(TAG, "Dropdown changed to: %s", selectedText.c_str());
+    ESP_LOGI("UIEventHandlers", "Dropdown changed to: %s", selectedText.c_str());
 
     // Update the selection using the clean centralized interface
     Application::Audio::AudioController::getInstance().setDropdownSelection(dropdown,
