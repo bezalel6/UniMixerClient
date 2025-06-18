@@ -27,7 +27,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/MqttManager.h"
-#include "AudioController.h"
+#include "AudioManager.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 
@@ -704,8 +704,8 @@ void processMessageQueue(lv_timer_t *timer) {
                 // Enhanced audio info with icons and full device status
                 if (state_audio_label) {
                     // Get full audio status for comprehensive display
-                    Application::Audio::AudioController &audioController = Application::Audio::AudioController::getInstance();
-                    auto fullStatus = audioController.getCurrentAudioStatus();
+                    Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
+                    auto fullStatus = audioManager.getState().currentStatus;
 
                     char audio_text[1024];
                     char *pos = audio_text;
@@ -1028,20 +1028,20 @@ bool updateStateOverview(void) {
     message.data.state_overview.mqtt_status[sizeof(message.data.state_overview.mqtt_status) - 1] = '\0';
 
     // Collect audio state
-    Application::Audio::AudioController &audioController = Application::Audio::AudioController::getInstance();
+    Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
 
-    const char *tabName = audioController.getTabName(audioController.getCurrentTab());
+    const char *tabName = audioManager.getTabName(audioManager.getCurrentTab());
     strncpy(message.data.state_overview.current_tab, tabName,
             sizeof(message.data.state_overview.current_tab) - 1);
     message.data.state_overview.current_tab[sizeof(message.data.state_overview.current_tab) - 1] = '\0';
 
-    String selectedDevice = audioController.getSelectedDevice();
+    String selectedDevice = audioManager.getCurrentDevice();
     strncpy(message.data.state_overview.selected_device, selectedDevice.c_str(),
             sizeof(message.data.state_overview.selected_device) - 1);
     message.data.state_overview.selected_device[sizeof(message.data.state_overview.selected_device) - 1] = '\0';
 
     // For volume and mute status, we need to get the current device info
-    auto currentStatus = audioController.getCurrentAudioStatus();
+    auto currentStatus = audioManager.getState().currentStatus;
     message.data.state_overview.current_volume = 0;
     message.data.state_overview.is_muted = false;
 

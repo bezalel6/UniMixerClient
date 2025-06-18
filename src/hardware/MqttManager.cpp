@@ -1,7 +1,7 @@
 #include "MqttManager.h"
 #include "NetworkManager.h"
 #include "DeviceManager.h"
-#include "../application/AudioController.h"
+#include "../application/AudioManager.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
@@ -181,7 +181,7 @@ bool connect(void) {
         // publishSystemStatus();
 
         // Request audio status after successful connection
-        Application::Audio::AudioController::getInstance().publishAudioStatusRequest(true);
+        Application::Audio::AudioManager::getInstance().publishStatusRequest(true);
 
         return true;
     } else {

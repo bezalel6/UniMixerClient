@@ -8,7 +8,7 @@
 #include "../hardware/OTAManager.h"
 #include "../messaging/MessageBus.h"
 #include "AppController.h"
-#include "AudioController.h"
+#include "AudioUI.h"
 #include "LVGLMessageHandler.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
@@ -514,7 +514,7 @@ void audioTask(void *parameter) {
 
             // Use LVGL mutex protection for thread-safe UI updates
             lvglLock();
-            Application::Audio::AudioController::getInstance().onAudioLevelsChangedUI();
+            Application::Audio::AudioUI::getInstance().refreshAllUI();
             lvglUnlock();
 
             // Reset watchdog after UI operation
