@@ -48,6 +48,28 @@ lv_obj_t * ui_btnGOTOLog = NULL;
 lv_obj_t * ui_Label1 = NULL;
 lv_obj_t * ui_lblFPS = NULL;
 // event funtions
+void ui_event_containerSingleVolumeSlider_containerSingleVolumeSlider_singleVolumeSlider(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+
+    if(event_code == LV_EVENT_VALUE_CHANGED) {
+        _ui_arc_set_text_value(ui_comp_get_child(ui_containerSingleVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER),
+                               target, "", "%");
+    }
+}
+
+void ui_event_containerBalanceVolumeSlider_containerBalanceVolumeSlider_balanceVolumeSlider(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+
+    if(event_code == LV_EVENT_VALUE_CHANGED) {
+        _ui_arc_set_text_value(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER),
+                               target, "", "%");
+    }
+}
+
 void ui_event_btnGOTOLog(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -90,11 +112,9 @@ void ui_screenMain_screen_init(void)
     lv_obj_remove_flag(ui_Master, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_pnlPrimaryAudioDevice = lv_obj_create(ui_Master);
-    lv_obj_set_height(ui_pnlPrimaryAudioDevice, 42);
+    lv_obj_set_height(ui_pnlPrimaryAudioDevice, 50);
     lv_obj_set_width(ui_pnlPrimaryAudioDevice, lv_pct(100));
     lv_obj_set_align(ui_pnlPrimaryAudioDevice, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_flex_flow(ui_pnlPrimaryAudioDevice, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(ui_pnlPrimaryAudioDevice, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(ui_pnlPrimaryAudioDevice, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_lblPrimaryAudioDeviceValue = lv_label_create(ui_pnlPrimaryAudioDevice);
@@ -105,7 +125,7 @@ void ui_screenMain_screen_init(void)
 
     ui_containerPrimaryVolumeSlider = ui_VolumeSlider_create(ui_Master);
     lv_obj_set_x(ui_containerPrimaryVolumeSlider, 0);
-    lv_obj_set_y(ui_containerPrimaryVolumeSlider, -20);
+    lv_obj_set_y(ui_containerPrimaryVolumeSlider, 0);
     lv_obj_add_flag(ui_containerPrimaryVolumeSlider, LV_OBJ_FLAG_OVERFLOW_VISIBLE);     /// Flags
 
     lv_obj_set_width(ui_comp_get_child(ui_containerPrimaryVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER), 200);
@@ -131,7 +151,7 @@ void ui_screenMain_screen_init(void)
 
     ui_containerSingleVolumeSlider = ui_VolumeSlider_create(ui_Single);
     lv_obj_set_x(ui_containerSingleVolumeSlider, 0);
-    lv_obj_set_y(ui_containerSingleVolumeSlider, -40);
+    lv_obj_set_y(ui_containerSingleVolumeSlider, 0);
 
     lv_obj_set_width(ui_comp_get_child(ui_containerSingleVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER), 200);
     lv_obj_set_height(ui_comp_get_child(ui_containerSingleVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER),
@@ -170,7 +190,7 @@ void ui_screenMain_screen_init(void)
 
     ui_containerBalanceVolumeSlider = ui_VolumeSlider_create(ui_Balance);
     lv_obj_set_x(ui_containerBalanceVolumeSlider, 0);
-    lv_obj_set_y(ui_containerBalanceVolumeSlider, -40);
+    lv_obj_set_y(ui_containerBalanceVolumeSlider, 0);
 
     lv_obj_set_width(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER), 200);
     lv_obj_set_height(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER),
@@ -325,6 +345,10 @@ void ui_screenMain_screen_init(void)
     lv_label_set_long_mode(ui_lblFPS, LV_LABEL_LONG_DOT);
     lv_label_set_text(ui_lblFPS, "FPS: 1000");
 
+    lv_obj_add_event_cb(ui_comp_get_child(ui_containerSingleVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
+                        ui_event_containerSingleVolumeSlider_containerSingleVolumeSlider_singleVolumeSlider, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
+                        ui_event_containerBalanceVolumeSlider_containerBalanceVolumeSlider_balanceVolumeSlider, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
     ui_lblPrimaryVolumeSlider = ui_comp_get_child(ui_containerPrimaryVolumeSlider,
                                                   UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER);

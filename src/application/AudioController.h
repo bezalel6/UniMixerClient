@@ -65,7 +65,7 @@ class AudioController {
 
     // UI update triggers
     void updateVolumeArcFromSelectedDevice();
-    void updateVolumeArcLabel(int volume);  // Deprecated but kept for compatibility
+    void updateVolumeArcLabel(int volume);  // Deprecated - handled automatically
     lv_obj_t* getCurrentVolumeSlider() const;
     void onAudioLevelsChangedUI();  // Called by TaskManager
 

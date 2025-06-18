@@ -5,6 +5,17 @@
 
 #include "../ui.h"
 
+void ui_event_comp_VolumeSlider_primaryVolumeSlider(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    lv_obj_t ** comp_VolumeSlider = lv_event_get_user_data(e);
+
+    if(event_code == LV_EVENT_VALUE_CHANGED) {
+        _ui_arc_set_text_value(comp_VolumeSlider[UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER], target, "", "%");
+    }
+}
+
 // COMPONENT VolumeSlider
 
 lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
@@ -15,10 +26,8 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
     lv_obj_remove_style_all(cui_VolumeSlider);
     lv_obj_set_width(cui_VolumeSlider, 325);
     lv_obj_set_height(cui_VolumeSlider, 325);
-    lv_obj_set_x(cui_VolumeSlider, 0);
-    lv_obj_set_y(cui_VolumeSlider, -20);
     lv_obj_set_align(cui_VolumeSlider, LV_ALIGN_TOP_MID);
-    lv_obj_add_flag(cui_VolumeSlider, LV_OBJ_FLAG_EVENT_BUBBLE);     /// Flags
+    lv_obj_add_flag(cui_VolumeSlider, LV_OBJ_FLAG_OVERFLOW_VISIBLE | LV_OBJ_FLAG_EVENT_BUBBLE);     /// Flags
     lv_obj_remove_flag(cui_VolumeSlider, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     lv_obj_t * cui_lblPrimaryVolumeSlider;
@@ -54,6 +63,7 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
     children[UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER] = cui_primaryVolumeSlider;
     lv_obj_add_event_cb(cui_VolumeSlider, get_component_child_event_cb, LV_EVENT_GET_COMP_CHILD, children);
     lv_obj_add_event_cb(cui_VolumeSlider, del_component_child_event_cb, LV_EVENT_DELETE, children);
+    lv_obj_add_event_cb(cui_primaryVolumeSlider, ui_event_comp_VolumeSlider_primaryVolumeSlider, LV_EVENT_ALL, children);
     ui_comp_VolumeSlider_create_hook(cui_VolumeSlider);
     return cui_VolumeSlider;
 }

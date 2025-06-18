@@ -1,3 +1,27 @@
+/**
+ * LVGL Message Handler - Thread-safe UI updates for audio mixer application
+ *
+ * This module provides tab-specific update messages for targeted UI updates:
+ *
+ * Volume Updates:
+ * - updateMasterVolume(volume)    - Updates only Master tab volume slider
+ * - updateSingleVolume(volume)    - Updates only Single tab volume slider
+ * - updateBalanceVolume(volume)   - Updates only Balance tab volume slider
+ * - updateCurrentTabVolume(volume) - Updates volume for currently active tab
+ *
+ * Device Updates:
+ * - updateMasterDevice(name)      - Updates Master tab device label
+ * - updateSingleDevice(name)      - Updates Single tab device selection (placeholder)
+ * - updateBalanceDevices(n1,n2)   - Updates Balance tab device selections (placeholder)
+ *
+ * Usage example:
+ *   // Update specific tab:
+ *   updateMasterVolume(75);
+ *
+ *   // Update current tab automatically:
+ *   updateCurrentTabVolume(75);
+ */
+
 #include "LVGLMessageHandler.h"
 #include "../display/DisplayManager.h"
 #include <esp_log.h>
@@ -12,6 +36,31 @@ static const char *TAG = "LVGLMessageHandler";
 
 namespace Application {
 namespace LVGLMessageHandler {
+#define VOLUME_CASE(enum_name, field_name) \
+    case MSG_UPDATE_##enum_name:           \
+        return &msg->data.field_name.volume;
+
+const int *get_volume_ptr(const LVGLMessage_t *msg) {
+    switch (msg->type) {
+        VOLUME_CASE(MASTER_VOLUME, master_volume)
+        VOLUME_CASE(SINGLE_VOLUME, single_volume)
+        VOLUME_CASE(BALANCE_VOLUME, balance_volume)
+        default:
+            return nullptr;
+    }
+}
+#define PARSE_VOLUME(msg) ([&]() -> int { \
+    const int *_v = get_volume_ptr(msg);  \
+    return _v ? *_v : -1;                 \
+}())
+
+#define ARC_VOLUME_UPDATE_MSG(tab, slider)                           \
+    case MSG_UPDATE_##tab##_VOLUME:                                  \
+        if (slider) {                                                \
+            lv_arc_set_value(slider, PARSE_VOLUME(&message));        \
+            lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, NULL); \
+        }                                                            \
+        break;
 
 // Queue handle
 QueueHandle_t lvglMessageQueue = NULL;
@@ -176,31 +225,31 @@ void processMessageQueue(lv_timer_t *timer) {
                 }
                 break;
 
-            case MSG_UPDATE_VOLUME:
-                // Update all volume sliders (since we don't know which tab is active)
-                if (ui_primaryVolumeSlider) {
-                    lv_arc_set_value(ui_primaryVolumeSlider,
-                                     message.data.volume_update.volume);
-                }
-                if (ui_singleVolumeSlider) {
-                    lv_arc_set_value(ui_singleVolumeSlider,
-                                     message.data.volume_update.volume);
-                }
-                if (ui_balanceVolumeSlider) {
-                    lv_arc_set_value(ui_balanceVolumeSlider,
-                                     message.data.volume_update.volume);
-                }
-
-                // Label updates are now handled automatically by the visual event handler
-                // No need to manually update labels here anymore
-                break;
-
-            case MSG_UPDATE_DEFAULT_DEVICE:
-                // Update default device label
+                ARC_VOLUME_UPDATE_MSG(MASTER, ui_primaryVolumeSlider);
+                ARC_VOLUME_UPDATE_MSG(SINGLE, ui_singleVolumeSlider);
+                ARC_VOLUME_UPDATE_MSG(BALANCE, ui_balanceVolumeSlider);
+            case MSG_UPDATE_MASTER_DEVICE:
+                // Update Master tab device label
                 if (ui_lblPrimaryAudioDeviceValue) {
                     lv_label_set_text(ui_lblPrimaryAudioDeviceValue,
-                                      message.data.default_device.device_name);
+                                      message.data.master_device.device_name);
                 }
+                break;
+
+            case MSG_UPDATE_SINGLE_DEVICE:
+                // Update Single tab device dropdown selection
+                // This would require finding the index in the dropdown options
+                // For now, just log the update (implementation depends on dropdown management)
+                ESP_LOGI(TAG, "Single device update requested: %s",
+                         message.data.single_device.device_name);
+                break;
+
+            case MSG_UPDATE_BALANCE_DEVICES:
+                // Update Balance tab device dropdown selections
+                // This would require finding the indices in the dropdown options
+                ESP_LOGI(TAG, "Balance devices update requested: %s, %s",
+                         message.data.balance_devices.device1_name,
+                         message.data.balance_devices.device2_name);
                 break;
 
             case MSG_SCREEN_CHANGE:
@@ -319,29 +368,6 @@ bool updateFpsDisplay(float fps) {
     return sendMessage(&message);
 }
 
-bool updateVolumeLevel(int volume) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_VOLUME;
-    message.data.volume_update.volume = volume;
-    return sendMessage(&message);
-}
-
-bool updateDefaultDevice(const char *device_name) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_DEFAULT_DEVICE;
-
-    // Safely copy device name string
-    if (device_name) {
-        strncpy(message.data.default_device.device_name, device_name,
-                sizeof(message.data.default_device.device_name) - 1);
-        message.data.default_device.device_name[sizeof(message.data.default_device.device_name) - 1] = '\0';
-    } else {
-        message.data.default_device.device_name[0] = '\0';
-    }
-
-    return sendMessage(&message);
-}
-
 bool changeScreen(void *screen, int anim_type, int time, int delay) {
     LVGLMessage_t message;
     message.type = MSG_SCREEN_CHANGE;
@@ -391,6 +417,109 @@ void updateOtaScreenDirectly(uint8_t progress, const char *msg) {
     // // For RGB displays: Force immediate refresh to minimize timing conflicts
     // // during OTA operations that may disable interrupts
     // lv_refr_now(lv_disp_get_default());
+}
+
+// Tab-specific volume update functions
+bool updateMasterVolume(int volume) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_MASTER_VOLUME;
+    message.data.master_volume.volume = volume;
+    return sendMessage(&message);
+}
+
+bool updateSingleVolume(int volume) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_SINGLE_VOLUME;
+    message.data.single_volume.volume = volume;
+    return sendMessage(&message);
+}
+
+bool updateBalanceVolume(int volume) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_BALANCE_VOLUME;
+    message.data.balance_volume.volume = volume;
+    return sendMessage(&message);
+}
+
+// Tab-specific device update functions
+bool updateMasterDevice(const char *device_name) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_MASTER_DEVICE;
+
+    // Safely copy device name string
+    if (device_name) {
+        strncpy(message.data.master_device.device_name, device_name,
+                sizeof(message.data.master_device.device_name) - 1);
+        message.data.master_device.device_name[sizeof(message.data.master_device.device_name) - 1] = '\0';
+    } else {
+        message.data.master_device.device_name[0] = '\0';
+    }
+
+    return sendMessage(&message);
+}
+
+bool updateSingleDevice(const char *device_name) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_SINGLE_DEVICE;
+
+    // Safely copy device name string
+    if (device_name) {
+        strncpy(message.data.single_device.device_name, device_name,
+                sizeof(message.data.single_device.device_name) - 1);
+        message.data.single_device.device_name[sizeof(message.data.single_device.device_name) - 1] = '\0';
+    } else {
+        message.data.single_device.device_name[0] = '\0';
+    }
+
+    return sendMessage(&message);
+}
+
+bool updateBalanceDevices(const char *device1_name, const char *device2_name) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_BALANCE_DEVICES;
+
+    // Safely copy device1 name string
+    if (device1_name) {
+        strncpy(message.data.balance_devices.device1_name, device1_name,
+                sizeof(message.data.balance_devices.device1_name) - 1);
+        message.data.balance_devices.device1_name[sizeof(message.data.balance_devices.device1_name) - 1] = '\0';
+    } else {
+        message.data.balance_devices.device1_name[0] = '\0';
+    }
+
+    // Safely copy device2 name string
+    if (device2_name) {
+        strncpy(message.data.balance_devices.device2_name, device2_name,
+                sizeof(message.data.balance_devices.device2_name) - 1);
+        message.data.balance_devices.device2_name[sizeof(message.data.balance_devices.device2_name) - 1] = '\0';
+    } else {
+        message.data.balance_devices.device2_name[0] = '\0';
+    }
+
+    return sendMessage(&message);
+}
+
+// Convenience function to update volume for the currently active tab
+bool updateCurrentTabVolume(int volume) {
+    // Get the currently active tab from the UI
+    if (ui_tabsModeSwitch) {
+        uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
+
+        switch (activeTab) {
+            case 0:  // Master tab
+                return updateMasterVolume(volume);
+            case 1:  // Single tab
+                return updateSingleVolume(volume);
+            case 2:  // Balance tab
+                return updateBalanceVolume(volume);
+            default:
+                ESP_LOGW(TAG, "Unknown active tab: %d, defaulting to Master volume", activeTab);
+                return updateMasterVolume(volume);  // Default to Master tab
+        }
+    } else {
+        ESP_LOGW(TAG, "Tab view not available, defaulting to Master volume");
+        return updateMasterVolume(volume);  // Default to Master tab
+    }
 }
 
 }  // namespace LVGLMessageHandler

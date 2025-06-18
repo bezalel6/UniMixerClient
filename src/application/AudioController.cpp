@@ -208,13 +208,11 @@ void AudioController::updateVolumeArcFromSelectedDevice() {
     }
 
     // Label updates are now handled automatically by the visual event handler
-    // This method is kept for backward compatibility but no longer needs to update labels
     // The UI controller automatically updates the display when state changes
 }
 
 void AudioController::updateVolumeArcLabel(int volume) {
     // DEPRECATED: Volume label updates are now handled automatically by the visual event handler
-    // This method is kept for backward compatibility but no longer performs any operations
     // Labels are updated in real-time during arc dragging by volumeArcVisualHandler
 }
 
@@ -360,7 +358,7 @@ void AudioController::updateVolumeDisplay() {
     int currentVolume = state.getCurrentSelectedVolume();
 
     // Use message handler for thread-safe UI updates
-    LVGLMessageHandler::updateVolumeLevel(currentVolume);
+    LVGLMessageHandler::updateCurrentTabVolume(currentVolume);
 
     ESP_LOGD(TAG, "Updated volume display to: %d", currentVolume);
 }
@@ -385,7 +383,7 @@ void AudioController::updateDefaultDeviceLabel() {
     const auto& state = AudioStateManager::getInstance().getState();
 
     if (state.status.hasDefaultDevice) {
-        LVGLMessageHandler::updateDefaultDevice(
+        LVGLMessageHandler::updateMasterDevice(
             state.status.defaultDevice.friendlyName.c_str());
         ESP_LOGD(TAG, "Updated default device label: %s",
                  state.status.defaultDevice.friendlyName.c_str());
