@@ -18,11 +18,8 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
     lv_obj_set_x(cui_VolumeSlider, 0);
     lv_obj_set_y(cui_VolumeSlider, -40);
     lv_obj_set_align(cui_VolumeSlider, LV_ALIGN_BOTTOM_MID);
+    lv_obj_add_state(cui_VolumeSlider, LV_STATE_USER_1);       /// States
     lv_obj_remove_flag(cui_VolumeSlider, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_obj_set_style_pad_left(cui_VolumeSlider, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(cui_VolumeSlider, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(cui_VolumeSlider, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(cui_VolumeSlider, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t * cui_lblPrimaryVolumeSlider;
     cui_lblPrimaryVolumeSlider = lv_label_create(cui_VolumeSlider);
@@ -39,11 +36,16 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
     lv_obj_set_width(cui_primaryVolumeSlider, lv_pct(90));
     lv_obj_set_height(cui_primaryVolumeSlider, lv_pct(100));
     lv_obj_set_x(cui_primaryVolumeSlider, 0);
-    lv_obj_set_y(cui_primaryVolumeSlider, 1);
-    lv_obj_set_align(cui_primaryVolumeSlider, LV_ALIGN_CENTER);
+    lv_obj_set_y(cui_primaryVolumeSlider, 10);
+    lv_obj_set_align(cui_primaryVolumeSlider, LV_ALIGN_BOTTOM_MID);
     lv_arc_set_value(cui_primaryVolumeSlider, 0);
+    lv_obj_set_style_pad_left(cui_primaryVolumeSlider, -10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(cui_primaryVolumeSlider, -10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(cui_primaryVolumeSlider, -10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(cui_primaryVolumeSlider, -10, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_width(cui_primaryVolumeSlider, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_rotation(cui_primaryVolumeSlider, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_x(cui_primaryVolumeSlider, -100, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(cui_primaryVolumeSlider, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_set_style_arc_width(cui_primaryVolumeSlider, 20, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 

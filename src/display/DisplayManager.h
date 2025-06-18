@@ -8,19 +8,19 @@ namespace Display {
 
 // Display rotation management
 typedef enum {
-  ROTATION_0 = LV_DISPLAY_ROTATION_0,
-  ROTATION_90 = LV_DISPLAY_ROTATION_90,
-  ROTATION_180 = LV_DISPLAY_ROTATION_180,
-  ROTATION_270 = LV_DISPLAY_ROTATION_270
+    ROTATION_0 = LV_DISPLAY_ROTATION_0,
+    ROTATION_90 = LV_DISPLAY_ROTATION_90,
+    ROTATION_180 = LV_DISPLAY_ROTATION_180,
+    ROTATION_270 = LV_DISPLAY_ROTATION_270
 } Rotation;
 
 // Connection status types for indicators
 typedef enum {
-  CONNECTION_STATUS_DISCONNECTED = 0,
-  CONNECTION_STATUS_CONNECTING,
-  CONNECTION_STATUS_CONNECTED,
-  CONNECTION_STATUS_FAILED,
-  CONNECTION_STATUS_ERROR
+    CONNECTION_STATUS_DISCONNECTED = 0,
+    CONNECTION_STATUS_CONNECTING,
+    CONNECTION_STATUS_CONNECTED,
+    CONNECTION_STATUS_FAILED,
+    CONNECTION_STATUS_ERROR
 } ConnectionStatus;
 
 // Display manager functions
@@ -70,6 +70,9 @@ void initializeLabelSpace(lv_obj_t *label);
 void initializeLabelUnknown(lv_obj_t *label);
 void initializeLabelNone(lv_obj_t *label);
 
-} // namespace Display
+// Function to move widgets with User 1 state to background
+void moveUser1WidgetsToBackground(lv_obj_t *parent = nullptr);
 
-#endif // DISPLAY_MANAGER_H
+}  // namespace Display
+
+#endif  // DISPLAY_MANAGER_H

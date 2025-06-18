@@ -9,13 +9,13 @@
 ///////////////////// VARIABLES ////////////////////
 
 // EVENTS
-lv_obj_t * ui____initial_actions0;
+lv_obj_t* ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
 #if LV_COLOR_DEPTH != 16
-    #error "LV_COLOR_DEPTH should be 16bit to match SquareLine Studio's settings"
+#error "LV_COLOR_DEPTH should be 16bit to match SquareLine Studio's settings"
 #endif
 
 ///////////////////// ANIMATIONS ////////////////////
@@ -24,13 +24,12 @@ lv_obj_t * ui____initial_actions0;
 
 ///////////////////// SCREENS ////////////////////
 
-void ui_init(void)
-{
+void ui_init(void) {
     LV_EVENT_GET_COMP_CHILD = lv_event_register_id();
 
-    lv_disp_t * dispp = lv_display_get_default();
-    lv_theme_t * theme = lv_theme_default_init(dispp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED),
-                                               true, LV_FONT_DEFAULT);
+    lv_disp_t* dispp = lv_display_get_default();
+    lv_theme_t* theme = lv_theme_default_init(dispp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED),
+                                              true, LV_FONT_DEFAULT);
     lv_disp_set_theme(dispp, theme);
     ui_screenMain_screen_init();
     ui_screenOTA_screen_init();
@@ -39,8 +38,7 @@ void ui_init(void)
     lv_disp_load_scr(ui_screenMain);
 }
 
-void ui_destroy(void)
-{
+void ui_destroy(void) {
     ui_screenMain_screen_destroy();
     ui_screenOTA_screen_destroy();
     ui_screenDebug_screen_destroy();
