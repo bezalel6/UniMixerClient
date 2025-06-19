@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../events/UiEventHandlers.h"
+#include <map>
 #include <vector>
 #include <Arduino.h>
 
@@ -30,42 +31,74 @@ using AudioDevice = AudioLevel;
 
 /**
  * Complete audio system status from external source
+ * Uses hash map for efficient device access by name
  */
 struct AudioStatus {
-    std::vector<AudioLevel> audioLevels;
+    std::map<String, AudioLevel> audioDevices;  // Key: processName, Value: AudioLevel
     AudioDevice defaultDevice;
     unsigned long timestamp = 0;
     bool hasDefaultDevice = false;
 
     // Helper methods
     void clear() {
-        audioLevels.clear();
+        audioDevices.clear();
         defaultDevice = AudioDevice();
         timestamp = 0;
         hasDefaultDevice = false;
     }
 
     bool isEmpty() const {
-        return audioLevels.empty();
+        return audioDevices.empty();
     }
 
     AudioLevel* findDevice(const String& processName) {
-        for (auto& device : audioLevels) {
-            if (device.processName == processName) {
-                return &device;
-            }
-        }
-        return nullptr;
+        auto it = audioDevices.find(processName);
+        return (it != audioDevices.end()) ? &it->second : nullptr;
     }
 
     const AudioLevel* findDevice(const String& processName) const {
-        for (const auto& device : audioLevels) {
-            if (device.processName == processName) {
-                return &device;
-            }
-        }
-        return nullptr;
+        auto it = audioDevices.find(processName);
+        return (it != audioDevices.end()) ? &it->second : nullptr;
     }
+
+    bool hasDevice(const String& processName) const {
+        return audioDevices.find(processName) != audioDevices.end();
+    }
+
+    void addOrUpdateDevice(const AudioLevel& device) {
+        audioDevices[device.processName] = device;
+    }
+
+    void removeDevice(const String& processName) {
+        audioDevices.erase(processName);
+    }
+
+    size_t getDeviceCount() const {
+        return audioDevices.size();
+    }
+
+    // Compatibility methods for existing code that expects vectors
+    std::vector<AudioLevel> getAudioLevels() const {
+        std::vector<AudioLevel> levels;
+        levels.reserve(audioDevices.size());
+        for (const auto& pair : audioDevices) {
+            levels.push_back(pair.second);
+        }
+        return levels;
+    }
+
+    void setAudioLevels(const std::vector<AudioLevel>& levels) {
+        audioDevices.clear();
+        for (const auto& level : levels) {
+            audioDevices[level.processName] = level;
+        }
+    }
+
+    // Iterator access for range-based loops
+    auto begin() { return audioDevices.begin(); }
+    auto end() { return audioDevices.end(); }
+    auto begin() const { return audioDevices.begin(); }
+    auto end() const { return audioDevices.end(); }
 };
 
 // =============================================================================
@@ -82,14 +115,12 @@ struct AudioAppState {
     // UI state
     Events::UI::TabState currentTab = Events::UI::TabState::MASTER;
 
-    // Device selections for different tabs
-    String selectedMainDevice;
-    String selectedDevice1;  // For balance tab
-    String selectedDevice2;  // For balance tab
+    // Device selections for different tabs (direct pointers to AudioLevel objects in hash map)
+    AudioLevel* selectedMainDevice = nullptr;
+    AudioLevel* selectedDevice1 = nullptr;  // For balance tab
+    AudioLevel* selectedDevice2 = nullptr;  // For balance tab
 
     // UI interaction flags
-    bool suppressArcEvents = false;
-    bool suppressDropdownEvents = false;
 
     // Timing
     unsigned long lastUpdateTime = 0;
@@ -98,16 +129,14 @@ struct AudioAppState {
     void clear() {
         currentStatus.clear();
         currentTab = Events::UI::TabState::MASTER;
-        selectedMainDevice = "";
-        selectedDevice1 = "";
-        selectedDevice2 = "";
-        suppressArcEvents = false;
-        suppressDropdownEvents = false;
+        selectedMainDevice = nullptr;
+        selectedDevice1 = nullptr;
+        selectedDevice2 = nullptr;
         lastUpdateTime = 0;
     }
 
     bool hasDevices() const {
-        return !currentStatus.audioLevels.empty();
+        return !currentStatus.audioDevices.empty();
     }
 
     AudioLevel* findDevice(const String& processName) {
@@ -118,7 +147,7 @@ struct AudioAppState {
         return currentStatus.findDevice(processName);
     }
 
-    String getCurrentSelectedDevice() const {
+    const AudioLevel* getCurrentSelectedDevice() const {
         switch (currentTab) {
             case Events::UI::TabState::MASTER:
             case Events::UI::TabState::SINGLE:
@@ -130,25 +159,65 @@ struct AudioAppState {
         }
     }
 
+    AudioLevel* getCurrentSelectedDevice() {
+        switch (currentTab) {
+            case Events::UI::TabState::MASTER:
+            case Events::UI::TabState::SINGLE:
+                return selectedMainDevice;
+            case Events::UI::TabState::BALANCE:
+                return selectedDevice1;  // Primary device for balance
+            default:
+                return selectedMainDevice;
+        }
+    }
+
+    String getCurrentSelectedDeviceName() const {
+        const AudioLevel* device = getCurrentSelectedDevice();
+        return device ? device->processName : String("");
+    }
+
     int getCurrentSelectedVolume() const {
-        const AudioLevel* device = findDevice(getCurrentSelectedDevice());
+        const AudioLevel* device = getCurrentSelectedDevice();
+        if (device) {
+            ESP_LOGD("Audio Data", "Current device: %s, volume: %d", device->processName.c_str(), device->volume);
+        } else {
+            ESP_LOGD("Audio Data", "No device selected for volume control");
+        }
         return device ? device->volume : 0;
     }
 
     bool isCurrentDeviceMuted() const {
-        const AudioLevel* device = findDevice(getCurrentSelectedDevice());
+        const AudioLevel* device = getCurrentSelectedDevice();
         return device ? device->isMuted : false;
     }
 
     bool hasValidSelection() const {
-        return !getCurrentSelectedDevice().isEmpty() && findDevice(getCurrentSelectedDevice()) != nullptr;
+        return getCurrentSelectedDevice() != nullptr;
     }
 
+    // Helper to validate device pointers are still valid in current hash map
+    void validateDeviceSelections() {
+        // Check if selected device pointers still exist in our hash map
+        selectedMainDevice = validateDevicePointer(selectedMainDevice);
+        selectedDevice1 = validateDevicePointer(selectedDevice1);
+        selectedDevice2 = validateDevicePointer(selectedDevice2);
+    }
+
+    // Tab state queries
     bool isInMasterTab() const { return currentTab == Events::UI::TabState::MASTER; }
     bool isInSingleTab() const { return currentTab == Events::UI::TabState::SINGLE; }
     bool isInBalanceTab() const { return currentTab == Events::UI::TabState::BALANCE; }
 
    private:
+    // Helper to validate a device pointer still exists in the hash map
+    AudioLevel* validateDevicePointer(AudioLevel* device) {
+        if (!device) return nullptr;
+
+        // Check if device still exists in hash map by looking up its name
+        AudioLevel* found = currentStatus.findDevice(device->processName);
+        return (found == device) ? device : nullptr;  // Only valid if same pointer
+    }
+
     void updateTimestamp() {
         lastUpdateTime = millis();
     }

@@ -49,12 +49,9 @@ void AudioUI::onVolumeSliderChanged(int volume) {
         return;
     }
 
-    if (shouldSuppressUIEvent()) {
-        ESP_LOGD(TAG, "Suppressing volume slider event");
-        return;
-    }
-
     ESP_LOGI(TAG, "Volume slider changed to: %d", volume);
+
+    // Send the volume change
     AudioManager::getInstance().setVolumeForCurrentDevice(volume);
 }
 
@@ -75,11 +72,6 @@ void AudioUI::onDeviceDropdownChanged(lv_obj_t* dropdown, const String& deviceNa
         return;
     }
 
-    if (shouldSuppressUIEvent()) {
-        ESP_LOGD(TAG, "Suppressing dropdown event");
-        return;
-    }
-
     ESP_LOGI(TAG, "Device dropdown changed to: %s", deviceName.c_str());
 
     // Handle different dropdowns based on current tab
@@ -88,9 +80,11 @@ void AudioUI::onDeviceDropdownChanged(lv_obj_t* dropdown, const String& deviceNa
     if (state.isInBalanceTab()) {
         // For balance tab, handle dual selection
         if (dropdown == ui_selectAudioDevice1) {
-            AudioManager::getInstance().selectBalanceDevices(deviceName, state.selectedDevice2);
+            String device2Name = state.selectedDevice2 ? state.selectedDevice2->processName : "";
+            AudioManager::getInstance().selectBalanceDevices(deviceName, device2Name);
         } else if (dropdown == ui_selectAudioDevice2) {
-            AudioManager::getInstance().selectBalanceDevices(state.selectedDevice1, deviceName);
+            String device1Name = state.selectedDevice1 ? state.selectedDevice1->processName : "";
+            AudioManager::getInstance().selectBalanceDevices(device1Name, deviceName);
         }
     } else {
         // For single/master tabs
@@ -140,11 +134,11 @@ String AudioUI::getDropdownSelection(lv_obj_t* dropdown) const {
 
     // Determine which dropdown this is and return appropriate selection
     if (dropdown == ui_selectAudioDevice) {
-        return state.selectedMainDevice;
+        return state.selectedMainDevice ? state.selectedMainDevice->processName : "";
     } else if (dropdown == ui_selectAudioDevice1) {
-        return state.selectedDevice1;
+        return state.selectedDevice1 ? state.selectedDevice1->processName : "";
     } else if (dropdown == ui_selectAudioDevice2) {
-        return state.selectedDevice2;
+        return state.selectedDevice2 ? state.selectedDevice2->processName : "";
     }
 
     return "";
@@ -180,6 +174,7 @@ void AudioUI::refreshAllUI() {
     }
 
     ESP_LOGI(TAG, "Refreshing all UI elements");
+
     updateDeviceSelectors();
     updateVolumeDisplay();
     updateDefaultDeviceLabel();
@@ -195,7 +190,13 @@ void AudioUI::updateVolumeDisplay() {
     const auto& state = AudioManager::getInstance().getState();
     int currentVolume = state.getCurrentSelectedVolume();
 
-    // Use message handler for thread-safe UI updates
+    // Update the volume slider directly
+    // lv_obj_t* slider = getCurrentVolumeSlider();
+    // if (slider) {
+    //     lv_arc_set_value(slider, currentVolume);
+    // }
+
+    // Use message handler for thread-safe UI updates (labels, etc.)
     LVGLMessageHandler::updateCurrentTabVolume(currentVolume);
 
     ESP_LOGD(TAG, "Updated volume display to: %d", currentVolume);
@@ -286,8 +287,6 @@ void AudioUI::updateDropdownOptions(const std::vector<AudioLevel>& devices) {
     }
 
     // Update all dropdown widgets with new options
-    AudioManager::getInstance().setSuppressDropdownEvents(true);
-
     if (ui_selectAudioDevice) {
         lv_dropdown_set_options(ui_selectAudioDevice, optionsString.c_str());
     }
@@ -300,16 +299,14 @@ void AudioUI::updateDropdownOptions(const std::vector<AudioLevel>& devices) {
 
     // Restore selections after updating options
     updateDropdownSelections();
-
-    AudioManager::getInstance().setSuppressDropdownEvents(false);
 }
 
 void AudioUI::updateDropdownSelections() {
     const auto& state = AudioManager::getInstance().getState();
-    const auto& devices = state.currentStatus.audioLevels;
+    const auto devices = state.currentStatus.getAudioLevels();
 
     // Helper lambda to find device index in options
-    auto findDeviceIndex = [&devices](const String& deviceName) -> int {
+    auto findDeviceIndex = [devices](const String& deviceName) -> int {
         for (size_t i = 0; i < devices.size(); i++) {
             if (devices[i].processName == deviceName) {
                 return i;
@@ -319,19 +316,19 @@ void AudioUI::updateDropdownSelections() {
     };
 
     // Update main dropdown
-    if (ui_selectAudioDevice && !state.selectedMainDevice.isEmpty()) {
-        int index = findDeviceIndex(state.selectedMainDevice);
+    if (ui_selectAudioDevice && state.selectedMainDevice) {
+        int index = findDeviceIndex(state.selectedMainDevice->processName);
         lv_dropdown_set_selected(ui_selectAudioDevice, index);
     }
 
     // Update balance dropdowns
-    if (ui_selectAudioDevice1 && !state.selectedDevice1.isEmpty()) {
-        int index = findDeviceIndex(state.selectedDevice1);
+    if (ui_selectAudioDevice1 && state.selectedDevice1) {
+        int index = findDeviceIndex(state.selectedDevice1->processName);
         lv_dropdown_set_selected(ui_selectAudioDevice1, index);
     }
 
-    if (ui_selectAudioDevice2 && !state.selectedDevice2.isEmpty()) {
-        int index = findDeviceIndex(state.selectedDevice2);
+    if (ui_selectAudioDevice2 && state.selectedDevice2) {
+        int index = findDeviceIndex(state.selectedDevice2->processName);
         lv_dropdown_set_selected(ui_selectAudioDevice2, index);
     }
 }
@@ -342,9 +339,7 @@ void AudioUI::updateVolumeSlider() {
 
     if (slider) {
         int currentVolume = state.getCurrentSelectedVolume();
-        AudioManager::getInstance().setSuppressArcEvents(true);
         lv_slider_set_value(slider, currentVolume, LV_ANIM_OFF);
-        AudioManager::getInstance().setSuppressArcEvents(false);
     }
 }
 
@@ -402,11 +397,6 @@ int AudioUI::findDeviceIndexInDropdown(lv_obj_t* dropdown, const String& deviceN
 String AudioUI::getCurrentTabName() const {
     const auto& state = AudioManager::getInstance().getState();
     return AudioManager::getInstance().getTabName(state.currentTab);
-}
-
-bool AudioUI::shouldSuppressUIEvent() const {
-    return AudioManager::getInstance().isSuppressingArcEvents() ||
-           AudioManager::getInstance().isSuppressingDropdownEvents();
 }
 
 }  // namespace Audio

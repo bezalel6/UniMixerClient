@@ -711,15 +711,54 @@ void processMessageQueue(lv_timer_t *timer) {
                     char *pos = audio_text;
                     int remaining = sizeof(audio_text);
 
-                    // Header with current tab info and icons
+                    // Header with current tab info and selected devices
                     int written = snprintf(pos, remaining,
-                                           LV_SYMBOL_AUDIO " AUDIO STATUS\n" LV_SYMBOL_LIST " Active Tab: %s\n" LV_SYMBOL_AUDIO " Selected: %s\n" LV_SYMBOL_AUDIO " Volume: %d%% %s\n\n" LV_SYMBOL_HOME " ALL DEVICES:\n",
-                                           message.data.state_overview.current_tab,
-                                           strlen(message.data.state_overview.selected_device) > 0 ? message.data.state_overview.selected_device : "None",
-                                           message.data.state_overview.current_volume,
-                                           message.data.state_overview.is_muted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO);
+                                           LV_SYMBOL_AUDIO " AUDIO STATUS\n" LV_SYMBOL_LIST " Active Tab: %s\n\n" LV_SYMBOL_SETTINGS " SELECTED DEVICES:\n",
+                                           message.data.state_overview.current_tab);
                     pos += written;
                     remaining -= written;
+
+                    // Show Main device (Master/Single tabs)
+                    if (strlen(message.data.state_overview.main_device) > 0 && remaining > 50) {
+                        const char *main_icon = message.data.state_overview.main_device_muted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO;
+                        written = snprintf(pos, remaining,
+                                           "%s Main: %s %d%%\n",
+                                           main_icon,
+                                           message.data.state_overview.main_device,
+                                           message.data.state_overview.main_device_volume);
+                        pos += written;
+                        remaining -= written;
+                    }
+
+                    // Show Balance devices
+                    if (strlen(message.data.state_overview.balance_device1) > 0 && remaining > 50) {
+                        const char *bal1_icon = message.data.state_overview.balance_device1_muted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO;
+                        written = snprintf(pos, remaining,
+                                           "%s Bal1: %s %d%%\n",
+                                           bal1_icon,
+                                           message.data.state_overview.balance_device1,
+                                           message.data.state_overview.balance_device1_volume);
+                        pos += written;
+                        remaining -= written;
+                    }
+
+                    if (strlen(message.data.state_overview.balance_device2) > 0 && remaining > 50) {
+                        const char *bal2_icon = message.data.state_overview.balance_device2_muted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO;
+                        written = snprintf(pos, remaining,
+                                           "%s Bal2: %s %d%%\n",
+                                           bal2_icon,
+                                           message.data.state_overview.balance_device2,
+                                           message.data.state_overview.balance_device2_volume);
+                        pos += written;
+                        remaining -= written;
+                    }
+
+                    // Add separator for all devices section
+                    if (remaining > 20) {
+                        written = snprintf(pos, remaining, "\n" LV_SYMBOL_HOME " ALL DEVICES:\n");
+                        pos += written;
+                        remaining -= written;
+                    }
 
                     // Show default device if available
                     if (fullStatus.hasDefaultDevice && remaining > 50) {
@@ -735,33 +774,27 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // Show individual audio devices (limit to fit)
                     int deviceCount = 0;
-                    for (const auto &device : fullStatus.audioLevels) {
+                    for (const auto &pair : fullStatus) {
+                        const auto &device = pair.second;
                         if (remaining < 30 || deviceCount >= 5) break;  // Limit devices shown
 
-                        const char *volume_icon = device.isMuted ? LV_SYMBOL_MUTE : (device.volume > 75 ? LV_SYMBOL_AUDIO : device.volume > 25 ? LV_SYMBOL_AUDIO
-                                                                                                                                               : LV_SYMBOL_AUDIO);
-                        const char *status_icon = device.volume > 0 ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE;
+                        snprintf(pos, remaining,
+                                 "%s: %s %.0f%%\n",
+                                 device.friendlyName.isEmpty() ? device.processName.c_str() : device.friendlyName.c_str(),
+                                 device.isMuted ? "MUTED" : "Active",
+                                 (float)device.volume);
 
-                        // Truncate long device names
-                        String deviceName = device.processName;
-                        if (deviceName.length() > 12) {
-                            deviceName = deviceName.substring(0, 9) + "...";
-                        }
-
-                        written = snprintf(pos, remaining,
-                                           "%s %s: %d%% %s\n",
-                                           status_icon, deviceName.c_str(),
-                                           device.volume, volume_icon);
+                        int written = strlen(pos);
                         pos += written;
                         remaining -= written;
                         deviceCount++;
                     }
 
                     // Add summary if there are more devices
-                    if (fullStatus.audioLevels.size() > deviceCount && remaining > 20) {
+                    if (fullStatus.getDeviceCount() > deviceCount && remaining > 20) {
                         snprintf(pos, remaining,
                                  LV_SYMBOL_PLUS " ... +%d more devices",
-                                 (int)(fullStatus.audioLevels.size() - deviceCount));
+                                 (int)(fullStatus.getDeviceCount() - deviceCount));
                     }
 
                     lv_label_set_text(state_audio_label, audio_text);
@@ -1029,36 +1062,62 @@ bool updateStateOverview(void) {
 
     // Collect audio state
     Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
+    const auto &audioState = audioManager.getState();
 
     const char *tabName = audioManager.getTabName(audioManager.getCurrentTab());
     strncpy(message.data.state_overview.current_tab, tabName,
             sizeof(message.data.state_overview.current_tab) - 1);
     message.data.state_overview.current_tab[sizeof(message.data.state_overview.current_tab) - 1] = '\0';
 
+    // Collect all selected devices information
+
+    // Main device (Master/Single tab)
+    if (audioState.selectedMainDevice) {
+        strncpy(message.data.state_overview.main_device, audioState.selectedMainDevice->processName.c_str(),
+                sizeof(message.data.state_overview.main_device) - 1);
+        message.data.state_overview.main_device[sizeof(message.data.state_overview.main_device) - 1] = '\0';
+        message.data.state_overview.main_device_volume = audioState.selectedMainDevice->volume;
+        message.data.state_overview.main_device_muted = audioState.selectedMainDevice->isMuted;
+    } else {
+        message.data.state_overview.main_device[0] = '\0';
+        message.data.state_overview.main_device_volume = 0;
+        message.data.state_overview.main_device_muted = false;
+    }
+
+    // Balance device 1
+    if (audioState.selectedDevice1) {
+        strncpy(message.data.state_overview.balance_device1, audioState.selectedDevice1->processName.c_str(),
+                sizeof(message.data.state_overview.balance_device1) - 1);
+        message.data.state_overview.balance_device1[sizeof(message.data.state_overview.balance_device1) - 1] = '\0';
+        message.data.state_overview.balance_device1_volume = audioState.selectedDevice1->volume;
+        message.data.state_overview.balance_device1_muted = audioState.selectedDevice1->isMuted;
+    } else {
+        message.data.state_overview.balance_device1[0] = '\0';
+        message.data.state_overview.balance_device1_volume = 0;
+        message.data.state_overview.balance_device1_muted = false;
+    }
+
+    // Balance device 2
+    if (audioState.selectedDevice2) {
+        strncpy(message.data.state_overview.balance_device2, audioState.selectedDevice2->processName.c_str(),
+                sizeof(message.data.state_overview.balance_device2) - 1);
+        message.data.state_overview.balance_device2[sizeof(message.data.state_overview.balance_device2) - 1] = '\0';
+        message.data.state_overview.balance_device2_volume = audioState.selectedDevice2->volume;
+        message.data.state_overview.balance_device2_muted = audioState.selectedDevice2->isMuted;
+    } else {
+        message.data.state_overview.balance_device2[0] = '\0';
+        message.data.state_overview.balance_device2_volume = 0;
+        message.data.state_overview.balance_device2_muted = false;
+    }
+
+    // Legacy compatibility - current active device
     String selectedDevice = audioManager.getCurrentDevice();
     strncpy(message.data.state_overview.selected_device, selectedDevice.c_str(),
             sizeof(message.data.state_overview.selected_device) - 1);
     message.data.state_overview.selected_device[sizeof(message.data.state_overview.selected_device) - 1] = '\0';
 
-    // For volume and mute status, we need to get the current device info
-    auto currentStatus = audioManager.getState().currentStatus;
-    message.data.state_overview.current_volume = 0;
-    message.data.state_overview.is_muted = false;
-
-    // Try to find current device in the audio status
-    if (!selectedDevice.isEmpty()) {
-        for (const auto &level : currentStatus.audioLevels) {
-            if (level.processName == selectedDevice) {
-                message.data.state_overview.current_volume = level.volume;
-                message.data.state_overview.is_muted = level.isMuted;
-                break;
-            }
-        }
-    } else if (currentStatus.hasDefaultDevice) {
-        // Use default device if no specific device selected
-        message.data.state_overview.current_volume = currentStatus.defaultDevice.volume;
-        message.data.state_overview.is_muted = currentStatus.defaultDevice.isMuted;
-    }
+    message.data.state_overview.current_volume = audioManager.getCurrentVolume();
+    message.data.state_overview.is_muted = audioManager.isCurrentDeviceMuted();
 
     return sendMessage(&message);
 }

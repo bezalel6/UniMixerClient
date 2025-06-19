@@ -30,13 +30,13 @@ class AudioManager {
 
     // Quick accessors
     Events::UI::TabState getCurrentTab() const { return state.currentTab; }
-    String getCurrentDevice() const { return state.getCurrentSelectedDevice(); }
+    String getCurrentDevice() const { return state.getCurrentSelectedDeviceName(); }
     int getCurrentVolume() const { return state.getCurrentSelectedVolume(); }
     bool isCurrentDeviceMuted() const { return state.isCurrentDeviceMuted(); }
     bool hasDevices() const { return state.hasDevices(); }
 
     // Device queries
-    std::vector<AudioLevel> getAllDevices() const { return state.currentStatus.audioLevels; }
+    std::vector<AudioLevel> getAllDevices() const { return state.currentStatus.getAudioLevels(); }
     AudioLevel* getDevice(const String& processName);
     const AudioLevel* getDevice(const String& processName) const;
 
@@ -47,6 +47,7 @@ class AudioManager {
 
     // Device selection
     void selectDevice(const String& deviceName);
+    void selectDevice(AudioLevel* device);
     void selectBalanceDevices(const String& device1, const String& device2);
 
     // Volume control
@@ -63,10 +64,6 @@ class AudioManager {
     void setCurrentTab(Events::UI::TabState tab);
 
     // === UI STATE CONTROL ===
-    void setSuppressArcEvents(bool suppress) { state.suppressArcEvents = suppress; }
-    void setSuppressDropdownEvents(bool suppress) { state.suppressDropdownEvents = suppress; }
-    bool isSuppressingArcEvents() const { return state.suppressArcEvents; }
-    bool isSuppressingDropdownEvents() const { return state.suppressDropdownEvents; }
 
     // === EVENT SUBSCRIPTION ===
     void subscribeToStateChanges(StateChangeCallback callback);
@@ -100,7 +97,8 @@ class AudioManager {
 
     // Device management helpers
     void ensureValidSelections();
-    bool isDeviceAvailable(const String& deviceName) const;
+    void refreshDevicePointers(const String& mainDeviceName, const String& device1Name, const String& device2Name);
+    void refreshDevicePointersIfNeeded(const String& deviceName);
 };
 
 }  // namespace Audio

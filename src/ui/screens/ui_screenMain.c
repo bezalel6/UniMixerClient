@@ -92,7 +92,7 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_width(ui_tabsModeSwitch, lv_pct(100));
     lv_obj_set_height(ui_tabsModeSwitch, lv_pct(100));
     lv_obj_set_align(ui_tabsModeSwitch, LV_ALIGN_BOTTOM_MID);
-    lv_obj_remove_flag(ui_tabsModeSwitch, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_remove_flag(ui_tabsModeSwitch, LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     lv_obj_set_style_border_width(lv_tabview_get_tab_bar(ui_tabsModeSwitch), 2,  LV_PART_MAIN | LV_STATE_DEFAULT);
 

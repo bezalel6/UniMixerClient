@@ -74,7 +74,6 @@ class AudioUI {
 
     // Utility methods
     String getCurrentTabName() const;
-    bool shouldSuppressUIEvent() const;
 };
 
 }  // namespace Audio

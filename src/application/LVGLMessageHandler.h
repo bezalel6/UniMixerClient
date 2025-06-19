@@ -115,6 +115,17 @@ typedef struct {
             char ip_address[16];
             char mqtt_status[16];
             char current_tab[16];
+            // Selected devices for all tabs
+            char main_device[64];  // Master/Single tab device
+            int main_device_volume;
+            bool main_device_muted;
+            char balance_device1[64];  // Balance tab device 1
+            int balance_device1_volume;
+            bool balance_device1_muted;
+            char balance_device2[64];  // Balance tab device 2
+            int balance_device2_volume;
+            bool balance_device2_muted;
+            // Legacy for compatibility
             char selected_device[64];
             int current_volume;
             bool is_muted;

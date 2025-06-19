@@ -2,6 +2,8 @@
 #include "NetworkManager.h"
 #include "DeviceManager.h"
 #include "../application/AudioManager.h"
+#include "../messaging/MessageAPI.h"
+#include "../messaging/MessageConfig.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
@@ -177,6 +179,28 @@ bool connect(void) {
         // Subscribe to registered handlers
         subscribeToRegisteredHandlers();
 
+        // Register with new messaging system as MQTT transport
+        Messaging::MessageAPI::registerMqttTransport(
+            // Send function
+            [](const String& topic, const String& payload) -> bool {
+                return Hardware::Mqtt::publish(topic.c_str(), payload.c_str());
+            },
+            // IsConnected function
+            []() -> bool {
+                return Hardware::Mqtt::isConnected();
+            },
+            // Update function (optional)
+            []() -> void {
+                Hardware::Mqtt::update();
+            },
+            // Status function (optional)
+            []() -> String {
+                return String(Hardware::Mqtt::getStatusString());
+            });
+
+        // Set up message handling from MQTT to MessageAPI
+        // We'll handle this through the existing callback mechanism
+
         // Publish system status
         // publishSystemStatus();
 
@@ -194,6 +218,10 @@ bool connect(void) {
 
 void disconnect(void) {
     ESP_LOGI(TAG, "Disconnecting from MQTT");
+
+    // Unregister from new messaging system
+    Messaging::MessageAPI::unregisterTransport(Messaging::Config::TRANSPORT_NAME_MQTT);
+
     mqttClient.disconnect();
     currentMqttStatus = MQTT_STATUS_DISCONNECTED;
 }
@@ -410,13 +438,16 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
     ESP_LOGI(TAG, "Received message - Topic: %s, Payload: %s", topic, payloadStr);
 
-    // Find and call appropriate handler
+    // Forward to new messaging system
+    Messaging::MessageAPI::handleIncomingMessage(String(topic), String(payloadStr));
+
+    // Also handle through legacy system for backwards compatibility
     Handler* handler = findHandlerByTopic(topic);
     if (handler != nullptr && handler->callback != nullptr) {
         handler->callback(topic, payloadStr);
-        ESP_LOGI(TAG, "Message handled by: %s", handler->identifier);
+        ESP_LOGI(TAG, "Message handled by legacy handler: %s", handler->identifier);
     } else {
-        ESP_LOGW(TAG, "No handler found for topic: %s", topic);
+        ESP_LOGD(TAG, "No legacy handler for topic: %s (handled by new system)", topic);
     }
 
     lastActivityTime = Hardware::Device::getMillis();

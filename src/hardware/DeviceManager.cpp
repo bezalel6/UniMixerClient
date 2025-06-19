@@ -46,7 +46,7 @@ bool initSerial(void) {
         Serial.setTxBufferSize(512);
 
         // Now initialize with our baud rate
-        Serial.begin(9600);
+        Serial.begin(57600);
 
         ESP_LOGI(TAG, "Serial initialized with enhanced buffers (RX: 1024, TX: 512)");
     }

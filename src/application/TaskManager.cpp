@@ -6,7 +6,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
-#include "../messaging/MessageBus.h"
+#include "../messaging/MessageAPI.h"
 #include "AppController.h"
 #include "AudioUI.h"
 #include "LVGLMessageHandler.h"
@@ -452,8 +452,8 @@ void messagingTask(void *parameter) {
     TickType_t lastWakeTime = xTaskGetTickCount();
 
     while (tasksRunning) {
-        // Update message bus (high frequency for responsiveness)
-        Messaging::MessageBus::Update();
+        // Update message system (high frequency for responsiveness)
+        Messaging::MessageAPI::update();
 
         // Sleep until next update
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(MESSAGING_UPDATE_INTERVAL));

@@ -3,7 +3,7 @@
 #include "../application/AudioUI.h"
 #include "../application/LVGLMessageHandler.h"
 #include "../hardware/DeviceManager.h"
-#include "../messaging/MessageBus.h"
+
 #include <ArduinoJson.h>
 #include <esp32_smartdisplay.h>
 #include <esp_log.h>
@@ -90,6 +90,8 @@ static const char *getEventName(lv_event_code_t code) {
 namespace Events {
 namespace UI {
 
+static const char *TAG = "UIEventHandlers";
+
 // Button click handler that publishes audio status request
 void btnRequestDataClickedHandler(lv_event_t *e) {
     ON_EVENT(LV_EVENT_CLICKED);
@@ -104,12 +106,6 @@ void btnRequestDataClickedHandler(lv_event_t *e) {
 void audioDeviceDropdownChangedHandler(lv_event_t *e) {
     ON_EVENT_GET_WIDGET(LV_EVENT_VALUE_CHANGED, dropdown);
 
-    // Check if dropdown events are suppressed to prevent infinite loops
-    if (Application::Audio::AudioManager::getInstance().isSuppressingDropdownEvents()) {
-        ESP_LOGD(TAG, "Suppressing dropdown event");
-        return;
-    }
-
     // Get the selected audio device name using the new method
     String selectedText =
         Application::Audio::AudioUI::getInstance().getDropdownSelection(dropdown);
@@ -121,36 +117,30 @@ void audioDeviceDropdownChangedHandler(lv_event_t *e) {
 
 // Volume arc visual handler - updates labels in real-time during dragging
 void volumeArcVisualHandler(lv_event_t *e) {
-    ON_EVENT(LV_EVENT_VALUE_CHANGED);
+    // ON_EVENT(LV_EVENT_VALUE_CHANGED);
 
-    lv_obj_t *arc = GET_UI_WIDGET();
-    int volume = lv_arc_get_value(arc);
+    // lv_obj_t *arc = GET_UI_WIDGET();
+    // int volume = lv_arc_get_value(arc);
 
-    // Update the corresponding label immediately for visual feedback
-    char volumeText[16];
-    snprintf(volumeText, sizeof(volumeText), "%d%%", volume);
+    // // Update the corresponding label immediately for visual feedback
+    // char volumeText[16];
+    // snprintf(volumeText, sizeof(volumeText), "%d%%", volume);
 
-    // Determine which label to update based on which arc was changed
-    if (arc == ui_primaryVolumeSlider && ui_lblPrimaryVolumeSlider) {
-        lv_label_set_text(ui_lblPrimaryVolumeSlider, volumeText);
-    } else if (arc == ui_singleVolumeSlider && ui_lblSingleVolumeSlider) {
-        lv_label_set_text(ui_lblSingleVolumeSlider, volumeText);
-    } else if (arc == ui_balanceVolumeSlider && ui_lblBalanceVolumeSlider) {
-        lv_label_set_text(ui_lblBalanceVolumeSlider, volumeText);
-    }
+    // // Determine which label to update based on which arc was changed
+    // if (arc == ui_primaryVolumeSlider && ui_lblPrimaryVolumeSlider) {
+    //     lv_label_set_text(ui_lblPrimaryVolumeSlider, volumeText);
+    // } else if (arc == ui_singleVolumeSlider && ui_lblSingleVolumeSlider) {
+    //     lv_label_set_text(ui_lblSingleVolumeSlider, volumeText);
+    // } else if (arc == ui_balanceVolumeSlider && ui_lblBalanceVolumeSlider) {
+    //     lv_label_set_text(ui_lblBalanceVolumeSlider, volumeText);
+    // }
 
-    UI_LOG("UIEventHandlers", "Volume arc visual update: %d", volume);
+    // UI_LOG("UIEventHandlers", "Volume arc visual update: %d", volume);
 }
 
 // Volume arc change handler - only processes actual volume changes on release
 void volumeArcChangedHandler(lv_event_t *e) {
     ON_EVENT(LV_EVENT_RELEASED);
-
-    // Check if events are suppressed to prevent infinite loops
-    if (Application::Audio::AudioManager::getInstance().isSuppressingArcEvents()) {
-        ESP_LOGD(TAG, "Suppressing arc event during value change");
-        return;
-    }
 
     lv_obj_t *arc = GET_UI_WIDGET();
 

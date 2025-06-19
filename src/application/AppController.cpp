@@ -6,8 +6,8 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
-#include "../messaging/MessageBus.h"
-#include "../messaging/MessageHandlerRegistry.h"
+#include "../messaging/MessageAPI.h"
+#include "../messaging/SerialBridge.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "LVGLMessageHandler.h"
@@ -48,8 +48,8 @@ bool init(void) {
     esp_task_wdt_reset();
 
     // Initialize messaging system
-    ESP_LOGI(TAG, "WDT Reset: Initializing Message Bus...");
-    if (!Messaging::MessageBus::Init()) {
+    ESP_LOGI(TAG, "WDT Reset: Initializing Message System...");
+    if (!Messaging::MessageAPI::init()) {
         ESP_LOGE(TAG, "Failed to initialize messaging system");
         return false;
     }
@@ -86,7 +86,8 @@ bool init(void) {
     // MQTT only
 #if MESSAGING_ENABLE_MQTT_TRANSPORT
     ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
-    Messaging::MessageBus::EnableMqttTransport();
+    // MQTT transport registration will be handled by MqttManager
+    // when it connects - just note that we expect it
 #else
     ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
     return false;
@@ -95,7 +96,10 @@ bool init(void) {
     // Serial only - no additional network configuration needed
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
     ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
-    Messaging::MessageBus::EnableSerialTransport();
+    if (!Messaging::Serial::init()) {
+        ESP_LOGE(TAG, "Failed to initialize Serial bridge");
+        return false;
+    }
 #else
     ESP_LOGE(TAG, "Serial transport requested but disabled in config");
     return false;
@@ -104,7 +108,11 @@ bool init(void) {
     // Both transports
 #if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
     ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
-    Messaging::MessageBus::EnableBothTransports();
+    if (!Messaging::Serial::init()) {
+        ESP_LOGE(TAG, "Failed to initialize Serial bridge");
+        return false;
+    }
+    // MQTT transport will self-register when it connects
 #else
     ESP_LOGE(
         TAG,
@@ -118,12 +126,9 @@ bool init(void) {
 #endif
     esp_task_wdt_reset();
 
-    // Register all message handlers centrally
-    ESP_LOGI(TAG, "WDT Reset: Registering message handlers...");
-    if (!Messaging::MessageHandlerRegistry::RegisterAllHandlers()) {
-        ESP_LOGE(TAG, "Failed to register message handlers");
-        return false;
-    }
+    // Note: Message handlers will be registered by individual components
+    // during their initialization (AudioManager, etc.)
+    ESP_LOGI(TAG, "WDT Reset: Message handlers will be registered by components...");
     esp_task_wdt_reset();
 
     // Initialize audio system (requires MessageBus and handlers to be initialized)
@@ -192,11 +197,13 @@ void deinit(void) {
     Hardware::OTA::deinit();
 #endif
 
-    // Unregister all message handlers
-    Messaging::MessageHandlerRegistry::UnregisterAllHandlers();
+    // Shutdown transports
+#if MESSAGING_ENABLE_SERIAL_TRANSPORT
+    Messaging::Serial::deinit();
+#endif
 
-    // Deinitialize messaging system
-    Messaging::MessageBus::Deinit();
+    // Shutdown messaging system (handlers will clean up automatically)
+    Messaging::MessageAPI::shutdown();
 
     // Deinitialize network manager if it was initialized
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || \
@@ -256,17 +263,6 @@ void setupUiComponents(void) {
                         LV_EVENT_VALUE_CHANGED, NULL);
 
     // Register volume arc event handlers for each tab
-    // Visual feedback during dragging (VALUE_CHANGED)
-    // lv_obj_add_event_cb(ui_primaryVolumeSlider,
-    //                     Events::UI::volumeArcVisualHandler,
-    //                     LV_EVENT_VALUE_CHANGED, NULL);
-    // lv_obj_add_event_cb(ui_singleVolumeSlider,
-    //                     Events::UI::volumeArcVisualHandler,
-    //                     LV_EVENT_VALUE_CHANGED, NULL);
-    // lv_obj_add_event_cb(ui_balanceVolumeSlider,
-    //                     Events::UI::volumeArcVisualHandler,
-    //                     LV_EVENT_VALUE_CHANGED, NULL);
-
     // Actual volume changes on release (RELEASED)
     lv_obj_add_event_cb(ui_primaryVolumeSlider,
                         Events::UI::volumeArcChangedHandler,
