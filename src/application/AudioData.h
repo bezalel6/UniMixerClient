@@ -116,9 +116,10 @@ struct AudioAppState {
     Events::UI::TabState currentTab = Events::UI::TabState::MASTER;
 
     // Device selections for different tabs (direct pointers to AudioLevel objects in hash map)
-    AudioLevel* selectedMainDevice = nullptr;
-    AudioLevel* selectedDevice1 = nullptr;  // For balance tab
-    AudioLevel* selectedDevice2 = nullptr;  // For balance tab
+    AudioLevel* primaryAudioDevice = nullptr;    // For master tab - represents the primary/default device
+    AudioLevel* selectedSingleDevice = nullptr;  // For single tab - user-selected individual device
+    AudioLevel* selectedDevice1 = nullptr;       // For balance tab
+    AudioLevel* selectedDevice2 = nullptr;       // For balance tab
 
     // UI interaction flags
 
@@ -129,7 +130,8 @@ struct AudioAppState {
     void clear() {
         currentStatus.clear();
         currentTab = Events::UI::TabState::MASTER;
-        selectedMainDevice = nullptr;
+        primaryAudioDevice = nullptr;
+        selectedSingleDevice = nullptr;
         selectedDevice1 = nullptr;
         selectedDevice2 = nullptr;
         lastUpdateTime = 0;
@@ -150,24 +152,28 @@ struct AudioAppState {
     const AudioLevel* getCurrentSelectedDevice() const {
         switch (currentTab) {
             case Events::UI::TabState::MASTER:
+                // For master tab, use primary device or fallback to system default
+                return primaryAudioDevice ? primaryAudioDevice : (currentStatus.hasDefaultDevice ? &currentStatus.defaultDevice : nullptr);
             case Events::UI::TabState::SINGLE:
-                return selectedMainDevice;
+                return selectedSingleDevice;
             case Events::UI::TabState::BALANCE:
                 return selectedDevice1;  // Primary device for balance
             default:
-                return selectedMainDevice;
+                return primaryAudioDevice ? primaryAudioDevice : (currentStatus.hasDefaultDevice ? &currentStatus.defaultDevice : nullptr);
         }
     }
 
     AudioLevel* getCurrentSelectedDevice() {
         switch (currentTab) {
             case Events::UI::TabState::MASTER:
+                // For master tab, use primary device or fallback to system default
+                return primaryAudioDevice ? primaryAudioDevice : (currentStatus.hasDefaultDevice ? &currentStatus.defaultDevice : nullptr);
             case Events::UI::TabState::SINGLE:
-                return selectedMainDevice;
+                return selectedSingleDevice;
             case Events::UI::TabState::BALANCE:
                 return selectedDevice1;  // Primary device for balance
             default:
-                return selectedMainDevice;
+                return primaryAudioDevice ? primaryAudioDevice : (currentStatus.hasDefaultDevice ? &currentStatus.defaultDevice : nullptr);
         }
     }
 
@@ -194,7 +200,8 @@ struct AudioAppState {
 
         // If no device selected and we're in Master tab, use default device
         if (currentTab == Events::UI::TabState::MASTER && currentStatus.hasDefaultDevice) {
-            ESP_LOGD("Audio Data", "Using default device volume: %d", currentStatus.defaultDevice.volume);
+            ESP_LOGI("Audio Data", "Master tab - using default device volume: %d (friendly name: %s)",
+                     currentStatus.defaultDevice.volume, currentStatus.defaultDevice.friendlyName.c_str());
             return currentStatus.defaultDevice.volume;
         }
 
@@ -223,7 +230,8 @@ struct AudioAppState {
     // Helper to validate device pointers are still valid in current hash map
     void validateDeviceSelections() {
         // Check if selected device pointers still exist in our hash map
-        selectedMainDevice = validateDevicePointer(selectedMainDevice);
+        primaryAudioDevice = validateDevicePointer(primaryAudioDevice);
+        selectedSingleDevice = validateDevicePointer(selectedSingleDevice);
         selectedDevice1 = validateDevicePointer(selectedDevice1);
         selectedDevice2 = validateDevicePointer(selectedDevice2);
     }

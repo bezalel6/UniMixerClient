@@ -1072,12 +1072,14 @@ bool updateStateOverview(void) {
     // Collect all selected devices information
 
     // Main device (Master/Single tab)
-    if (audioState.selectedMainDevice) {
-        strncpy(message.data.state_overview.main_device, audioState.selectedMainDevice->processName.c_str(),
+    // Use appropriate device based on current tab
+    const auto *currentDevice = audioState.getCurrentSelectedDevice();
+    if (currentDevice) {
+        strncpy(message.data.state_overview.main_device, currentDevice->processName.c_str(),
                 sizeof(message.data.state_overview.main_device) - 1);
         message.data.state_overview.main_device[sizeof(message.data.state_overview.main_device) - 1] = '\0';
-        message.data.state_overview.main_device_volume = audioState.selectedMainDevice->volume;
-        message.data.state_overview.main_device_muted = audioState.selectedMainDevice->isMuted;
+        message.data.state_overview.main_device_volume = currentDevice->volume;
+        message.data.state_overview.main_device_muted = currentDevice->isMuted;
     } else {
         message.data.state_overview.main_device[0] = '\0';
         message.data.state_overview.main_device_volume = 0;

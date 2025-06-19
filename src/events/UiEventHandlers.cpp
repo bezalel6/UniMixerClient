@@ -102,10 +102,21 @@ static const unsigned long VOLUME_DEBOUNCE_DELAY_MS = 200;  // 200ms delay
 void btnRequestDataClickedHandler(lv_event_t *e) {
     ON_EVENT(LV_EVENT_CLICKED);
 
-    UI_LOG("UIEventHandlers", "Button clicked - requesting audio status");
+    UI_LOG("UIEventHandlers", "Button clicked - triggering reactive data refresh");
 
     // Use AudioManager to publish the request
-    Application::Audio::AudioManager::getInstance().publishStatusRequest();
+    Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
+    audioManager.publishStatusRequest();
+
+    // Also trigger smart auto-selection with current data if available
+    // This helps users who click the button expecting immediate smart behavior
+    if (audioManager.hasDevices()) {
+        ESP_LOGI(TAG, "Devices available - triggering smart auto-selection");
+        audioManager.performSmartAutoSelection();
+
+        // Trigger UI refresh to ensure everything is up to date
+        Application::Audio::AudioUI::getInstance().refreshAllUI();
+    }
 }
 
 // Audio device dropdown selection change handler
@@ -115,10 +126,25 @@ void audioDeviceDropdownChangedHandler(lv_event_t *e) {
     // Get the selected audio device name using the new method
     String selectedText =
         Application::Audio::AudioUI::getInstance().getDropdownSelection(dropdown);
-    ESP_LOGI("UIEventHandlers", "Dropdown changed to: %s", selectedText.c_str());
+    ESP_LOGE("UIEventHandlers", "Dropdown changed to: %s - triggering reactive updates", selectedText.c_str());
 
     // Update the selection using the clean centralized interface
     Application::Audio::AudioUI::getInstance().onDeviceDropdownChanged(dropdown, selectedText);
+
+    // For Balance tab: if user selected device1 but device2 is empty,
+    // intelligently auto-select device2
+    Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
+    if (audioManager.getCurrentTab() == Events::UI::TabState::BALANCE) {
+        if (dropdown == ui_selectAudioDevice1 && !audioManager.getState().selectedDevice2) {
+            ESP_LOGI(TAG, "Balance device1 selected - auto-selecting device2");
+            audioManager.performSmartAutoSelection();
+        } else if (dropdown == ui_selectAudioDevice2 && !audioManager.getState().selectedDevice1) {
+            ESP_LOGI(TAG, "Balance device2 selected - auto-selecting device1");
+            audioManager.performSmartAutoSelection();
+        }
+    }
+
+    // Note: Status will be updated when the server processes the selection change
 }
 
 // Volume arc visual handler - updates labels in real-time during dragging

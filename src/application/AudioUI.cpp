@@ -49,10 +49,19 @@ void AudioUI::onVolumeSliderChanged(int volume) {
         return;
     }
 
-    ESP_LOGI(TAG, "Volume slider changed to: %d", volume);
+    ESP_LOGI(TAG, "Volume slider changed to: %d - applying with reactive feedback", volume);
 
     // Send the volume change
     AudioManager::getInstance().setVolumeForCurrentDevice(volume);
+
+    // Immediately update the UI to show the new volume
+    // This provides instant feedback even before server confirmation
+    LVGLMessageHandler::updateCurrentTabVolume(volume);
+
+    // Also update the master device label if we're in master tab
+    if (AudioManager::getInstance().getCurrentTab() == Events::UI::TabState::MASTER) {
+        updateDefaultDeviceLabel();
+    }
 }
 
 void AudioUI::onVolumeSliderDragging(int volume) {
@@ -98,8 +107,18 @@ void AudioUI::onTabChanged(Events::UI::TabState newTab) {
         return;
     }
 
-    ESP_LOGI(TAG, "Tab changed to: %s", AudioManager::getInstance().getTabName(newTab));
+    ESP_LOGI(TAG, "Tab changed to: %s - triggering reactive updates", AudioManager::getInstance().getTabName(newTab));
+
+    // Set the new tab first
     AudioManager::getInstance().setCurrentTab(newTab);
+
+    // Trigger immediate smart auto-selection for the new tab
+    // This happens after the tab is set so auto-selection logic can work correctly
+    AudioManager& audioManager = AudioManager::getInstance();
+    audioManager.performSmartAutoSelection();
+
+    // Force a comprehensive UI refresh for the new tab context
+    refreshAllUI();
 }
 
 void AudioUI::onMuteButtonPressed() {
@@ -134,7 +153,12 @@ String AudioUI::getDropdownSelection(lv_obj_t* dropdown) const {
 
     // Determine which dropdown this is and return appropriate selection
     if (dropdown == ui_selectAudioDevice) {
-        return state.selectedMainDevice ? state.selectedMainDevice->processName : "";
+        // Main dropdown can be used for either master (primary) or single device
+        if (state.isInMasterTab()) {
+            return state.primaryAudioDevice ? state.primaryAudioDevice->processName : "";
+        } else {
+            return state.selectedSingleDevice ? state.selectedSingleDevice->processName : "";
+        }
     } else if (dropdown == ui_selectAudioDevice1) {
         return state.selectedDevice1 ? state.selectedDevice1->processName : "";
     } else if (dropdown == ui_selectAudioDevice2) {
@@ -190,16 +214,22 @@ void AudioUI::updateVolumeDisplay() {
     const auto& state = AudioManager::getInstance().getState();
     int currentVolume = state.getCurrentSelectedVolume();
 
-    // Update the volume slider directly
-    // lv_obj_t* slider = getCurrentVolumeSlider();
-    // if (slider) {
-    //     lv_arc_set_value(slider, currentVolume);
-    // }
+    // Update the volume slider directly (uncommented to show current volume)
+    lv_obj_t* slider = getCurrentVolumeSlider();
+    if (slider) {
+        lv_arc_set_value(slider, currentVolume);
+        ESP_LOGI(TAG, "Set %s tab slider to volume: %d",
+                 AudioManager::getInstance().getTabName(state.currentTab), currentVolume);
+    } else {
+        ESP_LOGW(TAG, "No slider found for current tab: %s",
+                 AudioManager::getInstance().getTabName(state.currentTab));
+    }
 
     // Use message handler for thread-safe UI updates (labels, etc.)
     LVGLMessageHandler::updateCurrentTabVolume(currentVolume);
 
-    ESP_LOGD(TAG, "Updated volume display to: %d", currentVolume);
+    ESP_LOGI(TAG, "Updated %s tab volume display to: %d",
+             AudioManager::getInstance().getTabName(state.currentTab), currentVolume);
 }
 
 void AudioUI::updateDeviceSelectors() {
@@ -243,33 +273,44 @@ void AudioUI::updateMuteButtons() {
 // === PRIVATE METHODS ===
 
 void AudioUI::onAudioStateChanged(const AudioStateChangeEvent& event) {
-    ESP_LOGD(TAG, "Handling audio state change event: %d", (int)event.type);
+    ESP_LOGI(TAG, "Handling audio state change event: %d - triggering reactive UI updates", (int)event.type);
 
     switch (event.type) {
         case AudioStateChangeEvent::DEVICES_UPDATED:
+            ESP_LOGI(TAG, "Devices updated - comprehensive UI refresh");
             updateDeviceSelectors();
             updateVolumeDisplay();
             updateDefaultDeviceLabel();
+            // Also trigger smart auto-selection since device list changed
+            AudioManager::getInstance().performSmartAutoSelection();
             break;
 
         case AudioStateChangeEvent::SELECTION_CHANGED:
+            ESP_LOGI(TAG, "Device selection changed - updating UI");
             updateDropdownSelections();
             updateVolumeDisplay();
             break;
 
         case AudioStateChangeEvent::VOLUME_CHANGED:
+            ESP_LOGI(TAG, "Volume changed - updating display with immediate feedback");
             updateVolumeDisplay();
             break;
 
         case AudioStateChangeEvent::TAB_CHANGED:
+            ESP_LOGI(TAG, "Tab changed - full reactive UI refresh");
             refreshAllUI();
+            // Tab changes are already handled comprehensively in onTabChanged
             break;
 
         case AudioStateChangeEvent::MUTE_CHANGED:
+            ESP_LOGI(TAG, "Mute state changed - updating UI and labels");
             updateMuteButtons();
             updateDefaultDeviceLabel();
+            updateVolumeDisplay();  // Mute might affect volume display
             break;
     }
+
+    ESP_LOGD(TAG, "Reactive state change handling complete");
 }
 
 void AudioUI::updateDropdownOptions(const std::vector<AudioLevel>& devices) {
@@ -315,10 +356,15 @@ void AudioUI::updateDropdownSelections() {
         return 0;  // Default to first option
     };
 
-    // Update main dropdown
-    if (ui_selectAudioDevice && state.selectedMainDevice) {
-        int index = findDeviceIndex(state.selectedMainDevice->processName);
-        lv_dropdown_set_selected(ui_selectAudioDevice, index);
+    // Update main dropdown based on current tab
+    if (ui_selectAudioDevice) {
+        if (state.isInMasterTab() && state.primaryAudioDevice) {
+            int index = findDeviceIndex(state.primaryAudioDevice->processName);
+            lv_dropdown_set_selected(ui_selectAudioDevice, index);
+        } else if (state.isInSingleTab() && state.selectedSingleDevice) {
+            int index = findDeviceIndex(state.selectedSingleDevice->processName);
+            lv_dropdown_set_selected(ui_selectAudioDevice, index);
+        }
     }
 
     // Update balance dropdowns

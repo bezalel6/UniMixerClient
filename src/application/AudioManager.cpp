@@ -30,7 +30,14 @@ bool AudioManager::init() {
     // Subscribe to audio status updates from the messaging system
     Messaging::MessageAPI::onAudioStatus([this](const Messaging::AudioStatusData& data) {
         // Convert AudioStatusData back to AudioStatus for compatibility
-        ESP_LOGE(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId);
+        ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
+
+        // DEBUG: Log default device volume conversion
+        if (data.hasDefaultDevice) {
+            ESP_LOGI(TAG, "Received default device: %s, volume: %d",
+                     data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
+        }
+
         AudioStatus status;
         status.setAudioLevels(data.audioLevels);
         status.defaultDevice = data.defaultDevice;
@@ -77,28 +84,52 @@ void AudioManager::onAudioStatusReceived(const AudioStatus& newStatus) {
         ESP_LOGW(TAG, "AudioManager not initialized");
         return;
     }
-    ESP_LOGI(TAG, "Received audio status with %d devices", newStatus.getDeviceCount());
+    ESP_LOGI(TAG, "Received audio status with %d devices - triggering reactive updates", newStatus.getDeviceCount());
 
     // Store current device selections by name (before hash map gets replaced)
-    String currentMainDeviceName = state.selectedMainDevice ? state.selectedMainDevice->processName : "";
+    String currentPrimaryDeviceName = state.primaryAudioDevice ? state.primaryAudioDevice->processName : "";
+    String currentSingleDeviceName = state.selectedSingleDevice ? state.selectedSingleDevice->processName : "";
     String currentDevice1Name = state.selectedDevice1 ? state.selectedDevice1->processName : "";
     String currentDevice2Name = state.selectedDevice2 ? state.selectedDevice2->processName : "";
+
+    // Check if this is significantly new data (device count changed)
+    bool significantUpdate = (newStatus.getDeviceCount() != state.currentStatus.getDeviceCount());
 
     // Update our internal status (this replaces the hash map, invalidating pointers)
     state.currentStatus = newStatus;
     state.currentStatus.timestamp = Hardware::Device::getMillis();
 
     // Refresh device pointers to point to new hash map entries
-    refreshDevicePointers(currentMainDeviceName, currentDevice1Name, currentDevice2Name);
+    refreshDevicePointers(currentPrimaryDeviceName, currentSingleDeviceName, currentDevice1Name, currentDevice2Name);
 
-    // Auto-select device if needed (will set pointers properly)
-    autoSelectDeviceIfNeeded();
+    // Perform smart auto-selection but only if we don't have valid selections
+    if (!state.hasValidSelection() || significantUpdate) {
+        performSmartAutoSelection();
+    }
+
+    // If this was a significant update (new devices appeared/disappeared),
+    // be extra careful about ensuring good selections
+    if (significantUpdate) {
+        ESP_LOGI(TAG, "Significant device update detected - ensuring valid selections");
+
+        // Ensure we have valid selections for current tab context
+        ensureValidSelections();
+
+        // If we're in a tab that needs selections but still don't have them,
+        // this might indicate all devices disappeared - handle gracefully
+        if ((state.isInSingleTab() && !state.selectedSingleDevice) ||
+            (state.isInBalanceTab() && (!state.selectedDevice1 || !state.selectedDevice2))) {
+            ESP_LOGW(TAG, "No suitable devices available for current tab: %s", getTabName(state.currentTab));
+        }
+    }
 
     // Update timestamp
     updateTimestamp();
 
     // Notify listeners
     notifyStateChange(AudioStateChangeEvent::devicesUpdated());
+
+    ESP_LOGI(TAG, "Reactive audio status processing complete");
 }
 
 // === USER ACTIONS ===
@@ -128,12 +159,11 @@ void AudioManager::selectDevice(AudioLevel* device) {
     // Update selection based on current tab
     switch (state.currentTab) {
         case Events::UI::TabState::MASTER:
-            // Master tab doesn't have device selection - it uses default device
-            ESP_LOGW(TAG, "Cannot select specific device in Master tab");
-            return;
-
+            // Master tab controls primary/default device
+            state.primaryAudioDevice = device;
+            break;
         case Events::UI::TabState::SINGLE:
-            state.selectedMainDevice = device;
+            state.selectedSingleDevice = device;
             break;
 
         case Events::UI::TabState::BALANCE:
@@ -189,6 +219,7 @@ void AudioManager::setVolumeForCurrentDevice(int volume) {
 
     if (state.isInMasterTab()) {
         // Master tab controls the default device directly
+        ESP_LOGI(TAG, "Master tab: Setting default device volume to %d", volume);
         if (state.currentStatus.hasDefaultDevice) {
             setDeviceVolume("", volume);  // Empty string triggers default device logic
         } else {
@@ -198,9 +229,11 @@ void AudioManager::setVolumeForCurrentDevice(int volume) {
         // Single/Balance tabs use selected devices
         AudioLevel* currentDevice = state.getCurrentSelectedDevice();
         if (currentDevice) {
+            ESP_LOGI(TAG, "%s tab: Setting session device '%s' volume to %d",
+                     getTabName(state.currentTab), currentDevice->processName.c_str(), volume);
             setDeviceVolume(currentDevice->processName, volume);
         } else {
-            ESP_LOGW(TAG, "No device selected for volume control in current tab");
+            ESP_LOGW(TAG, "No device selected for volume control in current tab: %s", getTabName(state.currentTab));
         }
     }
 }
@@ -214,28 +247,24 @@ void AudioManager::setDeviceVolume(const String& deviceName, int volume) {
     // Clamp volume
     volume = constrain(volume, 0, 100);
 
-    if (state.isInMasterTab()) {
-        // Update default device volume
+    // Determine target based on deviceName parameter, NOT current tab
+    if (deviceName.isEmpty()) {
+        // Empty deviceName = update default device
         if (state.currentStatus.hasDefaultDevice) {
             state.currentStatus.defaultDevice.volume = volume;
             ESP_LOGI(TAG, "Set default device volume to %d", volume);
         } else {
-            ESP_LOGW(TAG, "No default device available for master volume control");
+            ESP_LOGW(TAG, "No default device available for volume control");
             return;
         }
     } else {
-        // Update selected device volume
-        if (deviceName.isEmpty()) {
-            ESP_LOGW(TAG, "No device specified for volume control");
-            return;
-        }
-
+        // Non-empty deviceName = update specific session device
         AudioLevel* device = getDevice(deviceName);
         if (device) {
             device->volume = volume;
             device->lastUpdate = Hardware::Device::getMillis();
             device->stale = false;
-            ESP_LOGI(TAG, "Updated device volume: %s = %d", deviceName.c_str(), volume);
+            ESP_LOGI(TAG, "Updated session device volume: %s = %d", deviceName.c_str(), volume);
         } else {
             // Create new device entry
             AudioLevel newDevice;
@@ -247,7 +276,7 @@ void AudioManager::setDeviceVolume(const String& deviceName, int volume) {
             newDevice.isMuted = false;
 
             state.currentStatus.addOrUpdateDevice(newDevice);
-            ESP_LOGI(TAG, "Added new device: %s = %d", deviceName.c_str(), volume);
+            ESP_LOGI(TAG, "Added new session device: %s = %d", deviceName.c_str(), volume);
         }
     }
 
@@ -283,24 +312,25 @@ void AudioManager::muteDevice(const String& deviceName) {
         return;
     }
 
-    if (state.isInMasterTab()) {
+    // Determine target based on deviceName parameter, NOT current tab
+    if (deviceName.isEmpty()) {
+        // Empty deviceName = mute default device
         if (state.currentStatus.hasDefaultDevice) {
             state.currentStatus.defaultDevice.isMuted = true;
             ESP_LOGI(TAG, "Muted default device");
         } else {
-            ESP_LOGW(TAG, "No default device available for master mute control");
+            ESP_LOGW(TAG, "No default device available for mute control");
             return;
         }
     } else {
-        if (deviceName.isEmpty()) {
-            ESP_LOGW(TAG, "No device specified for mute control");
-            return;
-        }
-
+        // Non-empty deviceName = mute specific session device
         AudioLevel* device = getDevice(deviceName);
         if (device) {
             device->isMuted = true;
-            ESP_LOGI(TAG, "Muted device: %s", deviceName.c_str());
+            ESP_LOGI(TAG, "Muted session device: %s", deviceName.c_str());
+        } else {
+            ESP_LOGW(TAG, "Session device not found for mute: %s", deviceName.c_str());
+            return;
         }
     }
 
@@ -316,24 +346,25 @@ void AudioManager::unmuteDevice(const String& deviceName) {
         return;
     }
 
-    if (state.isInMasterTab()) {
+    // Determine target based on deviceName parameter, NOT current tab
+    if (deviceName.isEmpty()) {
+        // Empty deviceName = unmute default device
         if (state.currentStatus.hasDefaultDevice) {
             state.currentStatus.defaultDevice.isMuted = false;
             ESP_LOGI(TAG, "Unmuted default device");
         } else {
-            ESP_LOGW(TAG, "No default device available for master unmute control");
+            ESP_LOGW(TAG, "No default device available for unmute control");
             return;
         }
     } else {
-        if (deviceName.isEmpty()) {
-            ESP_LOGW(TAG, "No device specified for unmute control");
-            return;
-        }
-
+        // Non-empty deviceName = unmute specific session device
         AudioLevel* device = getDevice(deviceName);
         if (device) {
             device->isMuted = false;
-            ESP_LOGI(TAG, "Unmuted device: %s", deviceName.c_str());
+            ESP_LOGI(TAG, "Unmuted session device: %s", deviceName.c_str());
+        } else {
+            ESP_LOGW(TAG, "Session device not found for unmute: %s", deviceName.c_str());
+            return;
         }
     }
 
@@ -427,6 +458,74 @@ const char* AudioManager::getTabName(Events::UI::TabState tab) const {
     }
 }
 
+// === SMART BEHAVIOR ===
+
+void AudioManager::performSmartAutoSelection() {
+    if (!initialized) {
+        ESP_LOGW(TAG, "AudioManager not initialized");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Performing smart auto-selection for tab: %s", getTabName(state.currentTab));
+
+    // Always try auto-selection when explicitly requested
+    autoSelectDeviceIfNeeded();
+
+    // For Single tab: if we have devices but no selection, pick the best one
+    if (state.currentTab == Events::UI::TabState::SINGLE && !state.selectedSingleDevice && state.hasDevices()) {
+        String deviceToSelect = findBestDeviceToSelect();
+        if (!deviceToSelect.isEmpty()) {
+            ESP_LOGI(TAG, "Smart auto-selection: choosing %s for Single tab", deviceToSelect.c_str());
+            selectDevice(deviceToSelect);
+        }
+    }
+
+    // For Balance tab: ensure both devices are selected if possible
+    if (state.currentTab == Events::UI::TabState::BALANCE && state.hasDevices()) {
+        bool needsNotification = false;
+
+        if (!state.selectedDevice1) {
+            String deviceToSelect = findBestDeviceToSelect();
+            if (!deviceToSelect.isEmpty()) {
+                state.selectedDevice1 = state.findDevice(deviceToSelect);
+                if (state.selectedDevice1) {
+                    ESP_LOGI(TAG, "Smart auto-selection: choosing %s for Balance device1", deviceToSelect.c_str());
+                    needsNotification = true;
+                }
+            }
+        }
+
+        if (!state.selectedDevice2) {
+            String deviceToSelect = findBestDeviceToSelect();
+            // Try to select a different device if possible
+            if (!deviceToSelect.isEmpty()) {
+                if (state.selectedDevice1 && deviceToSelect != state.selectedDevice1->processName) {
+                    // Found a different device
+                    state.selectedDevice2 = state.findDevice(deviceToSelect);
+                    if (state.selectedDevice2) {
+                        ESP_LOGI(TAG, "Smart auto-selection: choosing %s for Balance device2", deviceToSelect.c_str());
+                        needsNotification = true;
+                    }
+                } else {
+                    // Use the same device for both (better than no selection)
+                    state.selectedDevice2 = state.selectedDevice1;
+                    if (state.selectedDevice2) {
+                        ESP_LOGI(TAG, "Smart auto-selection: using same device %s for both Balance devices", deviceToSelect.c_str());
+                        needsNotification = true;
+                    }
+                }
+            }
+        }
+
+        if (needsNotification) {
+            String device1Name = state.selectedDevice1 ? state.selectedDevice1->processName : "";
+            notifyStateChange(AudioStateChangeEvent::selectionChanged(device1Name));
+        }
+    }
+
+    ESP_LOGI(TAG, "Smart auto-selection complete for %s tab", getTabName(state.currentTab));
+}
+
 // === PRIVATE METHODS ===
 
 void AudioManager::notifyStateChange(const AudioStateChangeEvent& event) {
@@ -439,12 +538,12 @@ void AudioManager::autoSelectDeviceIfNeeded() {
     ESP_LOGD(TAG, "Checking if auto-selection is needed");
 
     // Check if we need to auto-select for Single tab
-    if (state.currentTab == Events::UI::TabState::SINGLE && !state.selectedMainDevice) {
+    if (state.currentTab == Events::UI::TabState::SINGLE && !state.selectedSingleDevice) {
         String deviceToSelect = findBestDeviceToSelect();
         if (!deviceToSelect.isEmpty()) {
-            state.selectedMainDevice = state.findDevice(deviceToSelect);
-            if (state.selectedMainDevice) {
-                ESP_LOGI(TAG, "Auto-selected main device: %s", deviceToSelect.c_str());
+            state.selectedSingleDevice = state.findDevice(deviceToSelect);
+            if (state.selectedSingleDevice) {
+                ESP_LOGI(TAG, "Auto-selected single device: %s", deviceToSelect.c_str());
                 notifyStateChange(AudioStateChangeEvent::selectionChanged(deviceToSelect));
             }
         }
@@ -528,7 +627,7 @@ void AudioManager::refreshDevicePointersIfNeeded(const String& deviceName) {
     bool needsRefresh = false;
 
     // This is mainly for cases where we're expecting a device but it wasn't in the hash map yet
-    if (!state.selectedMainDevice && state.currentTab == Events::UI::TabState::SINGLE) {
+    if (!state.selectedSingleDevice && state.currentTab == Events::UI::TabState::SINGLE) {
         // Could auto-select this new device
         autoSelectDeviceIfNeeded();
     }
@@ -564,10 +663,10 @@ void AudioManager::ensureValidSelections() {
     state.validateDeviceSelections();
 
     // If selections are now null, auto-select new devices
-    if (!state.selectedMainDevice) {
+    if (!state.selectedSingleDevice) {
         String deviceName = findBestDeviceToSelect();
         if (!deviceName.isEmpty()) {
-            state.selectedMainDevice = state.findDevice(deviceName);
+            state.selectedSingleDevice = state.findDevice(deviceName);
         }
     }
 
@@ -586,19 +685,31 @@ void AudioManager::ensureValidSelections() {
     }
 }
 
-void AudioManager::refreshDevicePointers(const String& mainDeviceName, const String& device1Name, const String& device2Name) {
+void AudioManager::refreshDevicePointers(const String& primaryDeviceName, const String& singleDeviceName, const String& device1Name, const String& device2Name) {
     ESP_LOGI(TAG, "Refreshing device pointers after hash map update");
 
-    // Refresh main device pointer
-    if (!mainDeviceName.isEmpty()) {
-        state.selectedMainDevice = state.findDevice(mainDeviceName);
-        if (state.selectedMainDevice) {
-            ESP_LOGD(TAG, "Refreshed main device pointer: %s", mainDeviceName.c_str());
+    // Refresh primary device pointer
+    if (!primaryDeviceName.isEmpty()) {
+        state.primaryAudioDevice = state.findDevice(primaryDeviceName);
+        if (state.primaryAudioDevice) {
+            ESP_LOGD(TAG, "Refreshed primary device pointer: %s", primaryDeviceName.c_str());
         } else {
-            ESP_LOGW(TAG, "Failed to refresh main device pointer: %s (device not found)", mainDeviceName.c_str());
+            ESP_LOGW(TAG, "Failed to refresh primary device pointer: %s (device not found)", primaryDeviceName.c_str());
         }
     } else {
-        state.selectedMainDevice = nullptr;
+        state.primaryAudioDevice = nullptr;
+    }
+
+    // Refresh single device pointer
+    if (!singleDeviceName.isEmpty()) {
+        state.selectedSingleDevice = state.findDevice(singleDeviceName);
+        if (state.selectedSingleDevice) {
+            ESP_LOGD(TAG, "Refreshed single device pointer: %s", singleDeviceName.c_str());
+        } else {
+            ESP_LOGW(TAG, "Failed to refresh single device pointer: %s (device not found)", singleDeviceName.c_str());
+        }
+    } else {
+        state.selectedSingleDevice = nullptr;
     }
 
     // Refresh device1 pointer (balance tab)

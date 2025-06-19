@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <vector>
 #include <functional>
+#include <esp_log.h>
 #include "../application/AudioData.h"
 #include "MessageConfig.h"
 
@@ -145,10 +146,15 @@ inline AudioStatusData parseStatusResponse(const String& jsonString) {
     JsonObject defaultDevice = root["defaultDevice"];
     if (!defaultDevice.isNull()) {
         result.defaultDevice.friendlyName = defaultDevice["friendlyName"] | "";
-        result.defaultDevice.volume = (int)((defaultDevice["volume"] | 0.0f) * 100.0f);  // Convert from 0.0-1.0 to 0-100
+        float rawVolume = defaultDevice["volume"] | 0.0f;
+        result.defaultDevice.volume = (int)(rawVolume * 100.0f);  // Convert from 0.0-1.0 to 0-100
         result.defaultDevice.isMuted = defaultDevice["isMuted"] | false;
         result.defaultDevice.state = defaultDevice["dataFlow"] | "";
         result.hasDefaultDevice = !result.defaultDevice.friendlyName.isEmpty();
+
+        // DEBUG: Log volume conversion
+        ESP_LOGI("MessageData", "Parsed default device: %s, raw volume: %.3f, converted: %d",
+                 result.defaultDevice.friendlyName.c_str(), rawVolume, result.defaultDevice.volume);
     }
 
     // Parse audio sessions

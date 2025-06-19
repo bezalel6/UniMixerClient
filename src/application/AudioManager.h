@@ -76,6 +76,9 @@ class AudioManager {
     const char* getTabName(Events::UI::TabState tab) const;
     bool hasValidSelection() const { return state.hasValidSelection(); }
 
+    // === SMART BEHAVIOR ===
+    void performSmartAutoSelection();  // Proactive auto-selection for current context
+
    private:
     AudioManager() = default;
     ~AudioManager() = default;
@@ -97,7 +100,7 @@ class AudioManager {
 
     // Device management helpers
     void ensureValidSelections();
-    void refreshDevicePointers(const String& mainDeviceName, const String& device1Name, const String& device2Name);
+    void refreshDevicePointers(const String& primaryDeviceName, const String& singleDeviceName, const String& device1Name, const String& device2Name);
     void refreshDevicePointersIfNeeded(const String& deviceName);
 };
 

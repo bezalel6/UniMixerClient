@@ -169,7 +169,8 @@ bool init(void) {
 
     // Send initial status request to get current audio information
     ESP_LOGI(TAG, "WDT Reset: Sending initial status request...");
-    Application::Audio::AudioManager::getInstance().publishStatusRequest();
+    Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
+    audioManager.publishStatusRequest();
     esp_task_wdt_reset();
 
     ESP_LOGI(TAG,
