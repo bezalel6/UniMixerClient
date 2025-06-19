@@ -149,23 +149,18 @@ String AudioUI::getDropdownSelection(lv_obj_t* dropdown) const {
         return "";
     }
 
-    const auto& state = AudioManager::getInstance().getState();
-
-    // Determine which dropdown this is and return appropriate selection
-    if (dropdown == ui_selectAudioDevice) {
-        // Main dropdown can be used for either master (primary) or single device
-        if (state.isInMasterTab()) {
-            return state.primaryAudioDevice ? state.primaryAudioDevice->processName : "";
-        } else {
-            return state.selectedSingleDevice ? state.selectedSingleDevice->processName : "";
-        }
-    } else if (dropdown == ui_selectAudioDevice1) {
-        return state.selectedDevice1 ? state.selectedDevice1->processName : "";
-    } else if (dropdown == ui_selectAudioDevice2) {
-        return state.selectedDevice2 ? state.selectedDevice2->processName : "";
+    if (!dropdown) {
+        ESP_LOGW(TAG, "Dropdown is null");
+        return "";
     }
+    ESP_LOGI(TAG, "Dropdown Options: %s", lv_dropdown_get_options(dropdown));
+    // Get the actual selected text from the LVGL dropdown widget
+    char selectedText[64];  // Buffer to store the selected option text
+    lv_dropdown_get_selected_str(dropdown, selectedText, sizeof(selectedText));
 
-    return "";
+    ESP_LOGD(TAG, "Dropdown widget returned selected text: '%s'", selectedText);
+
+    return String(selectedText);
 }
 
 lv_obj_t* AudioUI::getCurrentVolumeSlider() const {
