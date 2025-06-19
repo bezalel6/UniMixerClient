@@ -173,22 +173,47 @@ struct AudioAppState {
 
     String getCurrentSelectedDeviceName() const {
         const AudioLevel* device = getCurrentSelectedDevice();
-        return device ? device->processName : String("");
+        if (device) {
+            return device->processName;
+        }
+
+        // If no device selected and we're in Master tab, use default device
+        if (currentTab == Events::UI::TabState::MASTER && currentStatus.hasDefaultDevice) {
+            return currentStatus.defaultDevice.friendlyName.isEmpty() ? String("Default Device") : currentStatus.defaultDevice.friendlyName;
+        }
+
+        return String("");
     }
 
     int getCurrentSelectedVolume() const {
         const AudioLevel* device = getCurrentSelectedDevice();
         if (device) {
             ESP_LOGD("Audio Data", "Current device: %s, volume: %d", device->processName.c_str(), device->volume);
-        } else {
-            ESP_LOGD("Audio Data", "No device selected for volume control");
+            return device->volume;
         }
-        return device ? device->volume : 0;
+
+        // If no device selected and we're in Master tab, use default device
+        if (currentTab == Events::UI::TabState::MASTER && currentStatus.hasDefaultDevice) {
+            ESP_LOGD("Audio Data", "Using default device volume: %d", currentStatus.defaultDevice.volume);
+            return currentStatus.defaultDevice.volume;
+        }
+
+        ESP_LOGD("Audio Data", "No device selected for volume control");
+        return 0;
     }
 
     bool isCurrentDeviceMuted() const {
         const AudioLevel* device = getCurrentSelectedDevice();
-        return device ? device->isMuted : false;
+        if (device) {
+            return device->isMuted;
+        }
+
+        // If no device selected and we're in Master tab, use default device
+        if (currentTab == Events::UI::TabState::MASTER && currentStatus.hasDefaultDevice) {
+            return currentStatus.defaultDevice.isMuted;
+        }
+
+        return false;
     }
 
     bool hasValidSelection() const {

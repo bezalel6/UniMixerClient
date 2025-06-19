@@ -92,6 +92,12 @@ namespace UI {
 
 static const char *TAG = "UIEventHandlers";
 
+// Volume debouncing variables
+static unsigned long lastVolumeUpdateTime = 0;
+static int pendingVolumeValue = -1;
+static lv_timer_t *volumeDebounceTimer = nullptr;
+static const unsigned long VOLUME_DEBOUNCE_DELAY_MS = 200;  // 200ms delay
+
 // Button click handler that publishes audio status request
 void btnRequestDataClickedHandler(lv_event_t *e) {
     ON_EVENT(LV_EVENT_CLICKED);
@@ -117,25 +123,44 @@ void audioDeviceDropdownChangedHandler(lv_event_t *e) {
 
 // Volume arc visual handler - updates labels in real-time during dragging
 void volumeArcVisualHandler(lv_event_t *e) {
-    // ON_EVENT(LV_EVENT_VALUE_CHANGED);
+    ON_EVENT(LV_EVENT_VALUE_CHANGED);
 
-    // lv_obj_t *arc = GET_UI_WIDGET();
-    // int volume = lv_arc_get_value(arc);
+    lv_obj_t *arc = GET_UI_WIDGET();
+    int volume = lv_arc_get_value(arc);
 
-    // // Update the corresponding label immediately for visual feedback
-    // char volumeText[16];
-    // snprintf(volumeText, sizeof(volumeText), "%d%%", volume);
+    // Update the corresponding label immediately for visual feedback
+    char volumeText[16];
+    snprintf(volumeText, sizeof(volumeText), "%d%%", volume);
 
-    // // Determine which label to update based on which arc was changed
-    // if (arc == ui_primaryVolumeSlider && ui_lblPrimaryVolumeSlider) {
-    //     lv_label_set_text(ui_lblPrimaryVolumeSlider, volumeText);
-    // } else if (arc == ui_singleVolumeSlider && ui_lblSingleVolumeSlider) {
-    //     lv_label_set_text(ui_lblSingleVolumeSlider, volumeText);
-    // } else if (arc == ui_balanceVolumeSlider && ui_lblBalanceVolumeSlider) {
-    //     lv_label_set_text(ui_lblBalanceVolumeSlider, volumeText);
-    // }
+    // Determine which label to update based on which arc was changed
+    if (arc == ui_primaryVolumeSlider && ui_lblPrimaryVolumeSlider) {
+        lv_label_set_text(ui_lblPrimaryVolumeSlider, volumeText);
+    } else if (arc == ui_singleVolumeSlider && ui_lblSingleVolumeSlider) {
+        lv_label_set_text(ui_lblSingleVolumeSlider, volumeText);
+    } else if (arc == ui_balanceVolumeSlider && ui_lblBalanceVolumeSlider) {
+        lv_label_set_text(ui_lblBalanceVolumeSlider, volumeText);
+    }
 
-    // UI_LOG("UIEventHandlers", "Volume arc visual update: %d", volume);
+    ESP_LOGD(TAG, "Volume arc visual update: %d", volume);
+}
+
+// Volume debounce timer callback
+static void volumeDebounceCallback(lv_timer_t *timer) {
+    if (pendingVolumeValue >= 0) {
+        ESP_LOGI(TAG, "Debounced volume update: %d", pendingVolumeValue);
+
+        // Send the volume change
+        Application::Audio::AudioUI::getInstance().onVolumeSliderChanged(pendingVolumeValue);
+
+        // Reset pending value
+        pendingVolumeValue = -1;
+    }
+
+    // Delete the timer
+    if (volumeDebounceTimer) {
+        lv_timer_delete(volumeDebounceTimer);
+        volumeDebounceTimer = nullptr;
+    }
 }
 
 // Volume arc change handler - only processes actual volume changes on release
@@ -147,10 +172,23 @@ void volumeArcChangedHandler(lv_event_t *e) {
     // Get the arc value
     int volume = lv_arc_get_value(arc);
 
-    UI_LOG("UIEventHandlers", "Volume arc released - setting volume: %d", volume);
+    unsigned long currentTime = millis();
 
-    // Set the volume for the selected device
-    Application::Audio::AudioUI::getInstance().onVolumeSliderChanged(volume);
+    UI_LOG("UIEventHandlers", "Volume arc released - scheduling volume: %d", volume);
+
+    // Cancel any existing timer
+    if (volumeDebounceTimer) {
+        lv_timer_delete(volumeDebounceTimer);
+        volumeDebounceTimer = nullptr;
+    }
+
+    // Store the pending volume value
+    pendingVolumeValue = volume;
+    lastVolumeUpdateTime = currentTime;
+
+    // Create a new debounce timer
+    volumeDebounceTimer = lv_timer_create(volumeDebounceCallback, VOLUME_DEBOUNCE_DELAY_MS, nullptr);
+    lv_timer_set_repeat_count(volumeDebounceTimer, 1);  // Only run once
 }
 
 // Tab switch event handler
@@ -188,6 +226,16 @@ void stateOverviewLongPressHandler(lv_event_t *e) {
 
     // Show state overview overlay
     Application::LVGLMessageHandler::showStateOverview();
+}
+
+// Cleanup function for debounce timers
+void cleanupVolumeDebouncing() {
+    if (volumeDebounceTimer) {
+        lv_timer_delete(volumeDebounceTimer);
+        volumeDebounceTimer = nullptr;
+    }
+    pendingVolumeValue = -1;
+    lastVolumeUpdateTime = 0;
 }
 
 }  // namespace UI

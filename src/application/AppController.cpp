@@ -263,6 +263,17 @@ void setupUiComponents(void) {
                         LV_EVENT_VALUE_CHANGED, NULL);
 
     // Register volume arc event handlers for each tab
+    // Visual feedback during dragging (VALUE_CHANGED)
+    lv_obj_add_event_cb(ui_primaryVolumeSlider,
+                        Events::UI::volumeArcVisualHandler,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_singleVolumeSlider,
+                        Events::UI::volumeArcVisualHandler,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_balanceVolumeSlider,
+                        Events::UI::volumeArcVisualHandler,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
     // Actual volume changes on release (RELEASED)
     lv_obj_add_event_cb(ui_primaryVolumeSlider,
                         Events::UI::volumeArcChangedHandler,
