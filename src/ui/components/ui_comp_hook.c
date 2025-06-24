@@ -12,3 +12,7 @@ void ui_comp_connectionStatusPnl_create_hook(lv_obj_t * comp)
 void ui_comp_VolumeSlider_create_hook(lv_obj_t * comp)
 {
 }
+
+void ui_comp_btn_create_hook(lv_obj_t * comp)
+{
+}

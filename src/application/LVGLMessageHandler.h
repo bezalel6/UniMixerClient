@@ -37,7 +37,10 @@ typedef enum {
     // State overview messages
     MSG_SHOW_STATE_OVERVIEW,
     MSG_UPDATE_STATE_OVERVIEW,
-    MSG_HIDE_STATE_OVERVIEW
+    MSG_HIDE_STATE_OVERVIEW,
+
+    // SD card status messages
+    MSG_UPDATE_SD_STATUS
 } LVGLMessageType_t;
 
 // Message data structures
@@ -130,6 +133,15 @@ typedef struct {
             int current_volume;
             bool is_muted;
         } state_overview;
+
+        // SD card status data
+        struct {
+            const char *status;
+            bool mounted;
+            uint64_t total_mb;
+            uint64_t used_mb;
+            uint8_t card_type;
+        } sd_status;
     } data;
 } LVGLMessage_t;
 
@@ -173,6 +185,9 @@ void updateOtaScreenDirectly(uint8_t progress, const char *msg);
 bool showStateOverview(void);
 bool updateStateOverview(void);
 bool hideStateOverview(void);
+
+// Helper functions for SD status
+bool updateSDStatus(const char *status, bool mounted, uint64_t total_mb, uint64_t used_mb, uint8_t card_type);
 
 }  // namespace LVGLMessageHandler
 }  // namespace Application

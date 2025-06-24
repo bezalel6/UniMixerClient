@@ -37,6 +37,10 @@ lv_obj_t * ui_lblSSIDValue = NULL;
 lv_obj_t * ui_ipContainer = NULL;
 lv_obj_t * ui_lblIP = NULL;
 lv_obj_t * ui_lblIPValue = NULL;
+lv_obj_t * ui_sdContainer = NULL;
+lv_obj_t * ui_lblSD = NULL;
+lv_obj_t * ui_objSDIndicator = NULL;
+lv_obj_t * ui_lblSDStatus = NULL;
 lv_obj_t * ui_mqttContainer = NULL;
 lv_obj_t * ui_lblMQTT = NULL;
 lv_obj_t * ui_objMQTTIndicator = NULL;
@@ -46,6 +50,7 @@ lv_obj_t * ui_btnRequestData = NULL;
 lv_obj_t * ui_Label5 = NULL;
 lv_obj_t * ui_btnGOTOLog = NULL;
 lv_obj_t * ui_Label1 = NULL;
+lv_obj_t * ui_btnGOTOSD = NULL;
 lv_obj_t * ui_lblFPS = NULL;
 // event funtions
 void ui_event_containerSingleVolumeSlider_containerSingleVolumeSlider_singleVolumeSlider(lv_event_t * e)
@@ -76,6 +81,15 @@ void ui_event_btnGOTOLog(lv_event_t * e)
 
     if(event_code == LV_EVENT_CLICKED) {
         _ui_screen_change(&ui_screenDebug, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_screenDebug_screen_init);
+    }
+}
+
+void ui_event_btnGOTOSD_btn(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_screenFileExplorer, LV_SCR_LOAD_ANIM_FADE_ON, 0, 0, &ui_screenFileExplorer_screen_init);
     }
 }
 
@@ -205,9 +219,9 @@ void ui_screenMain_screen_init(void)
 
     ui_pnlNetwork = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlNetwork, 200);
-    lv_obj_set_height(ui_pnlNetwork, 200);
+    lv_obj_set_height(ui_pnlNetwork, 268);
     lv_obj_set_x(ui_pnlNetwork, 10);
-    lv_obj_set_y(ui_pnlNetwork, -50);
+    lv_obj_set_y(ui_pnlNetwork, -65);
     lv_obj_set_align(ui_pnlNetwork, LV_ALIGN_LEFT_MID);
     lv_obj_set_flex_flow(ui_pnlNetwork, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(ui_pnlNetwork, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
@@ -275,6 +289,32 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_align(ui_lblIPValue, LV_ALIGN_BOTTOM_RIGHT);
     lv_label_set_text(ui_lblIPValue, "-");
 
+    ui_sdContainer = lv_obj_create(ui_pnlNetwork);
+    lv_obj_remove_style_all(ui_sdContainer);
+    lv_obj_set_width(ui_sdContainer, lv_pct(100));
+    lv_obj_set_height(ui_sdContainer, LV_SIZE_CONTENT);    /// 1
+    lv_obj_remove_flag(ui_sdContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_lblSD = lv_label_create(ui_sdContainer);
+    lv_obj_set_width(ui_lblSD, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblSD, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblSD, LV_ALIGN_BOTTOM_LEFT);
+    lv_label_set_text(ui_lblSD, "SD:");
+
+    ui_objSDIndicator = lv_label_create(ui_sdContainer);
+    lv_obj_set_width(ui_objSDIndicator, 10);
+    lv_obj_set_height(ui_objSDIndicator, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_objSDIndicator, -1);
+    lv_obj_set_y(ui_objSDIndicator, 0);
+    lv_obj_set_align(ui_objSDIndicator, LV_ALIGN_TOP_MID);
+    lv_label_set_text(ui_objSDIndicator, "");
+
+    ui_lblSDStatus = lv_label_create(ui_sdContainer);
+    lv_obj_set_width(ui_lblSDStatus, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_lblSDStatus, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_lblSDStatus, LV_ALIGN_BOTTOM_RIGHT);
+    lv_label_set_text(ui_lblSDStatus, "-");
+
     ui_mqttContainer = lv_obj_create(ui_pnlNetwork);
     lv_obj_remove_style_all(ui_mqttContainer);
     lv_obj_set_width(ui_mqttContainer, lv_pct(100));
@@ -303,10 +343,10 @@ void ui_screenMain_screen_init(void)
 
     ui_actionBtns = lv_obj_create(ui_pnlNetwork);
     lv_obj_remove_style_all(ui_actionBtns);
-    lv_obj_set_height(ui_actionBtns, 50);
-    lv_obj_set_width(ui_actionBtns, lv_pct(100));
+    lv_obj_set_height(ui_actionBtns, 100);
+    lv_obj_set_width(ui_actionBtns, lv_pct(118));
     lv_obj_set_align(ui_actionBtns, LV_ALIGN_CENTER);
-    lv_obj_set_flex_flow(ui_actionBtns, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_flow(ui_actionBtns, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(ui_actionBtns, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(ui_actionBtns, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SNAPPABLE |
                        LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -337,6 +377,14 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_align(ui_Label1, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Label1, "LOG");
 
+    ui_btnGOTOSD = ui_btn_create(ui_actionBtns);
+    lv_obj_set_width(ui_btnGOTOSD, 100);
+    lv_obj_set_height(ui_btnGOTOSD, LV_SIZE_CONTENT);    /// 100
+    lv_obj_set_x(ui_btnGOTOSD, 0);
+    lv_obj_set_y(ui_btnGOTOSD, 0);
+
+    lv_label_set_text(ui_comp_get_child(ui_btnGOTOSD, UI_COMP_BTN_BTNLBL), "SD Files");
+
     ui_lblFPS = lv_label_create(ui_screenMain);
     lv_obj_set_width(ui_lblFPS, 100);
     lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
@@ -351,6 +399,7 @@ void ui_screenMain_screen_init(void)
     lv_obj_add_event_cb(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
                         ui_event_containerBalanceVolumeSlider_containerBalanceVolumeSlider_balanceVolumeSlider, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_btnGOTOSD, ui_event_btnGOTOSD_btn, LV_EVENT_ALL, NULL);
     ui_lblPrimaryVolumeSlider = ui_comp_get_child(ui_containerPrimaryVolumeSlider,
                                                   UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER);
     ui_primaryVolumeSlider = ui_comp_get_child(ui_containerPrimaryVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER);
@@ -400,6 +449,10 @@ void ui_screenMain_screen_destroy(void)
     ui_ipContainer = NULL;
     ui_lblIP = NULL;
     ui_lblIPValue = NULL;
+    ui_sdContainer = NULL;
+    ui_lblSD = NULL;
+    ui_objSDIndicator = NULL;
+    ui_lblSDStatus = NULL;
     ui_mqttContainer = NULL;
     ui_lblMQTT = NULL;
     ui_objMQTTIndicator = NULL;
@@ -409,6 +462,7 @@ void ui_screenMain_screen_destroy(void)
     ui_Label5 = NULL;
     ui_btnGOTOLog = NULL;
     ui_Label1 = NULL;
+    ui_btnGOTOSD = NULL;
     ui_lblFPS = NULL;
 
 }

@@ -3,15 +3,20 @@
 // LVGL version: 9.1.0
 // Project name: SquareLine_Project
 
-#ifndef _SQUARELINE_PROJECT_UI_COMP_HOOK_H
-#define _SQUARELINE_PROJECT_UI_COMP_HOOK_H
+#ifndef _UI_COMP_BTN_H
+#define _UI_COMP_BTN_H
+
+#include "../ui.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void ui_comp_btn_create_hook(lv_obj_t * comp);
-void ui_comp_VolumeSlider_create_hook(lv_obj_t * comp);
+// COMPONENT btn
+#define UI_COMP_BTN_BTN 0
+#define UI_COMP_BTN_BTNLBL 1
+#define _UI_COMP_BTN_NUM 2
+lv_obj_t * ui_btn_create(lv_obj_t * comp_parent);
 
 #ifdef __cplusplus
 } /*extern "C"*/

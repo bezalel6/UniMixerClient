@@ -27,6 +27,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/MqttManager.h"
+#include "../hardware/SDManager.h"
 #include "AudioManager.h"
 #include <esp_log.h>
 #include <ui/ui.h>
@@ -623,11 +624,38 @@ void processMessageQueue(lv_timer_t *timer) {
                     uint32_t uptime_min = uptime_sec / 60;
                     uint32_t uptime_hr = uptime_min / 60;
 
+                    // Get SD card status for display
+                    const char *sd_icon = LV_SYMBOL_SD_CARD;
+                    const char *sd_status_text = "Not Available";
+                    char sd_info[64] = "";
+
+                    // Check if SD manager is available by trying to get status
+                    Hardware::SD::SDStatus sdStatus = Hardware::SD::getStatus();
+                    if (sdStatus != Hardware::SD::SD_STATUS_NOT_INITIALIZED) {
+                        bool sd_mounted = Hardware::SD::isMounted();
+                        const char *sd_status_str = Hardware::SD::getStatusString();
+
+                        if (sd_mounted) {
+                            Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
+                            uint64_t total_mb = cardInfo.totalBytes / (1024 * 1024);
+                            uint64_t used_mb = cardInfo.usedBytes / (1024 * 1024);
+                            snprintf(sd_info, sizeof(sd_info), " (%llu/%llu MB)", used_mb, total_mb);
+                            sd_status_text = sd_status_str;
+                        } else {
+                            sd_status_text = sd_status_str;
+                        }
+                    }
+
                     snprintf(system_text, sizeof(system_text),
-                             LV_SYMBOL_SETTINGS " SYSTEM STATUS\n" LV_SYMBOL_FILE " Heap: %u KB\n" LV_SYMBOL_DRIVE " PSRAM: %u KB\n" LV_SYMBOL_CHARGE " CPU: %u MHz\n" LV_SYMBOL_LOOP
-                                                " Uptime: %u:%u:%u\n" LV_SYMBOL_WIFI " WiFi: %s\n" LV_SYMBOL_SETTINGS " Signal: %d dBm\n" LV_SYMBOL_HOME " IP: %s",
-                             heap_kb, psram_kb, message.data.state_overview.cpu_freq, uptime_hr, uptime_min % 60, uptime_sec % 60,
-                             message.data.state_overview.wifi_status, message.data.state_overview.wifi_rssi, message.data.state_overview.ip_address);
+                             LV_SYMBOL_SETTINGS " SYSTEM STATUS\n" LV_SYMBOL_FILE " Heap: %u KB\n" LV_SYMBOL_DRIVE " PSRAM: %u KB\n" LV_SYMBOL_CHARGE " CPU: %u MHz\n" LV_SYMBOL_LOOP " Uptime: %u:%u:%u\n" LV_SYMBOL_WIFI " WiFi: %s\n" LV_SYMBOL_SETTINGS " Signal: %d dBm\n" LV_SYMBOL_HOME
+                                                " IP: %s\n"
+                                                "%s SD: %s%s",
+                             heap_kb, psram_kb, message.data.state_overview.cpu_freq,
+                             uptime_hr, uptime_min % 60, uptime_sec % 60,
+                             message.data.state_overview.wifi_status,
+                             message.data.state_overview.wifi_rssi,
+                             message.data.state_overview.ip_address,
+                             sd_icon, sd_status_text, sd_info);
                     lv_label_set_text(state_system_label, system_text);
 
                     // Update heap progress bar (percentage of available heap)
@@ -705,7 +733,7 @@ void processMessageQueue(lv_timer_t *timer) {
                 if (state_audio_label) {
                     // Get full audio status for comprehensive display
                     Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
-                    auto fullStatus = audioManager.getState().currentStatus;
+                    const auto &audioState = audioManager.getState();
 
                     char audio_text[1024];
                     char *pos = audio_text;
@@ -761,20 +789,20 @@ void processMessageQueue(lv_timer_t *timer) {
                     }
 
                     // Show default device if available
-                    if (fullStatus.hasDefaultDevice && remaining > 50) {
-                        const char *default_icon = fullStatus.defaultDevice.isMuted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO;
+                    if (audioState.currentStatus.hasDefaultDevice && remaining > 50) {
+                        const char *default_icon = audioState.currentStatus.defaultDevice.isMuted ? LV_SYMBOL_MUTE : LV_SYMBOL_AUDIO;
                         written = snprintf(pos, remaining,
                                            "%s Default: %s %.0f%%\n",
                                            default_icon,
-                                           fullStatus.defaultDevice.friendlyName.c_str(),
-                                           fullStatus.defaultDevice.volume);
+                                           audioState.currentStatus.defaultDevice.friendlyName.c_str(),
+                                           (float)audioState.currentStatus.defaultDevice.volume);
                         pos += written;
                         remaining -= written;
                     }
 
                     // Show individual audio devices (limit to fit)
                     int deviceCount = 0;
-                    for (const auto &pair : fullStatus) {
+                    for (const auto &pair : audioState.currentStatus) {
                         const auto &device = pair.second;
                         if (remaining < 30 || deviceCount >= 5) break;  // Limit devices shown
 
@@ -791,10 +819,10 @@ void processMessageQueue(lv_timer_t *timer) {
                     }
 
                     // Add summary if there are more devices
-                    if (fullStatus.getDeviceCount() > deviceCount && remaining > 20) {
+                    if (audioState.currentStatus.getDeviceCount() > deviceCount && remaining > 20) {
                         snprintf(pos, remaining,
                                  LV_SYMBOL_PLUS " ... +%d more devices",
-                                 (int)(fullStatus.getDeviceCount() - deviceCount));
+                                 (int)(audioState.currentStatus.getDeviceCount() - deviceCount));
                     }
 
                     lv_label_set_text(state_audio_label, audio_text);
@@ -820,6 +848,22 @@ void processMessageQueue(lv_timer_t *timer) {
                     gesture_entry_count = 0;
                 }
                 ESP_LOGI(TAG, "State Overlay: HIDDEN successfully");
+                break;
+
+            case MSG_UPDATE_SD_STATUS:
+                // Update SD card status indicators
+                if (ui_lblSDStatus) {
+                    lv_label_set_text(ui_lblSDStatus, message.data.sd_status.status);
+                }
+                if (ui_objSDIndicator) {
+                    if (message.data.sd_status.mounted) {
+                        lv_obj_set_style_bg_color(ui_objSDIndicator, lv_color_hex(0x00FF00),
+                                                  LV_PART_MAIN);
+                    } else {
+                        lv_obj_set_style_bg_color(ui_objSDIndicator, lv_color_hex(0xFF0000),
+                                                  LV_PART_MAIN);
+                    }
+                }
                 break;
 
             default:
@@ -1069,24 +1113,20 @@ bool updateStateOverview(void) {
             sizeof(message.data.state_overview.current_tab) - 1);
     message.data.state_overview.current_tab[sizeof(message.data.state_overview.current_tab) - 1] = '\0';
 
-    // Collect all selected devices information
-
     // Main device (Master/Single tab)
-    // Use appropriate device based on current tab
-    const auto *currentDevice = audioState.getCurrentSelectedDevice();
-    if (currentDevice) {
-        strncpy(message.data.state_overview.main_device, currentDevice->processName.c_str(),
+    if (audioState.selectedDevice1) {
+        strncpy(message.data.state_overview.main_device, audioState.selectedDevice1->processName.c_str(),
                 sizeof(message.data.state_overview.main_device) - 1);
         message.data.state_overview.main_device[sizeof(message.data.state_overview.main_device) - 1] = '\0';
-        message.data.state_overview.main_device_volume = currentDevice->volume;
-        message.data.state_overview.main_device_muted = currentDevice->isMuted;
+        message.data.state_overview.main_device_volume = audioState.selectedDevice1->volume;
+        message.data.state_overview.main_device_muted = audioState.selectedDevice1->isMuted;
     } else {
-        message.data.state_overview.main_device[0] = '\0';
+        strcpy(message.data.state_overview.main_device, "None");
         message.data.state_overview.main_device_volume = 0;
         message.data.state_overview.main_device_muted = false;
     }
 
-    // Balance device 1
+    // Balance devices
     if (audioState.selectedDevice1) {
         strncpy(message.data.state_overview.balance_device1, audioState.selectedDevice1->processName.c_str(),
                 sizeof(message.data.state_overview.balance_device1) - 1);
@@ -1094,12 +1134,11 @@ bool updateStateOverview(void) {
         message.data.state_overview.balance_device1_volume = audioState.selectedDevice1->volume;
         message.data.state_overview.balance_device1_muted = audioState.selectedDevice1->isMuted;
     } else {
-        message.data.state_overview.balance_device1[0] = '\0';
+        strcpy(message.data.state_overview.balance_device1, "None");
         message.data.state_overview.balance_device1_volume = 0;
         message.data.state_overview.balance_device1_muted = false;
     }
 
-    // Balance device 2
     if (audioState.selectedDevice2) {
         strncpy(message.data.state_overview.balance_device2, audioState.selectedDevice2->processName.c_str(),
                 sizeof(message.data.state_overview.balance_device2) - 1);
@@ -1107,19 +1146,16 @@ bool updateStateOverview(void) {
         message.data.state_overview.balance_device2_volume = audioState.selectedDevice2->volume;
         message.data.state_overview.balance_device2_muted = audioState.selectedDevice2->isMuted;
     } else {
-        message.data.state_overview.balance_device2[0] = '\0';
+        strcpy(message.data.state_overview.balance_device2, "None");
         message.data.state_overview.balance_device2_volume = 0;
         message.data.state_overview.balance_device2_muted = false;
     }
 
-    // Legacy compatibility - current active device
-    String selectedDevice = audioManager.getCurrentDevice();
-    strncpy(message.data.state_overview.selected_device, selectedDevice.c_str(),
+    // Legacy compatibility fields (use main device data)
+    strncpy(message.data.state_overview.selected_device, message.data.state_overview.main_device,
             sizeof(message.data.state_overview.selected_device) - 1);
-    message.data.state_overview.selected_device[sizeof(message.data.state_overview.selected_device) - 1] = '\0';
-
-    message.data.state_overview.current_volume = audioManager.getCurrentVolume();
-    message.data.state_overview.is_muted = audioManager.isCurrentDeviceMuted();
+    message.data.state_overview.current_volume = message.data.state_overview.main_device_volume;
+    message.data.state_overview.is_muted = message.data.state_overview.main_device_muted;
 
     return sendMessage(&message);
 }
@@ -1128,6 +1164,17 @@ bool hideStateOverview(void) {
     ESP_LOGI(TAG, "State Overlay: hideStateOverview() called - sending hide message");
     LVGLMessage_t message;
     message.type = MSG_HIDE_STATE_OVERVIEW;
+    return sendMessage(&message);
+}
+
+bool updateSDStatus(const char *status, bool mounted, uint64_t total_mb, uint64_t used_mb, uint8_t card_type) {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_SD_STATUS;
+    message.data.sd_status.status = status;
+    message.data.sd_status.mounted = mounted;
+    message.data.sd_status.total_mb = total_mb;
+    message.data.sd_status.used_mb = used_mb;
+    message.data.sd_status.card_type = card_type;
     return sendMessage(&message);
 }
 

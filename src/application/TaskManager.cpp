@@ -6,6 +6,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
+#include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
 #include "AppController.h"
 #include "AudioUI.h"
@@ -436,6 +437,31 @@ void networkTask(void *parameter) {
         LVGLMessageHandler::updateWifiStatus(status, connected);
         LVGLMessageHandler::updateNetworkInfo(ssid, ip);
 #endif
+
+        // Update SD card status (hardware monitoring)
+        Hardware::SD::update();
+
+        // Send SD status UI update messages
+        if (Hardware::SD::isInitialized()) {
+            Hardware::SD::SDStatus sdStatus = Hardware::SD::getStatus();
+            const char *statusStr = Hardware::SD::getStatusString();
+            bool mounted = Hardware::SD::isMounted();
+
+            // Get card info for display
+            uint64_t totalMB = 0;
+            uint64_t usedMB = 0;
+            uint8_t cardType = 0;
+
+            if (mounted) {
+                Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
+                totalMB = cardInfo.totalBytes / (1024 * 1024);
+                usedMB = cardInfo.usedBytes / (1024 * 1024);
+                cardType = cardInfo.cardType;
+            }
+
+            // Send UI update
+            LVGLMessageHandler::updateSDStatus(statusStr, mounted, totalMB, usedMB, cardType);
+        }
 
         // Sleep until next update
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(NETWORK_UPDATE_INTERVAL));
