@@ -286,18 +286,66 @@ bool removeDirectory(const char* path) {
 }
 
 bool directoryExists(const char* path) {
+    // Thread-safe implementation with comprehensive logging
+    ESP_LOGI(TAG, "=== directoryExists() ENTRY ===");
+    ESP_LOGI(TAG, "Checking if directory exists: %s", path ? path : "NULL");
+    ESP_LOGI(TAG, "Free heap: %u bytes", ESP.getFreeHeap());
+
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGE(TAG, "FAILED to acquire SD mutex for directoryExists");
+        return false;
+    }
+
+    bool result = false;
+
     if (!isMounted() || !path) {
+        ESP_LOGE(TAG, "Invalid parameters - mounted: %s, path: %s",
+                 isMounted() ? "YES" : "NO", path ? "valid" : "NULL");
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
-    File dir = ::SD.open(path);
+    ESP_LOGI(TAG, "About to call ::SD.open() for path: %s", path);
+
+    File dir;
+    try {
+        dir = ::SD.open(path);
+        ESP_LOGI(TAG, "::SD.open() completed successfully");
+    } catch (...) {
+        ESP_LOGE(TAG, "EXCEPTION during ::SD.open() for path: %s", path);
+        xSemaphoreGive(sdOperationMutex);
+        return false;
+    }
+
     if (!dir) {
+        ESP_LOGI(TAG, "Directory does not exist: %s", path);
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
+    ESP_LOGI(TAG, "File object created successfully");
 
-    bool isDir = dir.isDirectory();
-    dir.close();
-    return isDir;
+    ESP_LOGI(TAG, "About to call dir.isDirectory()...");
+    try {
+        bool isDir = dir.isDirectory();
+        ESP_LOGI(TAG, "dir.isDirectory() returned: %s", isDir ? "true" : "false");
+        result = isDir;
+    } catch (...) {
+        ESP_LOGE(TAG, "EXCEPTION during dir.isDirectory() for path: %s", path);
+        result = false;
+    }
+
+    ESP_LOGI(TAG, "About to close directory file object...");
+    try {
+        dir.close();
+        ESP_LOGI(TAG, "Directory file object closed successfully");
+    } catch (...) {
+        ESP_LOGE(TAG, "EXCEPTION during dir.close() for path: %s", path);
+    }
+
+    ESP_LOGI(TAG, "=== directoryExists() EXIT === result: %s", result ? "true" : "false");
+
+    xSemaphoreGive(sdOperationMutex);
+    return result;
 }
 
 bool listDirectory(const char* path, void (*callback)(const char* name, bool isDir, size_t size)) {
