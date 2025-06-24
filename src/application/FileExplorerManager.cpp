@@ -23,6 +23,86 @@ static FileExplorerManager* g_manager = nullptr;
 static const unsigned long BUTTON_DEBOUNCE_MS = 500;
 static unsigned long g_lastNewButtonTime = 0;
 
+// Static callback functions for folder creation dialog
+static void folderCreationKeyboardCallback(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_READY) {
+        // User pressed the checkmark (OK) button on keyboard
+        FileExplorerManager& manager = FileExplorerManager::getInstance();
+        lv_obj_t* keyboard = (lv_obj_t*)lv_event_get_target(e);
+        lv_obj_t* textArea = lv_keyboard_get_textarea(keyboard);
+        lv_obj_t* errorLabel = (lv_obj_t*)lv_obj_get_user_data(keyboard);
+
+        if (!textArea || !errorLabel) {
+            ESP_LOGE(TAG, "Could not find text area or error label from keyboard");
+            return;
+        }
+
+        // Helper function to show validation errors
+        auto showValidationError = [errorLabel](const char* message) {
+            lv_label_set_text(errorLabel, message);
+            lv_obj_remove_flag(errorLabel, LV_OBJ_FLAG_HIDDEN);
+        };
+
+        const char* text = lv_textarea_get_text(textArea);
+        if (!text || strlen(text) == 0) {
+            showValidationError("Please enter a folder name");
+            return;
+        }
+
+        String folderName = String(text);
+        folderName.trim();
+
+        // Validate folder name
+        if (folderName.length() == 0) {
+            showValidationError("Folder name cannot be empty");
+            return;
+        }
+
+        if (folderName.length() > 50) {
+            showValidationError("Folder name too long (max 50 characters)");
+            return;
+        }
+
+        // Check for invalid characters
+        const char* invalidChars = "/\\:*?\"<>|";
+        for (int i = 0; invalidChars[i]; i++) {
+            if (folderName.indexOf(invalidChars[i]) >= 0) {
+                showValidationError("Invalid character found");
+                return;
+            }
+        }
+
+        // Check for reserved names
+        if (folderName.equalsIgnoreCase("con") || folderName.equalsIgnoreCase("prn") ||
+            folderName.equalsIgnoreCase("aux") || folderName.equalsIgnoreCase("nul")) {
+            showValidationError("Reserved name not allowed");
+            return;
+        }
+
+        // Validation passed - create the folder
+        if (manager.createDirectory(folderName)) {
+            manager.closeDialog();
+        } else {
+            showValidationError("Failed to create folder");
+        }
+    } else if (code == LV_EVENT_CANCEL) {
+        // User pressed the cancel button on keyboard
+        FileExplorerManager::getInstance().closeDialog();
+    }
+}
+
+static void folderCreationTextAreaCallback(lv_event_t* e) {
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t* textArea = (lv_obj_t*)lv_event_get_target(e);
+        lv_obj_t* errorLabel = (lv_obj_t*)lv_obj_get_user_data(textArea);
+        if (errorLabel) {
+            lv_obj_add_flag(errorLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
 // Static callback function for listDirectory - now thread-safe
 static void directoryListingCallback(const char* name, bool isDir, size_t size) {
     // Take mutex to ensure thread safety
@@ -761,8 +841,8 @@ void FileExplorerManager::onRefreshClicked() {
 }
 
 void FileExplorerManager::onNewFolderClicked() {
-    // Use the simpler dialog for better compatibility
-    showSimpleFolderDialog();
+    // Use the full dialog with virtual keyboard
+    showCreateFolderDialog();
 }
 
 void FileExplorerManager::onDeleteClicked() {
@@ -777,182 +857,133 @@ void FileExplorerManager::onPropertiesClicked() {
     }
 }
 
-// Proper dialog implementations
+// Modern folder creation dialog
 void FileExplorerManager::showCreateFolderDialog() {
     if (!ui_screenFileExplorer) {
+        ESP_LOGW(TAG, "Cannot show folder dialog: ui_screenFileExplorer is null");
         return;
     }
 
-    // Create modal overlay
+    ESP_LOGW(TAG, "Opening folder creation dialog");
+
+    // Create modal overlay with smooth fade effect
     modalOverlay = lv_obj_create(ui_screenFileExplorer);
     lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 160, LV_PART_MAIN);
+    lv_obj_set_style_radius(modalOverlay, 0, LV_PART_MAIN);
 
-    // Create input dialog (larger to accommodate keyboard)
+    // Create main dialog container with modern styling
     inputDialog = lv_obj_create(modalOverlay);
-    lv_obj_set_size(inputDialog, lv_pct(95), lv_pct(70));
+    lv_obj_set_size(inputDialog, lv_pct(92), lv_pct(85));
     lv_obj_set_align(inputDialog, LV_ALIGN_CENTER);
-    lv_obj_set_style_bg_color(inputDialog, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(inputDialog, lv_color_make(248, 249, 250), LV_PART_MAIN);
+    lv_obj_set_style_border_width(inputDialog, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(inputDialog, 16, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(inputDialog, 20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(inputDialog, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(inputDialog, 80, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(inputDialog, 20, LV_PART_MAIN);
 
-    // Title
-    lv_obj_t* title = lv_label_create(inputDialog);
+    // Header section with icon and title
+    lv_obj_t* headerSection = lv_obj_create(inputDialog);
+    lv_obj_set_size(headerSection, lv_pct(100), 80);
+    lv_obj_set_align(headerSection, LV_ALIGN_TOP_MID);
+    lv_obj_set_style_bg_opa(headerSection, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(headerSection, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(headerSection, 0, LV_PART_MAIN);
+
+    // Folder icon
+    lv_obj_t* folderIcon = lv_label_create(headerSection);
+    lv_label_set_text(folderIcon, LV_SYMBOL_DIRECTORY);
+    lv_obj_set_style_text_color(folderIcon, lv_color_make(52, 152, 219), LV_PART_MAIN);
+    lv_obj_set_style_text_font(folderIcon, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_align(folderIcon, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(folderIcon, 10);
+
+    // Title with better typography
+    lv_obj_t* title = lv_label_create(headerSection);
     lv_label_set_text(title, "Create New Folder");
-    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(title, 10);
+    lv_obj_set_style_text_color(title, lv_color_make(44, 62, 80), LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_align(title, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_pos(title, 35, 12);
 
-    // Text area for folder name
-    lv_obj_t* textArea = lv_textarea_create(inputDialog);
-    lv_obj_set_size(textArea, lv_pct(80), 40);
-    lv_obj_set_align(textArea, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(textArea, 50);
-    lv_textarea_set_placeholder_text(textArea, "Folder name...");
-    lv_textarea_set_one_line(textArea, true);  // Single line input
+    // Subtitle/instruction
+    lv_obj_t* subtitle = lv_label_create(headerSection);
+    lv_label_set_text(subtitle, "Enter a name for the new folder");
+    lv_obj_set_style_text_color(subtitle, lv_color_make(127, 140, 141), LV_PART_MAIN);
+    lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_align(subtitle, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_pos(subtitle, 35, 38);
 
-    // Button panel (above keyboard)
-    lv_obj_t* btnPanel = lv_obj_create(inputDialog);
-    lv_obj_set_size(btnPanel, lv_pct(100), 50);
-    lv_obj_set_align(btnPanel, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(btnPanel, 100);
+    // Input section with label
+    lv_obj_t* inputSection = lv_obj_create(inputDialog);
+    lv_obj_set_size(inputSection, lv_pct(100), 80);
+    lv_obj_set_align(inputSection, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(inputSection, 90);
+    lv_obj_set_style_bg_opa(inputSection, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(inputSection, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(inputSection, 0, LV_PART_MAIN);
 
-    // Create virtual keyboard for text input (at bottom)
-    lv_obj_t* keyboard = lv_keyboard_create(inputDialog);
-    lv_obj_set_size(keyboard, lv_pct(95), lv_pct(50));
-    lv_obj_set_align(keyboard, LV_ALIGN_BOTTOM_MID);
-    lv_keyboard_set_textarea(keyboard, textArea);
+    // Input label
+    lv_obj_t* inputLabel = lv_label_create(inputSection);
+    lv_label_set_text(inputLabel, "Folder Name:");
+    lv_obj_set_style_text_color(inputLabel, lv_color_make(52, 73, 94), LV_PART_MAIN);
+    lv_obj_set_style_text_font(inputLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    // lv_obj_set_align(inputLabel, LV_ALIGN_TOP_LEFT);
 
-    // Focus the text area for immediate input
-    lv_obj_add_state(textArea, LV_STATE_FOCUSED);
-    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
-
-    // OK button
-    lv_obj_t* btnOK = lv_button_create(btnPanel);
-    lv_obj_t* lblOK = lv_label_create(btnOK);
-    lv_label_set_text(lblOK, "Create");
-    lv_obj_add_event_cb(btnOK, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            FileExplorerManager& manager = FileExplorerManager::getInstance();
-            lv_obj_t* dialog = manager.inputDialog;
-            if (dialog) {
-                // Find the text area (second child of dialog)
-                lv_obj_t* textArea = lv_obj_get_child(dialog, 1);
-                if (textArea) {
-                    const char* text = lv_textarea_get_text(textArea);
-                    if (text && strlen(text) > 0) {
-                        String folderName = String(text);
-                        // Validate folder name
-                        if (folderName.indexOf('/') >= 0 || folderName.indexOf('\\') >= 0 || 
-                            folderName.indexOf(':') >= 0 || folderName.indexOf('*') >= 0 ||
-                            folderName.indexOf('?') >= 0 || folderName.indexOf('"') >= 0 ||
-                            folderName.indexOf('<') >= 0 || folderName.indexOf('>') >= 0 ||
-                            folderName.indexOf('|') >= 0) {
-                            ESP_LOGW("FileExplorerManager", "Invalid folder name: %s", folderName.c_str());
-                            return; // Don't close dialog, let user fix name
-                        }
-                        manager.createDirectory(folderName);
-                    }
-                }
-            }
-            manager.closeDialog();
-        } }, LV_EVENT_CLICKED, nullptr);
-
-    // Cancel button
-    lv_obj_t* btnCancel = lv_button_create(btnPanel);
-    lv_obj_t* lblCancel = lv_label_create(btnCancel);
-    lv_label_set_text(lblCancel, "Cancel");
-    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            FileExplorerManager::getInstance().closeDialog();
-        } }, LV_EVENT_CLICKED, nullptr);
-}
-
-void FileExplorerManager::showSimpleFolderDialog() {
-    if (!ui_screenFileExplorer) {
-        return;
-    }
-
-    // Create modal overlay
-    modalOverlay = lv_obj_create(ui_screenFileExplorer);
-    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
-
-    // Create input dialog (smaller, simpler)
-    inputDialog = lv_obj_create(modalOverlay);
-    lv_obj_set_size(inputDialog, lv_pct(80), lv_pct(45));
-    lv_obj_set_align(inputDialog, LV_ALIGN_CENTER);
-    lv_obj_set_style_bg_color(inputDialog, lv_color_white(), LV_PART_MAIN);
-
-    // Title
-    lv_obj_t* title = lv_label_create(inputDialog);
-    lv_label_set_text(title, "Create New Folder");
-    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(title, 10);
-
-    // Instructions
-    lv_obj_t* instructions = lv_label_create(inputDialog);
-    lv_label_set_text(instructions, "Touch the text field to enter folder name:");
-    lv_obj_set_align(instructions, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(instructions, 40);
-
-    // Simple text area for folder name
-    lv_obj_t* textArea = lv_textarea_create(inputDialog);
-    lv_obj_set_size(textArea, lv_pct(80), 40);
-    lv_obj_set_align(textArea, LV_ALIGN_CENTER);
-    lv_obj_set_y(textArea, -20);
-    lv_textarea_set_placeholder_text(textArea, "Enter folder name...");
+    // Modern text area with better styling
+    lv_obj_t* textArea = lv_textarea_create(inputSection);
+    lv_obj_set_size(textArea, lv_pct(100), 50);
+    lv_obj_set_align(textArea, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(textArea, 25);
+    lv_textarea_set_placeholder_text(textArea, "My Folder");
     lv_textarea_set_one_line(textArea, true);
 
-    // Pre-fill with a default name
-    String defaultName = "NewFolder_" + String(Hardware::Device::getMillis());
-    lv_textarea_set_text(textArea, defaultName.c_str());
+    // Enhanced text area styling
+    lv_obj_set_style_bg_color(textArea, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_border_width(textArea, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(textArea, lv_color_make(189, 195, 199), LV_PART_MAIN);
+    lv_obj_set_style_border_color(textArea, lv_color_make(52, 152, 219), LV_STATE_FOCUSED);
+    lv_obj_set_style_radius(textArea, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(textArea, 12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(textArea, lv_color_make(44, 62, 80), LV_PART_MAIN);
+
+    // Error message label (initially hidden)
+    lv_obj_t* errorLabel = lv_label_create(inputSection);
+    lv_label_set_text(errorLabel, "");
+    lv_obj_set_style_text_color(errorLabel, lv_color_make(231, 76, 60), LV_PART_MAIN);
+    lv_obj_set_style_text_font(errorLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_align(errorLabel, LV_ALIGN_TOP_RIGHT);
+    // lv_obj_set_y(errorLabel, 80);
+    lv_obj_add_flag(errorLabel, LV_OBJ_FLAG_HIDDEN);
+
+    // Virtual keyboard with built-in action buttons
+    lv_obj_t* keyboard = lv_keyboard_create(inputDialog);
+    lv_obj_set_size(keyboard, lv_pct(100), lv_pct(50));  // Give keyboard more space
+    lv_obj_set_align(keyboard, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_style_bg_color(keyboard, lv_color_make(255, 255, 255), LV_PART_MAIN);
+    lv_obj_set_style_border_width(keyboard, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(keyboard, lv_color_make(229, 231, 235), LV_PART_MAIN);
+    lv_obj_set_style_radius(keyboard, 8, LV_PART_MAIN);
+
+    // Associate keyboard with text area
+    lv_keyboard_set_textarea(keyboard, textArea);
+
+    // Store error label in user data for callback access
+    lv_obj_set_user_data(keyboard, errorLabel);
+    lv_obj_set_user_data(textArea, errorLabel);
+
+    // Handle keyboard events (built-in OK/Cancel buttons)
+    lv_obj_add_event_cb(keyboard, folderCreationKeyboardCallback, LV_EVENT_ALL, nullptr);
+
+    // Clear error message when user starts typing
+    lv_obj_add_event_cb(textArea, folderCreationTextAreaCallback, LV_EVENT_VALUE_CHANGED, nullptr);
+
+    // Focus the text area and select all text for easy replacement
     lv_obj_add_state(textArea, LV_STATE_FOCUSED);
-
-    // Button panel
-    lv_obj_t* btnPanel = lv_obj_create(inputDialog);
-    lv_obj_set_size(btnPanel, lv_pct(100), 50);
-    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
-
-    // OK button
-    lv_obj_t* btnOK = lv_button_create(btnPanel);
-    lv_obj_t* lblOK = lv_label_create(btnOK);
-    lv_label_set_text(lblOK, "Create");
-    lv_obj_add_event_cb(btnOK, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            FileExplorerManager& manager = FileExplorerManager::getInstance();
-            lv_obj_t* dialog = manager.inputDialog;
-            if (dialog) {
-                // Find the text area (third child: title, instructions, textArea)
-                lv_obj_t* textArea = lv_obj_get_child(dialog, 2);
-                if (textArea) {
-                    const char* text = lv_textarea_get_text(textArea);
-                    if (text && strlen(text) > 0) {
-                        String folderName = String(text);
-                        // Basic validation
-                        if (folderName.indexOf('/') >= 0 || folderName.indexOf('\\') >= 0) {
-                            ESP_LOGW("FileExplorerManager", "Invalid folder name: %s", folderName.c_str());
-                            return; // Don't close dialog
-                        }
-                        manager.createDirectory(folderName);
-                    }
-                }
-            }
-            manager.closeDialog();
-        } }, LV_EVENT_CLICKED, nullptr);
-
-    // Cancel button
-    lv_obj_t* btnCancel = lv_button_create(btnPanel);
-    lv_obj_t* lblCancel = lv_label_create(btnCancel);
-    lv_label_set_text(lblCancel, "Cancel");
-    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            FileExplorerManager::getInstance().closeDialog();
-        } }, LV_EVENT_CLICKED, nullptr);
+    lv_textarea_set_cursor_pos(textArea, 0);
 }
 
 void FileExplorerManager::showDeleteConfirmation(const FileItem* item) {
