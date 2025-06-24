@@ -19,9 +19,9 @@ namespace TaskManager {
 
 // Task priorities (higher number = higher priority)
 #define LVGL_TASK_PRIORITY (configMAX_PRIORITIES - 1)       // Highest priority
+#define OTA_TASK_PRIORITY (configMAX_PRIORITIES - 2)        // Medium priority
 #define NETWORK_TASK_PRIORITY (configMAX_PRIORITIES - 3)    // Medium-high priority
-#define MESSAGING_TASK_PRIORITY (configMAX_PRIORITIES - 2)  // High priority
-#define OTA_TASK_PRIORITY (configMAX_PRIORITIES - 4)        // Medium priority
+#define MESSAGING_TASK_PRIORITY (configMAX_PRIORITIES - 3)  // High priority
 #define AUDIO_TASK_PRIORITY 1                               // Lower priority to prevent watchdog issues
 
 // Core assignment for ESP32-S3 (optimized for performance)

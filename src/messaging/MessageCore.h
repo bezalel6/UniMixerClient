@@ -146,6 +146,10 @@ class MessageCore {
     unsigned long messagesReceived = 0;
     unsigned long lastActivityTime = 0;
 
+    // Logo request debouncing
+    std::map<String, unsigned long> lastLogoCheckTime;
+    static const unsigned long LOGO_CHECK_DEBOUNCE_MS = 30000;  // 30 seconds between checks for same process
+
     // =============================================================================
     // INTERNAL HELPERS
     // =============================================================================
@@ -154,6 +158,16 @@ class MessageCore {
      * Process audio status message
      */
     void processAudioStatusMessage(const String& payload);
+
+    /**
+     * Check and request logos for audio processes
+     */
+    void checkAndRequestLogosForAudioProcesses(const AudioStatusData& statusData);
+
+    /**
+     * Check logo for a single process and request if needed
+     */
+    void checkSingleProcessLogo(const char* processName);
 
     /**
      * Update activity timestamp

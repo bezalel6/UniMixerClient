@@ -1,4 +1,5 @@
 #include "LogoManager.h"
+#include "LogoSupplier.h"
 #include "../hardware/SDManager.h"
 #include "../hardware/DeviceManager.h"
 #include <esp_log.h>
@@ -155,6 +156,12 @@ LogoLoadResult LogoManager::loadLogo(const char* processName) {
     // Check if file exists
     if (!Hardware::SD::fileExists(logoPath.c_str())) {
         result = createLoadResult(false, nullptr, 0, "Logo file not found");
+
+        // Auto-request missing logo if enabled
+        if (autoRequestEnabled) {
+            requestLogoFromSupplier(processName);
+        }
+
         xSemaphoreGive(logoOperationMutex);
         return result;
     }
@@ -243,6 +250,9 @@ LogoLoadResult LogoManager::loadLogoFuzzy(const char* processName) {
     if (loadResult.success) {
         // Add fuzzy match information to result
         loadResult.fuzzyMatch = fuzzyResult;
+    } else if (autoRequestEnabled) {
+        // Try to request the canonical logo via supplier
+        requestLogoFromSupplier(fuzzyResult.canonicalName);
     }
 
     return loadResult;
@@ -1061,30 +1071,28 @@ bool LogoManager::saveUserMappings() {
 // =============================================================================
 // UTILITY HELPERS
 // =============================================================================
-
 String LogoManager::calculateChecksum(const uint8_t* data, size_t size) {
-    if (!data || size == 0) {
-        return String();
-    }
+    if (!data || size == 0) return String();
 
     unsigned char hash[16];
     mbedtls_md5_context ctx;
-
     mbedtls_md5_init(&ctx);
-    mbedtls_md5_starts(&ctx);
-    mbedtls_md5_update(&ctx, data, size);
-    mbedtls_md5_finish(&ctx, hash);
-    mbedtls_md5_free(&ctx);
 
-    // Convert to hex string
-    String checksum;
-    for (int i = 0; i < 16; i++) {
-        char hex[3];
-        sprintf(hex, "%02x", hash[i]);
-        checksum += hex;
+    if (mbedtls_md5_starts_ret(&ctx) != 0 ||
+        mbedtls_md5_update_ret(&ctx, data, size) != 0 ||
+        mbedtls_md5_finish_ret(&ctx, hash) != 0) {
+        mbedtls_md5_free(&ctx);
+        return String();
     }
 
-    return checksum;
+    mbedtls_md5_free(&ctx);
+
+    char hex[33];  // 16 bytes * 2 chars + null terminator
+    for (int i = 0; i < 16; ++i) {
+        sprintf(&hex[i * 2], "%02x", hash[i]);
+    }
+
+    return String(hex);
 }
 
 bool LogoManager::copyLogoFile(const char* sourceName, const char* destName) {
@@ -1157,6 +1165,163 @@ FuzzyMatchResult LogoManager::createFuzzyResult(bool found, const char* pattern,
     }
 
     return result;
+}
+
+// =============================================================================
+// ASYNC LOGO LOADING
+// =============================================================================
+
+bool LogoManager::loadLogoAsync(const char* processName, LogoLoadCallback callback) {
+    if (!initialized || !processName || !callback) {
+        return false;
+    }
+
+    if (!logoOperationMutex || xSemaphoreTake(logoOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex for async logo load");
+        return false;
+    }
+
+    // First try immediate load
+    LogoLoadResult immediateResult = loadLogo(processName);
+    if (immediateResult.success) {
+        // Logo is available immediately
+        xSemaphoreGive(logoOperationMutex);
+        callback(immediateResult);
+        return true;
+    }
+
+    // Logo not available, check if we should request it
+    if (!autoRequestEnabled) {
+        // Auto-request disabled, just return the failure
+        xSemaphoreGive(logoOperationMutex);
+        callback(immediateResult);
+        return true;
+    }
+
+    // Check if there's already a pending request for this logo
+    String processKey(processName);
+    auto it = pendingAsyncRequests.find(processKey);
+
+    if (it != pendingAsyncRequests.end()) {
+        // Request already in progress, add callback to the list
+        it->second.callbacks.push_back(callback);
+        ESP_LOGI(TAG, "Added callback to existing async request for: %s", processName);
+        xSemaphoreGive(logoOperationMutex);
+        return true;
+    }
+
+    // Create new async request
+    AsyncRequest asyncRequest;
+    asyncRequest.callbacks.push_back(callback);
+    asyncRequest.requestTime = millis();
+    asyncRequest.inProgress = false;
+
+    pendingAsyncRequests[processKey] = asyncRequest;
+
+    // Try to submit the request to supplier
+    if (requestLogoFromSupplier(processName)) {
+        pendingAsyncRequests[processKey].inProgress = true;
+        ESP_LOGI(TAG, "Started async logo request for: %s", processName);
+    } else {
+        // Failed to submit request, complete with error
+        ESP_LOGW(TAG, "Failed to submit logo request for: %s", processName);
+        LogoLoadResult errorResult = createLoadResult(false, nullptr, 0, "Failed to submit request to supplier");
+        callback(errorResult);
+        pendingAsyncRequests.erase(processKey);
+    }
+
+    xSemaphoreGive(logoOperationMutex);
+    return true;
+}
+
+void LogoManager::setLogoRequestCallback(std::function<void(const char* processName, bool success, const char* error)> callback) {
+    logoRequestCallback = callback;
+}
+
+// =============================================================================
+// LOGO SUPPLIER INTEGRATION
+// =============================================================================
+
+bool LogoManager::requestLogoFromSupplier(const char* processName) {
+    if (!processName) {
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Requesting logo from supplier for: %s", processName);
+
+    return LogoSupplierManager::getInstance().requestLogo(processName,
+                                                          [this](const AssetResponse& response) {
+                                                              this->onAssetReceived(response.processName.c_str(),
+                                                                                    response.assetData, response.assetDataSize,
+                                                                                    response.metadata, response.success,
+                                                                                    response.errorMessage.c_str());
+                                                          });
+}
+
+void LogoManager::onAssetReceived(const char* processName, const uint8_t* data, size_t size,
+                                  const LogoMetadata& metadata, bool success, const char* error) {
+    if (!initialized || !processName) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Asset received for: %s (success: %s, size: %zu)",
+             processName, success ? "true" : "false", size);
+
+    if (!logoOperationMutex || xSemaphoreTake(logoOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex for asset processing");
+        return;
+    }
+
+    String processKey(processName);
+    LogoLoadResult result;
+
+    if (success && data && size > 0) {
+        // Save the received logo
+        LogoMetadata updatedMetadata = metadata;
+        updatedMetadata.userFlags.autoDetected = true;
+        updatedMetadata.createdTimestamp = Hardware::Device::getMillis();
+        updatedMetadata.modifiedTimestamp = Hardware::Device::getMillis();
+
+        LogoSaveResult saveResult = saveLogo(processName, data, size, updatedMetadata);
+        if (saveResult.success) {
+            // Successfully saved, now load it back for the result
+            result = loadLogo(processName);
+            if (!result.success) {
+                result = createLoadResult(false, nullptr, 0, "Failed to load saved logo");
+            }
+        } else {
+            result = createLoadResult(false, nullptr, 0, "Failed to save received logo");
+        }
+    } else {
+        // Request failed
+        result = createLoadResult(false, nullptr, 0, error ? error : "Logo request failed");
+    }
+
+    // Complete any pending async requests
+    auto it = pendingAsyncRequests.find(processKey);
+    if (it != pendingAsyncRequests.end()) {
+        for (auto& callback : it->second.callbacks) {
+            if (callback) {
+                callback(result);
+            }
+        }
+        pendingAsyncRequests.erase(it);
+    }
+
+    // Call notification callback if set
+    if (logoRequestCallback) {
+        logoRequestCallback(processName, success, error);
+    }
+
+    // Free asset data if provided (caller owns it temporarily)
+    if (data && !result.success) {
+        // Only free if we didn't successfully save/load (in which case LogoManager manages it)
+        free(const_cast<uint8_t*>(data));
+    }
+
+    xSemaphoreGive(logoOperationMutex);
+
+    ESP_LOGI(TAG, "Asset processing completed for: %s", processName);
 }
 
 }  // namespace LogoAssets

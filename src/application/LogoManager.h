@@ -7,6 +7,7 @@
 #include <freertos/semphr.h>
 #include <functional>
 #include <re.h>  // tiny-regex-c
+#include <map>
 
 namespace Application {
 namespace LogoAssets {
@@ -116,6 +117,10 @@ class LogoManager {
     bool logoExists(const char* processName);
     LogoLoadResult loadLogo(const char* processName);
 
+    // Asynchronous logo loading with automatic supplier requests
+    typedef std::function<void(const LogoLoadResult& result)> LogoLoadCallback;
+    bool loadLogoAsync(const char* processName, LogoLoadCallback callback);
+
     // === FUZZY MATCHING OPERATIONS ===
 
     // Smart logo lookup with fuzzy matching
@@ -154,6 +159,15 @@ class LogoManager {
     size_t getTotalStorageUsed();
     bool cleanupInvalidLogos();
 
+    // === LOGO SUPPLIER INTEGRATION ===
+
+    // Enable/disable automatic logo requests via suppliers
+    void enableAutoRequests(bool enabled = true) { autoRequestEnabled = enabled; }
+    bool isAutoRequestEnabled() const { return autoRequestEnabled; }
+
+    // Set callback for logo request notifications (optional)
+    void setLogoRequestCallback(std::function<void(const char* processName, bool success, const char* error)> callback);
+
    private:
     LogoManager() = default;
     ~LogoManager() = default;
@@ -190,6 +204,12 @@ class LogoManager {
     String calculateChecksum(const uint8_t* data, size_t size);
     bool copyLogoFile(const char* sourceName, const char* destName);
 
+    // === LOGO SUPPLIER HELPERS ===
+
+    void onAssetReceived(const char* processName, const uint8_t* data, size_t size,
+                         const LogoMetadata& metadata, bool success, const char* error);
+    bool requestLogoFromSupplier(const char* processName);
+
     // === RESULT CREATION HELPERS ===
 
     LogoLoadResult createLoadResult(bool success, uint8_t* data = nullptr,
@@ -203,6 +223,18 @@ class LogoManager {
 
     // Internal storage for user mappings
     JsonDocument* userMappings = nullptr;
+
+    // Logo supplier integration
+    bool autoRequestEnabled = true;
+    std::function<void(const char*, bool, const char*)> logoRequestCallback = nullptr;
+
+    // Async request tracking
+    struct AsyncRequest {
+        std::vector<LogoLoadCallback> callbacks;
+        unsigned long requestTime;
+        bool inProgress;
+    };
+    std::map<String, AsyncRequest> pendingAsyncRequests;
 };
 
 }  // namespace LogoAssets

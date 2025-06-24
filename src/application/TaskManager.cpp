@@ -10,6 +10,7 @@
 #include "../messaging/MessageAPI.h"
 #include "AppController.h"
 #include "AudioUI.h"
+#include "LogoSupplier.h"
 #include "LVGLMessageHandler.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
@@ -480,6 +481,9 @@ void messagingTask(void *parameter) {
     while (tasksRunning) {
         // Update message system (high frequency for responsiveness)
         Messaging::MessageAPI::update();
+
+        // Update LogoSupplier system for async logo requests
+        Application::LogoAssets::LogoSupplierManager::getInstance().update();
 
         // Sleep until next update
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(MESSAGING_UPDATE_INTERVAL));

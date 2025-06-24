@@ -12,6 +12,8 @@
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "LogoManager.h"
+#include "LogoSupplier.h"
+#include "MessageBusLogoSupplier.h"
 #include "LVGLMessageHandler.h"
 #include "TaskManager.h"
 #include <esp_log.h>
@@ -153,6 +155,41 @@ bool init(void) {
     ESP_LOGI(TAG, "WDT Reset: Message handlers will be registered by components...");
     esp_task_wdt_reset();
 
+    // Initialize LogoSupplier system (requires Messaging to be initialized)
+    ESP_LOGI(TAG, "WDT Reset: Initializing LogoSupplier System...");
+    if (!Application::LogoAssets::LogoSupplierManager::getInstance().init()) {
+        ESP_LOGW(TAG, "LogoSupplierManager initialization failed - automatic logo requests will be disabled");
+    } else {
+        // Register MessageBusLogoSupplier
+        Application::LogoAssets::MessageBusLogoSupplier &messageBusSupplier =
+            Application::LogoAssets::MessageBusLogoSupplier::getInstance();
+
+        // Configure supplier settings
+        messageBusSupplier.setRequestTimeout(30000);     // 30 second timeout
+        messageBusSupplier.setMaxConcurrentRequests(1);  // Serial port can only handle 1 request at a time
+
+        if (Application::LogoAssets::LogoSupplierManager::getInstance().registerSupplier(&messageBusSupplier, 100)) {
+            ESP_LOGI(TAG, "MessageBusLogoSupplier registered successfully");
+
+            // Enable automatic requests in LogoManager
+            Application::LogoAssets::LogoManager::getInstance().enableAutoRequests(true);
+
+            // Set up notification callback
+            Application::LogoAssets::LogoManager::getInstance().setLogoRequestCallback(
+                [](const char *processName, bool success, const char *error) {
+                    if (success) {
+                        ESP_LOGI(TAG, "Logo request succeeded for: %s", processName);
+                    } else {
+                        ESP_LOGW(TAG, "Logo request failed for: %s (error: %s)",
+                                 processName, error ? error : "unknown");
+                    }
+                });
+        } else {
+            ESP_LOGW(TAG, "Failed to register MessageBusLogoSupplier");
+        }
+    }
+    esp_task_wdt_reset();
+
     // Initialize audio system (requires MessageBus and handlers to be initialized)
     ESP_LOGI(TAG, "WDT Reset: Initializing Audio System...");
     if (!Application::Audio::AudioManager::getInstance().init()) {
@@ -215,6 +252,9 @@ void deinit(void) {
 
     Application::Audio::AudioUI::getInstance().deinit();
     Application::Audio::AudioManager::getInstance().deinit();
+
+    // Deinitialize LogoSupplier system
+    Application::LogoAssets::LogoSupplierManager::getInstance().deinit();
 
     // Deinitialize Logo Manager
     Application::LogoAssets::LogoManager::getInstance().deinit();

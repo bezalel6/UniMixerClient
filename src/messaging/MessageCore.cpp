@@ -1,5 +1,6 @@
 #include "MessageCore.h"
 #include "MessageConfig.h"
+#include "../application/LogoManager.h"
 #include <esp_log.h>
 
 static const char* TAG = "MessageCore";
@@ -60,6 +61,7 @@ void MessageCore::deinit() {
     topicSubscriptions.clear();
     audioStatusSubscribers.clear();
     transports.clear();
+    lastLogoCheckTime.clear();
 
     initialized = false;
 
@@ -323,6 +325,9 @@ void MessageCore::processAudioStatusMessage(const String& payload) {
     AudioStatusData statusData = Json::parseStatusResponse(payload);
 
     if (!statusData.isEmpty()) {
+        // Check for logos for all detected audio processes
+        checkAndRequestLogosForAudioProcesses(statusData);
+
         for (auto& callback : audioStatusSubscribers) {
             try {
                 callback(statusData);
@@ -340,6 +345,65 @@ void MessageCore::updateActivity() {
 void MessageCore::logMessage(const String& direction, const String& topic, const String& payload) {
     ESP_LOGD(TAG, "[%s] %s: %s", direction.c_str(), topic.c_str(),
              (payload.length() > Config::MESSAGE_LOG_TRUNCATE_LENGTH ? payload.substring(0, Config::MESSAGE_LOG_TRUNCATE_LENGTH) + "..." : payload).c_str());
+}
+
+void MessageCore::checkAndRequestLogosForAudioProcesses(const AudioStatusData& statusData) {
+    // Skip if LogoManager is not initialized
+    if (!Application::LogoAssets::LogoManager::getInstance().isInitialized() ||
+        !Application::LogoAssets::LogoManager::getInstance().isAutoRequestEnabled()) {
+        return;
+    }
+
+    // Check logos for all audio level processes
+    for (const auto& audioLevel : statusData.audioLevels) {
+        if (!audioLevel.processName.isEmpty()) {
+            checkSingleProcessLogo(audioLevel.processName.c_str());
+        }
+    }
+
+    // Check logo for default device if it has a process-like name
+    if (statusData.hasDefaultDevice && !statusData.defaultDevice.friendlyName.isEmpty()) {
+        // Only check if the friendly name looks like a process name (contains .exe, etc.)
+        String friendlyName = statusData.defaultDevice.friendlyName;
+        if (friendlyName.indexOf(".exe") >= 0 || friendlyName.indexOf(".app") >= 0 ||
+            friendlyName.indexOf("-bin") >= 0) {
+            checkSingleProcessLogo(friendlyName.c_str());
+        }
+    }
+}
+
+void MessageCore::checkSingleProcessLogo(const char* processName) {
+    if (!processName || strlen(processName) == 0) {
+        return;
+    }
+
+    // Debounce: Don't check the same process too frequently
+    String processKey(processName);
+    unsigned long currentTime = millis();
+
+    auto it = lastLogoCheckTime.find(processKey);
+    if (it != lastLogoCheckTime.end()) {
+        if (currentTime - it->second < LOGO_CHECK_DEBOUNCE_MS) {
+            // Recently checked this process, skip
+            return;
+        }
+    }
+
+    // Update last check time
+    lastLogoCheckTime[processKey] = currentTime;
+
+    Application::LogoAssets::LogoManager& logoManager =
+        Application::LogoAssets::LogoManager::getInstance();
+
+    // Use async loading to avoid blocking the messaging task
+    // This will check existence and request if needed without blocking
+    logoManager.loadLogoAsync(processName, [processName](const Application::LogoAssets::LogoLoadResult& result) {
+        if (result.success) {
+            ESP_LOGD("MessageCore", "Logo loaded successfully for: %s", processName);
+        } else {
+            ESP_LOGD("MessageCore", "Logo request initiated for: %s", processName);
+        }
+    });
 }
 
 }  // namespace Messaging
