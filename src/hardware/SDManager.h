@@ -5,6 +5,7 @@
 #include <FS.h>
 #include <SD.h>
 #include <SPI.h>
+#include <functional>
 
 namespace Hardware {
 namespace SD {
@@ -67,7 +68,7 @@ unsigned long getLastActivity(void);
 bool createDirectory(const char* path);
 bool removeDirectory(const char* path);
 bool directoryExists(const char* path);
-bool listDirectory(const char* path, void (*callback)(const char* name, bool isDir, size_t size));
+bool listDirectory(const char* path, std::function<void(const char* name, bool isDir, size_t size)> callback);
 
 // File operations
 SDFileResult readFile(const char* path, char* buffer, size_t maxLength);

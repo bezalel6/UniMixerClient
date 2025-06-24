@@ -11,6 +11,7 @@
 #include "../messaging/SerialBridge.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
+#include "LogoManager.h"
 #include "LVGLMessageHandler.h"
 #include "TaskManager.h"
 #include <esp_log.h>
@@ -47,6 +48,16 @@ bool init(void) {
         // Note: SD card failure is not fatal for the application
     } else {
         ESP_LOGI(TAG, "SD Manager initialized successfully");
+    }
+    esp_task_wdt_reset();
+
+    // Initialize Logo Manager (depends on SD Manager)
+    ESP_LOGI(TAG, "WDT Reset: Initializing Logo Manager...");
+    if (!Application::LogoAssets::LogoManager::getInstance().init()) {
+        ESP_LOGW(TAG, "Logo Manager initialization failed - logo functionality will be limited");
+        // Note: Logo Manager failure is not fatal for the application
+    } else {
+        ESP_LOGI(TAG, "Logo Manager initialized successfully with fuzzy matching support");
     }
     esp_task_wdt_reset();
 
@@ -204,6 +215,9 @@ void deinit(void) {
 
     Application::Audio::AudioUI::getInstance().deinit();
     Application::Audio::AudioManager::getInstance().deinit();
+
+    // Deinitialize Logo Manager
+    Application::LogoAssets::LogoManager::getInstance().deinit();
 
 #if OTA_ENABLE_UPDATES
     Hardware::OTA::deinit();

@@ -334,7 +334,7 @@ bool directoryExists(const char* path) {
     return result;
 }
 
-bool listDirectory(const char* path, void (*callback)(const char* name, bool isDir, size_t size)) {
+bool listDirectory(const char* path, std::function<void(const char* name, bool isDir, size_t size)> callback) {
     if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
         ESP_LOGW(TAG, "Failed to acquire SD mutex for directory listing");
         return false;

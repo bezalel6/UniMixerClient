@@ -4,27 +4,38 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <vector>
+#include "LogoManager.h"
 
 namespace Application {
 namespace FileExplorer {
 
-// File/Directory item structure
+// Enhanced file/directory item structure with logo support
 typedef struct {
     String name;
     String fullPath;
     bool isDirectory;
     size_t size;
     String sizeString;
+
+    // Logo-specific properties
+    bool isLogoFile;                    // True if this is a logo binary file
+    bool isLogoMetadata;                // True if this is a logo metadata file
+    bool hasLogoMetadata;               // True if corresponding metadata exists
+    LogoAssets::LogoMetadata logoMeta;  // Logo metadata (if available)
+    String processNameFromFile;         // Process name extracted from filename
 } FileItem;
 
-// File explorer state
+// Enhanced file explorer state with logo states
 typedef enum {
     FE_STATE_IDLE,
     FE_STATE_LOADING,
     FE_STATE_ERROR,
     FE_STATE_CREATING_FOLDER,
     FE_STATE_DELETING,
-    FE_STATE_SHOWING_PROPERTIES
+    FE_STATE_SHOWING_PROPERTIES,
+    FE_STATE_SHOWING_LOGO_PROPERTIES,
+    FE_STATE_ASSIGNING_LOGO,
+    FE_STATE_MANAGING_PATTERNS
 } FileExplorerState;
 
 class FileExplorerManager {
@@ -39,6 +50,7 @@ class FileExplorerManager {
     bool navigateToPath(const String& path);
     bool navigateUp();
     bool navigateToRoot();
+    bool navigateToLogosRoot();  // Navigate to /logos directory
     void refreshCurrentDirectory();
 
     // Directory operations
@@ -50,10 +62,20 @@ class FileExplorerManager {
     bool readTextFile(const String& path, String& content);
     bool writeTextFile(const String& path, const String& content);
 
+    // Logo-specific operations
+    bool assignLogoToProcess(const String& logoFileName, const String& processName);
+    bool flagLogoIncorrect(const String& logoFileName, bool incorrect = true);
+    bool markLogoVerified(const String& logoFileName, bool verified = true);
+    bool addLogoPattern(const String& logoFileName, const String& pattern);
+    bool deleteLogoAndMetadata(const String& logoFileName);
+
     // UI Management
     void updateUI();
     void updateSDStatus();
     void showProperties(const FileItem* item);
+    void showLogoProperties(const FileItem* item);           // Enhanced logo properties
+    void showLogoAssignmentDialog(const FileItem* item);     // Assign logo to process
+    void showPatternManagementDialog(const FileItem* item);  // Manage fuzzy patterns
     void showCreateFolderDialog();
     void showDeleteConfirmation(const FileItem* item);
     void showFileViewer(const FileItem* item);
@@ -64,10 +86,13 @@ class FileExplorerManager {
     const std::vector<FileItem>& getCurrentItems() const { return currentItems; }
     FileExplorerState getState() const { return state; }
     const FileItem* getSelectedItem() const { return selectedItem; }
+    bool isInLogosDirectory() const;
 
     // Utility methods
     String formatFileSize(size_t bytes);
     void addItem(const FileItem& item);
+    bool isLogoDirectory(const String& path) const;
+    String extractProcessNameFromLogoFile(const String& filename) const;
 
     // Event handling
     void onFileItemClicked(const FileItem* item);
@@ -77,6 +102,14 @@ class FileExplorerManager {
     void onNewFolderClicked();
     void onDeleteClicked();
     void onPropertiesClicked();
+
+    // Logo-specific event handling
+    void onLogoAssignClicked();
+    void onLogoFlagClicked();
+    void onLogoVerifyClicked();
+    void onLogoPatternsClicked();
+
+    void enhanceItemWithLogoInfo(FileItem& item);
 
    private:
     FileExplorerManager() = default;
@@ -90,6 +123,12 @@ class FileExplorerManager {
     void updateButtonStates();
     void createDynamicUI();
     void destroyDynamicUI();
+
+    // Logo-specific private methods
+    void createLogoSpecificButtons();
+    void updateLogoButtonStates();
+    String getLogoDisplayText(const FileItem& item);
+    const char* getLogoIcon(const FileItem& item);
 
     // State
     String currentPath;
@@ -109,12 +148,23 @@ class FileExplorerManager {
     lv_obj_t* btnProperties;
     lv_obj_t* btnDelete;
 
+    // Logo-specific UI components
+    lv_obj_t* logoActionPanel;   // Additional panel for logo operations
+    lv_obj_t* btnLogoAssign;     // Assign logo to process
+    lv_obj_t* btnLogoFlag;       // Flag as incorrect
+    lv_obj_t* btnLogoVerify;     // Mark as verified
+    lv_obj_t* btnLogoPatterns;   // Manage fuzzy patterns
+    lv_obj_t* btnNavigateLogos;  // Quick navigation to logos directory
+
     // Dialog components
     lv_obj_t* modalOverlay;
     lv_obj_t* inputDialog;
     lv_obj_t* confirmDialog;
     lv_obj_t* propertiesDialog;
     lv_obj_t* fileViewerDialog;
+    lv_obj_t* logoPropertiesDialog;
+    lv_obj_t* logoAssignmentDialog;
+    lv_obj_t* patternManagementDialog;
 };
 
 }  // namespace FileExplorer

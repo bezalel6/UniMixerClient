@@ -2,6 +2,7 @@
 #include "../hardware/SDManager.h"
 #include "../hardware/DeviceManager.h"
 #include "LVGLMessageHandler.h"
+#include "LogoManager.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 #include <algorithm>
@@ -159,6 +160,9 @@ static void directoryListingCallback(const char* name, bool isDir, size_t size) 
         item.sizeString.reserve(16);
         item.sizeString = g_manager->formatFileSize(size);
 
+        // Enhance with logo information if in logos directory
+        g_manager->enhanceItemWithLogoInfo(item);
+
         g_manager->addItem(item);
     } catch (const std::exception& e) {
         ESP_LOGE(TAG, "Exception in callback for %s: %s", name, e.what());
@@ -204,11 +208,23 @@ bool FileExplorerManager::init() {
     btnRefresh = nullptr;
     btnProperties = nullptr;
     btnDelete = nullptr;
+
+    // Initialize logo-specific UI components
+    logoActionPanel = nullptr;
+    btnLogoAssign = nullptr;
+    btnLogoFlag = nullptr;
+    btnLogoVerify = nullptr;
+    btnLogoPatterns = nullptr;
+    btnNavigateLogos = nullptr;
+
     modalOverlay = nullptr;
     inputDialog = nullptr;
     confirmDialog = nullptr;
     propertiesDialog = nullptr;
     fileViewerDialog = nullptr;
+    logoPropertiesDialog = nullptr;
+    logoAssignmentDialog = nullptr;
+    patternManagementDialog = nullptr;
 
     initialized = true;
     return true;
@@ -460,6 +476,11 @@ void FileExplorerManager::updateButtonStates() {
             lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
         }
     }
+
+    // Update logo-specific button states
+    if (isInLogosDirectory()) {
+        updateLogoButtonStates();
+    }
 }
 
 void FileExplorerManager::updateFileList() {
@@ -501,12 +522,9 @@ void FileExplorerManager::updateFileList() {
     for (size_t i = 0; i < currentItems.size(); i++) {
         const FileItem& item = currentItems[i];
 
-        const char* icon = item.isDirectory ? LV_SYMBOL_DIRECTORY : LV_SYMBOL_FILE;
-        String displayText = item.name;
-
-        if (!item.isDirectory) {
-            displayText += " (" + item.sizeString + ")";
-        }
+        // Use logo-aware icon and display text
+        const char* icon = getLogoIcon(item);
+        String displayText = getLogoDisplayText(item);
 
         lv_obj_t* listItem = lv_list_add_button(fileList, icon, displayText.c_str());
         lv_obj_set_user_data(listItem, (void*)i);  // Store index
@@ -632,6 +650,20 @@ void FileExplorerManager::createDynamicUI() {
     // Initialize button states (disable delete and properties until item selected)
     lv_obj_add_state(btnDelete, LV_STATE_DISABLED);
     lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
+
+    // Create logo-specific UI if in logos directory, otherwise add a "Logos" navigation button
+    if (isInLogosDirectory()) {
+        createLogoSpecificButtons();
+    } else {
+        // Add a quick "Logos" button to navigate to logos directory
+        btnNavigateLogos = lv_button_create(actionPanel);
+        lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
+        lv_label_set_text(lblNavigateLogos, "Logos");
+        lv_obj_add_event_cb(btnNavigateLogos, [](lv_event_t* e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                FileExplorerManager::getInstance().navigateToLogosRoot();
+            } }, LV_EVENT_CLICKED, nullptr);
+    }
 }
 
 void FileExplorerManager::destroyDynamicUI() {
@@ -647,6 +679,23 @@ void FileExplorerManager::destroyDynamicUI() {
     }
     if (btnDelete) {
         lv_obj_remove_event_cb(btnDelete, nullptr);
+    }
+
+    // Remove logo-specific event callbacks
+    if (btnLogoAssign) {
+        lv_obj_remove_event_cb(btnLogoAssign, nullptr);
+    }
+    if (btnLogoFlag) {
+        lv_obj_remove_event_cb(btnLogoFlag, nullptr);
+    }
+    if (btnLogoVerify) {
+        lv_obj_remove_event_cb(btnLogoVerify, nullptr);
+    }
+    if (btnLogoPatterns) {
+        lv_obj_remove_event_cb(btnLogoPatterns, nullptr);
+    }
+    if (btnNavigateLogos) {
+        lv_obj_remove_event_cb(btnNavigateLogos, nullptr);
     }
 
     // Clean up modal first
@@ -665,16 +714,33 @@ void FileExplorerManager::destroyDynamicUI() {
         actionPanel = nullptr;
     }
 
+    // Clean up logo-specific panels
+    if (logoActionPanel) {
+        lv_obj_del(logoActionPanel);
+        logoActionPanel = nullptr;
+    }
+
     // Reset all pointers
     fileList = nullptr;
     btnNewFolder = nullptr;
     btnRefresh = nullptr;
     btnProperties = nullptr;
     btnDelete = nullptr;
+
+    // Reset logo-specific pointers
+    btnLogoAssign = nullptr;
+    btnLogoFlag = nullptr;
+    btnLogoVerify = nullptr;
+    btnLogoPatterns = nullptr;
+    btnNavigateLogos = nullptr;
+
     inputDialog = nullptr;
     confirmDialog = nullptr;
     propertiesDialog = nullptr;
     fileViewerDialog = nullptr;
+    logoPropertiesDialog = nullptr;
+    logoAssignmentDialog = nullptr;
+    patternManagementDialog = nullptr;
 
     uiCreated = false;
 }
@@ -853,7 +919,12 @@ void FileExplorerManager::onDeleteClicked() {
 
 void FileExplorerManager::onPropertiesClicked() {
     if (selectedItem) {
-        showProperties(selectedItem);
+        // Show logo-specific properties if it's a logo file, otherwise show regular properties
+        if (selectedItem->isLogoFile || selectedItem->isLogoMetadata) {
+            showLogoProperties(selectedItem);
+        } else {
+            showProperties(selectedItem);
+        }
     }
 }
 
@@ -1190,6 +1261,710 @@ void FileExplorerManager::addItem(const FileItem& item) {
     } catch (...) {
         ESP_LOGE(TAG, "Exception while adding item to list");
     }
+}
+
+// =============================================================================
+// LOGO-SPECIFIC FUNCTIONALITY
+// =============================================================================
+
+bool FileExplorerManager::navigateToLogosRoot() {
+    return navigateToPath(LogoAssets::LOGOS_ROOT_DIR);
+}
+
+bool FileExplorerManager::isInLogosDirectory() const {
+    return isLogoDirectory(currentPath);
+}
+
+bool FileExplorerManager::isLogoDirectory(const String& path) const {
+    return path.startsWith(LogoAssets::LOGOS_ROOT_DIR);
+}
+
+String FileExplorerManager::extractProcessNameFromLogoFile(const String& filename) const {
+    if (filename.endsWith(LogoAssets::LOGO_BINARY_EXT)) {
+        int extIndex = filename.lastIndexOf(LogoAssets::LOGO_BINARY_EXT);
+        return filename.substring(0, extIndex);
+    } else if (filename.endsWith(LogoAssets::METADATA_EXT)) {
+        int extIndex = filename.lastIndexOf(LogoAssets::METADATA_EXT);
+        return filename.substring(0, extIndex);
+    }
+    return "";
+}
+
+void FileExplorerManager::enhanceItemWithLogoInfo(FileItem& item) {
+    // Initialize logo flags
+    item.isLogoFile = false;
+    item.isLogoMetadata = false;
+    item.hasLogoMetadata = false;
+    item.processNameFromFile = "";
+
+    if (item.isDirectory || !isInLogosDirectory()) {
+        return;
+    }
+
+    // Extract process name from filename
+    item.processNameFromFile = extractProcessNameFromLogoFile(item.name);
+
+    if (item.processNameFromFile.isEmpty()) {
+        return;
+    }
+
+    // Determine file type
+    if (item.name.endsWith(LogoAssets::LOGO_BINARY_EXT)) {
+        item.isLogoFile = true;
+
+        // Check if metadata exists
+        LogoAssets::LogoMetadataResult metaResult =
+            LogoAssets::LogoManager::getInstance().getLogoMetadata(item.processNameFromFile.c_str());
+
+        if (metaResult.success) {
+            item.hasLogoMetadata = true;
+            item.logoMeta = metaResult.metadata;
+        }
+    } else if (item.name.endsWith(LogoAssets::METADATA_EXT)) {
+        item.isLogoMetadata = true;
+
+        // Load metadata
+        LogoAssets::LogoMetadataResult metaResult =
+            LogoAssets::LogoManager::getInstance().getLogoMetadata(item.processNameFromFile.c_str());
+
+        if (metaResult.success) {
+            item.logoMeta = metaResult.metadata;
+        }
+    }
+}
+
+String FileExplorerManager::getLogoDisplayText(const FileItem& item) {
+    String displayText = item.name;
+
+    if (item.isLogoFile || item.isLogoMetadata) {
+        displayText += " (" + item.sizeString + ")";
+
+        if (item.hasLogoMetadata || item.isLogoMetadata) {
+            // Add metadata flags
+            String flags = " [";
+            bool hasFlag = false;
+
+            if (item.logoMeta.userFlags.verified) {
+                flags += "✓";
+                hasFlag = true;
+            }
+            if (item.logoMeta.userFlags.incorrect) {
+                if (hasFlag) flags += ",";
+                flags += "✗";
+                hasFlag = true;
+            }
+            if (item.logoMeta.userFlags.custom) {
+                if (hasFlag) flags += ",";
+                flags += "C";
+                hasFlag = true;
+            }
+            if (item.logoMeta.userFlags.manualAssignment) {
+                if (hasFlag) flags += ",";
+                flags += "M";
+                hasFlag = true;
+            }
+
+            flags += "]";
+
+            if (hasFlag) {
+                displayText += flags;
+            }
+        }
+    } else if (!item.isDirectory) {
+        displayText += " (" + item.sizeString + ")";
+    }
+
+    return displayText;
+}
+
+const char* FileExplorerManager::getLogoIcon(const FileItem& item) {
+    if (item.isDirectory) {
+        return LV_SYMBOL_DIRECTORY;
+    } else if (item.isLogoFile) {
+        if (item.hasLogoMetadata && item.logoMeta.userFlags.verified) {
+            return LV_SYMBOL_OK;  // Verified logo
+        } else if (item.hasLogoMetadata && item.logoMeta.userFlags.incorrect) {
+            return LV_SYMBOL_WARNING;  // Flagged as incorrect
+        } else {
+            return LV_SYMBOL_IMAGE;  // Regular logo file
+        }
+    } else if (item.isLogoMetadata) {
+        return LV_SYMBOL_SETTINGS;  // Metadata file
+    } else {
+        return LV_SYMBOL_FILE;  // Regular file
+    }
+}
+
+// Logo-specific operations
+bool FileExplorerManager::assignLogoToProcess(const String& logoFileName, const String& processName) {
+    if (!LogoAssets::LogoManager::getInstance().isInitialized()) {
+        return false;
+    }
+
+    String logoProcessName = extractProcessNameFromLogoFile(logoFileName);
+    if (logoProcessName.isEmpty()) {
+        return false;
+    }
+
+    LogoAssets::LogoSaveResult result =
+        LogoAssets::LogoManager::getInstance().assignLogo(processName.c_str(), logoProcessName.c_str());
+
+    if (result.success) {
+        ESP_LOGI(TAG, "Logo assigned: %s -> %s", processName.c_str(), logoProcessName.c_str());
+        refreshCurrentDirectory();  // Refresh to show updated flags
+    }
+
+    return result.success;
+}
+
+bool FileExplorerManager::flagLogoIncorrect(const String& logoFileName, bool incorrect) {
+    if (!LogoAssets::LogoManager::getInstance().isInitialized()) {
+        return false;
+    }
+
+    String processName = extractProcessNameFromLogoFile(logoFileName);
+    if (processName.isEmpty()) {
+        return false;
+    }
+
+    bool success = LogoAssets::LogoManager::getInstance().flagLogoIncorrect(processName.c_str(), incorrect);
+
+    if (success) {
+        ESP_LOGI(TAG, "Logo flagged as %s: %s", incorrect ? "incorrect" : "correct", processName.c_str());
+        refreshCurrentDirectory();  // Refresh to show updated flags
+    }
+
+    return success;
+}
+
+bool FileExplorerManager::markLogoVerified(const String& logoFileName, bool verified) {
+    if (!LogoAssets::LogoManager::getInstance().isInitialized()) {
+        return false;
+    }
+
+    String processName = extractProcessNameFromLogoFile(logoFileName);
+    if (processName.isEmpty()) {
+        return false;
+    }
+
+    bool success = LogoAssets::LogoManager::getInstance().markLogoVerified(processName.c_str(), verified);
+
+    if (success) {
+        ESP_LOGI(TAG, "Logo marked as %s: %s", verified ? "verified" : "unverified", processName.c_str());
+        refreshCurrentDirectory();  // Refresh to show updated flags
+    }
+
+    return success;
+}
+
+bool FileExplorerManager::addLogoPattern(const String& logoFileName, const String& pattern) {
+    if (!LogoAssets::LogoManager::getInstance().isInitialized()) {
+        return false;
+    }
+
+    String processName = extractProcessNameFromLogoFile(logoFileName);
+    if (processName.isEmpty()) {
+        return false;
+    }
+
+    bool success = LogoAssets::LogoManager::getInstance().addMatchingPattern(processName.c_str(), pattern.c_str());
+
+    if (success) {
+        ESP_LOGI(TAG, "Pattern added to %s: %s", processName.c_str(), pattern.c_str());
+    }
+
+    return success;
+}
+
+bool FileExplorerManager::deleteLogoAndMetadata(const String& logoFileName) {
+    if (!LogoAssets::LogoManager::getInstance().isInitialized()) {
+        return false;
+    }
+
+    String processName = extractProcessNameFromLogoFile(logoFileName);
+    if (processName.isEmpty()) {
+        return false;
+    }
+
+    bool success = LogoAssets::LogoManager::getInstance().deleteLogo(processName.c_str());
+
+    if (success) {
+        ESP_LOGI(TAG, "Logo and metadata deleted: %s", processName.c_str());
+        refreshCurrentDirectory();  // Refresh to remove deleted items
+    }
+
+    return success;
+}
+
+// Logo-specific event handlers
+void FileExplorerManager::onLogoAssignClicked() {
+    if (selectedItem && (selectedItem->isLogoFile || selectedItem->isLogoMetadata)) {
+        showLogoAssignmentDialog(selectedItem);
+    }
+}
+
+void FileExplorerManager::onLogoFlagClicked() {
+    if (selectedItem && (selectedItem->isLogoFile || selectedItem->isLogoMetadata)) {
+        // Toggle incorrect flag
+        bool currentlyIncorrect = selectedItem->hasLogoMetadata && selectedItem->logoMeta.userFlags.incorrect;
+        flagLogoIncorrect(selectedItem->name, !currentlyIncorrect);
+    }
+}
+
+void FileExplorerManager::onLogoVerifyClicked() {
+    if (selectedItem && (selectedItem->isLogoFile || selectedItem->isLogoMetadata)) {
+        // Toggle verified flag
+        bool currentlyVerified = selectedItem->hasLogoMetadata && selectedItem->logoMeta.userFlags.verified;
+        markLogoVerified(selectedItem->name, !currentlyVerified);
+    }
+}
+
+void FileExplorerManager::onLogoPatternsClicked() {
+    if (selectedItem && (selectedItem->isLogoFile || selectedItem->isLogoMetadata)) {
+        showPatternManagementDialog(selectedItem);
+    }
+}
+
+// Logo-specific UI creation
+void FileExplorerManager::createLogoSpecificButtons() {
+    if (!ui_screenFileExplorer) {
+        return;
+    }
+
+    // Create logo action panel (additional row below main action panel)
+    logoActionPanel = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_width(logoActionPanel, lv_pct(100));
+    lv_obj_set_height(logoActionPanel, lv_pct(8));
+    lv_obj_align_to(logoActionPanel, actionPanel, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+    lv_obj_set_flex_flow(logoActionPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(logoActionPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(logoActionPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Quick navigation to logos root
+    btnNavigateLogos = lv_button_create(logoActionPanel);
+    lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
+    lv_label_set_text(lblNavigateLogos, "📁");
+    lv_obj_add_event_cb(btnNavigateLogos, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().navigateToLogosRoot();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Assign logo button
+    btnLogoAssign = lv_button_create(logoActionPanel);
+    lv_obj_t* lblLogoAssign = lv_label_create(btnLogoAssign);
+    lv_label_set_text(lblLogoAssign, "Assign");
+    lv_obj_add_event_cb(btnLogoAssign, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onLogoAssignClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Flag logo button
+    btnLogoFlag = lv_button_create(logoActionPanel);
+    lv_obj_t* lblLogoFlag = lv_label_create(btnLogoFlag);
+    lv_label_set_text(lblLogoFlag, "Flag");
+    lv_obj_add_event_cb(btnLogoFlag, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onLogoFlagClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Verify logo button
+    btnLogoVerify = lv_button_create(logoActionPanel);
+    lv_obj_t* lblLogoVerify = lv_label_create(btnLogoVerify);
+    lv_label_set_text(lblLogoVerify, "Verify");
+    lv_obj_add_event_cb(btnLogoVerify, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onLogoVerifyClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Patterns button
+    btnLogoPatterns = lv_button_create(logoActionPanel);
+    lv_obj_t* lblLogoPatterns = lv_label_create(btnLogoPatterns);
+    lv_label_set_text(lblLogoPatterns, "Patterns");
+    lv_obj_add_event_cb(btnLogoPatterns, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onLogoPatternsClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Initially disable logo-specific buttons until logo item is selected
+    updateLogoButtonStates();
+}
+
+void FileExplorerManager::updateLogoButtonStates() {
+    if (!logoActionPanel) {
+        return;
+    }
+
+    bool logoItemSelected = selectedItem &&
+                            (selectedItem->isLogoFile || selectedItem->isLogoMetadata);
+
+    // Enable/disable buttons based on selection
+    if (btnLogoAssign) {
+        if (logoItemSelected) {
+            lv_obj_remove_state(btnLogoAssign, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(btnLogoAssign, LV_STATE_DISABLED);
+        }
+    }
+
+    if (btnLogoFlag) {
+        if (logoItemSelected) {
+            lv_obj_remove_state(btnLogoFlag, LV_STATE_DISABLED);
+            // Update button text based on current flag state
+            lv_obj_t* label = lv_obj_get_child(btnLogoFlag, 0);
+            if (selectedItem->hasLogoMetadata && selectedItem->logoMeta.userFlags.incorrect) {
+                lv_label_set_text(label, "Unflag");
+            } else {
+                lv_label_set_text(label, "Flag");
+            }
+        } else {
+            lv_obj_add_state(btnLogoFlag, LV_STATE_DISABLED);
+        }
+    }
+
+    if (btnLogoVerify) {
+        if (logoItemSelected) {
+            lv_obj_remove_state(btnLogoVerify, LV_STATE_DISABLED);
+            // Update button text based on current verification state
+            lv_obj_t* label = lv_obj_get_child(btnLogoVerify, 0);
+            if (selectedItem->hasLogoMetadata && selectedItem->logoMeta.userFlags.verified) {
+                lv_label_set_text(label, "Unverify");
+            } else {
+                lv_label_set_text(label, "Verify");
+            }
+        } else {
+            lv_obj_add_state(btnLogoVerify, LV_STATE_DISABLED);
+        }
+    }
+
+    if (btnLogoPatterns) {
+        if (logoItemSelected) {
+            lv_obj_remove_state(btnLogoPatterns, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(btnLogoPatterns, LV_STATE_DISABLED);
+        }
+    }
+}
+
+// Logo-specific dialogs
+void FileExplorerManager::showLogoProperties(const FileItem* item) {
+    if (!ui_screenFileExplorer || !item || (!item->isLogoFile && !item->isLogoMetadata)) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+
+    // Create logo properties dialog
+    logoPropertiesDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(logoPropertiesDialog, lv_pct(90), lv_pct(70));
+    lv_obj_set_align(logoPropertiesDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(logoPropertiesDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(logoPropertiesDialog);
+    lv_label_set_text(title, "Logo Properties");
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 10);
+
+    // Scrollable content area
+    lv_obj_t* content = lv_obj_create(logoPropertiesDialog);
+    lv_obj_set_size(content, lv_pct(90), lv_pct(75));
+    lv_obj_set_align(content, LV_ALIGN_CENTER);
+    lv_obj_set_y(content, -5);
+
+    int yPos = 0;
+    const int lineHeight = 25;
+
+    // Basic file info
+    lv_obj_t* lblName = lv_label_create(content);
+    String nameText = "Name: " + item->name;
+    lv_label_set_text(lblName, nameText.c_str());
+    lv_obj_set_align(lblName, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblName, yPos);
+    yPos += lineHeight;
+
+    lv_obj_t* lblType = lv_label_create(content);
+    String typeText = "Type: " + String(item->isLogoFile ? "Logo Binary" : "Logo Metadata");
+    lv_label_set_text(lblType, typeText.c_str());
+    lv_obj_set_align(lblType, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblType, yPos);
+    yPos += lineHeight;
+
+    lv_obj_t* lblSize = lv_label_create(content);
+    String sizeText = "Size: " + item->sizeString;
+    lv_label_set_text(lblSize, sizeText.c_str());
+    lv_obj_set_align(lblSize, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblSize, yPos);
+    yPos += lineHeight;
+
+    lv_obj_t* lblProcess = lv_label_create(content);
+    String processText = "Process: " + item->processNameFromFile;
+    lv_label_set_text(lblProcess, processText.c_str());
+    lv_obj_set_align(lblProcess, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblProcess, yPos);
+    yPos += lineHeight;
+
+    // Logo metadata (if available)
+    if (item->hasLogoMetadata || item->isLogoMetadata) {
+        yPos += 5;  // spacing
+
+        lv_obj_t* lblMetaTitle = lv_label_create(content);
+        lv_label_set_text(lblMetaTitle, "--- Logo Metadata ---");
+        lv_obj_set_align(lblMetaTitle, LV_ALIGN_TOP_LEFT);
+        lv_obj_set_y(lblMetaTitle, yPos);
+        yPos += lineHeight;
+
+        if (item->logoMeta.width > 0 && item->logoMeta.height > 0) {
+            lv_obj_t* lblDimensions = lv_label_create(content);
+            String dimText = "Dimensions: " + String(item->logoMeta.width) + "x" + String(item->logoMeta.height);
+            lv_label_set_text(lblDimensions, dimText.c_str());
+            lv_obj_set_align(lblDimensions, LV_ALIGN_TOP_LEFT);
+            lv_obj_set_y(lblDimensions, yPos);
+            yPos += lineHeight;
+        }
+
+        if (strlen(item->logoMeta.format) > 0) {
+            lv_obj_t* lblFormat = lv_label_create(content);
+            String formatText = "Format: " + String(item->logoMeta.format);
+            lv_label_set_text(lblFormat, formatText.c_str());
+            lv_obj_set_align(lblFormat, LV_ALIGN_TOP_LEFT);
+            lv_obj_set_y(lblFormat, yPos);
+            yPos += lineHeight;
+        }
+
+        if (strlen(item->logoMeta.patterns) > 0) {
+            lv_obj_t* lblPatterns = lv_label_create(content);
+            String patternText = "Patterns: " + String(item->logoMeta.patterns);
+            lv_label_set_text(lblPatterns, patternText.c_str());
+            lv_obj_set_align(lblPatterns, LV_ALIGN_TOP_LEFT);
+            lv_obj_set_y(lblPatterns, yPos);
+            yPos += lineHeight;
+        }
+
+        // User flags
+        lv_obj_t* lblFlags = lv_label_create(content);
+        String flagsText = "Flags: ";
+        flagsText += item->logoMeta.userFlags.verified ? "Verified " : "";
+        flagsText += item->logoMeta.userFlags.incorrect ? "Incorrect " : "";
+        flagsText += item->logoMeta.userFlags.custom ? "Custom " : "";
+        flagsText += item->logoMeta.userFlags.manualAssignment ? "Manual " : "";
+        flagsText += item->logoMeta.userFlags.autoDetected ? "Auto " : "";
+        lv_label_set_text(lblFlags, flagsText.c_str());
+        lv_obj_set_align(lblFlags, LV_ALIGN_TOP_LEFT);
+        lv_obj_set_y(lblFlags, yPos);
+        yPos += lineHeight;
+
+        if (item->logoMeta.matchConfidence > 0) {
+            lv_obj_t* lblConfidence = lv_label_create(content);
+            String confText = "Match Confidence: " + String(item->logoMeta.matchConfidence) + "%";
+            lv_label_set_text(lblConfidence, confText.c_str());
+            lv_obj_set_align(lblConfidence, LV_ALIGN_TOP_LEFT);
+            lv_obj_set_y(lblConfidence, yPos);
+            yPos += lineHeight;
+        }
+    }
+
+    // Close button
+    lv_obj_t* btnClose = lv_button_create(logoPropertiesDialog);
+    lv_obj_t* lblClose = lv_label_create(btnClose);
+    lv_label_set_text(lblClose, "Close");
+    lv_obj_set_align(btnClose, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(btnClose, -10);
+    lv_obj_add_event_cb(btnClose, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+}
+
+void FileExplorerManager::showLogoAssignmentDialog(const FileItem* item) {
+    if (!ui_screenFileExplorer || !item || (!item->isLogoFile && !item->isLogoMetadata)) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 160, LV_PART_MAIN);
+
+    // Create assignment dialog
+    logoAssignmentDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(logoAssignmentDialog, lv_pct(85), lv_pct(60));
+    lv_obj_set_align(logoAssignmentDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(logoAssignmentDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(logoAssignmentDialog);
+    String titleText = "Assign Logo: " + item->processNameFromFile;
+    lv_label_set_text(title, titleText.c_str());
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 15);
+
+    // Instructions
+    lv_obj_t* instructions = lv_label_create(logoAssignmentDialog);
+    lv_label_set_text(instructions, "Enter process name to assign this logo to:");
+    lv_obj_set_align(instructions, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(instructions, 45);
+
+    // Text area for process name input
+    lv_obj_t* textArea = lv_textarea_create(logoAssignmentDialog);
+    lv_obj_set_size(textArea, lv_pct(80), 50);
+    lv_obj_set_align(textArea, LV_ALIGN_CENTER);
+    lv_obj_set_y(textArea, -20);
+    lv_textarea_set_placeholder_text(textArea, "Enter process name (e.g., chrome.exe)");
+    lv_textarea_set_one_line(textArea, true);
+
+    // Button panel
+    lv_obj_t* btnPanel = lv_obj_create(logoAssignmentDialog);
+    lv_obj_set_size(btnPanel, lv_pct(100), 60);
+    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Store item info for callback
+    static String itemNameForAssignment;
+    itemNameForAssignment = item->name;
+
+    // Assign button
+    lv_obj_t* btnAssign = lv_button_create(btnPanel);
+    lv_obj_t* lblAssign = lv_label_create(btnAssign);
+    lv_label_set_text(lblAssign, "Assign");
+    lv_obj_set_user_data(btnAssign, textArea);  // Store text area reference
+    lv_obj_add_event_cb(btnAssign, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            lv_obj_t* textArea = (lv_obj_t*)lv_obj_get_user_data(( lv_obj_t*)lv_event_get_target(e));
+            const char* processName = lv_textarea_get_text(textArea);
+            
+            if (processName && strlen(processName) > 0) {
+                FileExplorerManager& manager = FileExplorerManager::getInstance();
+                if (manager.assignLogoToProcess(itemNameForAssignment, String(processName))) {
+                    ESP_LOGI("FileExplorer", "Logo assignment successful");
+                } else {
+                    ESP_LOGE("FileExplorer", "Logo assignment failed");
+                }
+                manager.closeDialog();
+            }
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Cancel button
+    lv_obj_t* btnCancel = lv_button_create(btnPanel);
+    lv_obj_t* lblCancel = lv_label_create(btnCancel);
+    lv_label_set_text(lblCancel, "Cancel");
+    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Focus the text area
+    lv_obj_add_state(textArea, LV_STATE_FOCUSED);
+}
+
+void FileExplorerManager::showPatternManagementDialog(const FileItem* item) {
+    if (!ui_screenFileExplorer || !item || (!item->isLogoFile && !item->isLogoMetadata)) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 160, LV_PART_MAIN);
+
+    // Create pattern management dialog
+    patternManagementDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(patternManagementDialog, lv_pct(90), lv_pct(75));
+    lv_obj_set_align(patternManagementDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(patternManagementDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(patternManagementDialog);
+    String titleText = "Manage Patterns: " + item->processNameFromFile;
+    lv_label_set_text(title, titleText.c_str());
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 15);
+
+    // Current patterns display
+    lv_obj_t* currentLabel = lv_label_create(patternManagementDialog);
+    lv_label_set_text(currentLabel, "Current Patterns:");
+    lv_obj_set_align(currentLabel, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_pos(currentLabel, 20, 50);
+
+    lv_obj_t* patternsDisplay = lv_textarea_create(patternManagementDialog);
+    lv_obj_set_size(patternsDisplay, lv_pct(85), 80);
+    lv_obj_set_align(patternsDisplay, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(patternsDisplay, 75);
+
+    String currentPatterns = (item->hasLogoMetadata || item->isLogoMetadata) ? String(item->logoMeta.patterns) : "";
+    lv_textarea_set_text(patternsDisplay, currentPatterns.c_str());
+    lv_obj_add_state(patternsDisplay, LV_STATE_DISABLED);  // Read-only
+
+    // New pattern input
+    lv_obj_t* newLabel = lv_label_create(patternManagementDialog);
+    lv_label_set_text(newLabel, "Add New Pattern:");
+    lv_obj_set_align(newLabel, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_pos(newLabel, 20, 170);
+
+    lv_obj_t* newPatternInput = lv_textarea_create(patternManagementDialog);
+    lv_obj_set_size(newPatternInput, lv_pct(85), 50);
+    lv_obj_set_align(newPatternInput, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(newPatternInput, 195);
+    lv_textarea_set_placeholder_text(newPatternInput, "Enter regex pattern (e.g., chrome.*|google.*chrome)");
+    lv_textarea_set_one_line(newPatternInput, true);
+
+    // Button panel
+    lv_obj_t* btnPanel = lv_obj_create(patternManagementDialog);
+    lv_obj_set_size(btnPanel, lv_pct(100), 60);
+    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Store item info for callback
+    static String itemNameForPatterns;
+    itemNameForPatterns = item->name;
+
+    // Add Pattern button
+    lv_obj_t* btnAdd = lv_button_create(btnPanel);
+    lv_obj_t* lblAdd = lv_label_create(btnAdd);
+    lv_label_set_text(lblAdd, "Add");
+    lv_obj_set_user_data(btnAdd, newPatternInput);
+    lv_obj_add_event_cb(btnAdd, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            lv_obj_t* input = (lv_obj_t*)lv_obj_get_user_data(( lv_obj_t*)lv_event_get_target(e));
+            const char* pattern = lv_textarea_get_text(input);
+            
+            if (pattern && strlen(pattern) > 0) {
+                FileExplorerManager& manager = FileExplorerManager::getInstance();
+                if (manager.addLogoPattern(itemNameForPatterns, String(pattern))) {
+                    ESP_LOGI("FileExplorer", "Pattern added successfully");
+                    lv_textarea_set_text(input, "");  // Clear input
+                    // Close and reopen to refresh display
+                    manager.closeDialog();
+                    const FileItem* selectedItem = manager.getSelectedItem();
+                    if (selectedItem) {
+                        manager.showPatternManagementDialog(selectedItem);
+                    }
+                } else {
+                    ESP_LOGE("FileExplorer", "Failed to add pattern");
+                }
+            }
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Close button
+    lv_obj_t* btnClose = lv_button_create(btnPanel);
+    lv_obj_t* lblClose = lv_label_create(btnClose);
+    lv_label_set_text(lblClose, "Close");
+    lv_obj_add_event_cb(btnClose, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Focus the input
+    lv_obj_add_state(newPatternInput, LV_STATE_FOCUSED);
 }
 
 }  // namespace FileExplorer
