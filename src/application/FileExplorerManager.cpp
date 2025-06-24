@@ -19,58 +19,37 @@ static volatile bool g_callbackActive = false;
 static String g_loadingPath;
 static FileExplorerManager* g_manager = nullptr;
 
-// Button debouncing and UI state management
-static unsigned long g_lastButtonClickTime = 0;
-static const unsigned long BUTTON_DEBOUNCE_MS = 1000;  // Reasonable debounce for UI operations
-static bool g_operationInProgress = false;
-
-// Enhanced event filtering to catch phantom touch events
-struct ButtonEventTracker {
-    lv_obj_t* buttonPtr;
-    unsigned long lastEventTime;
-    uint32_t eventCount;
-    bool operationActive;
-};
-
-static ButtonEventTracker g_newButtonTracker = {nullptr, 0, 0, false};
-static const unsigned long AGGRESSIVE_DEBOUNCE_MS = 2000;  // 2 second lockout
+// Button debouncing
+static const unsigned long BUTTON_DEBOUNCE_MS = 500;
+static unsigned long g_lastNewButtonTime = 0;
 
 // Static callback function for listDirectory - now thread-safe
 static void directoryListingCallback(const char* name, bool isDir, size_t size) {
     // Take mutex to ensure thread safety
     if (!g_callbackMutex || xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGE(TAG, "FAILED to take callback mutex, skipping item");
+        ESP_LOGE(TAG, "Failed to take callback mutex");
         return;
     }
 
-    // Check if callback is still active (not cancelled by another thread)
+    // Check if callback is still active
     if (!g_callbackActive) {
         xSemaphoreGive(g_callbackMutex);
         return;
     }
 
-    // Defensive null-checking
-    if (!name || strlen(name) == 0 || strlen(name) > 255) {
-        ESP_LOGW(TAG, "Callback received invalid name, skipping");
+    // Defensive validation
+    if (!name || strlen(name) == 0 || strlen(name) > 255 || !g_manager) {
         xSemaphoreGive(g_callbackMutex);
         return;
     }
 
-    if (!g_manager) {
-        ESP_LOGW(TAG, "No manager instance available for callback");
-        xSemaphoreGive(g_callbackMutex);
-        return;
-    }
-
-    // Validate the path
     if (g_loadingPath.isEmpty() || g_loadingPath.length() > 200) {
-        ESP_LOGW(TAG, "Loading path is invalid in callback");
         xSemaphoreGive(g_callbackMutex);
         return;
     }
 
-    // Check available heap before doing string operations
-    if (ESP.getFreeHeap() < 8192) {  // Less than 8KB free heap
+    // Check available heap
+    if (ESP.getFreeHeap() < 8192) {
         ESP_LOGW(TAG, "Low memory, skipping file item: %s", name);
         xSemaphoreGive(g_callbackMutex);
         return;
@@ -78,15 +57,12 @@ static void directoryListingCallback(const char* name, bool isDir, size_t size) 
 
     try {
         FileItem item;
-
-        // Use safer string operations with pre-allocation
         item.name.reserve(strlen(name) + 1);
         item.name = String(name);
 
-        // Build full path more safely
-        size_t pathLen = g_loadingPath.length() + strlen(name) + 2;  // +2 for "/" and null terminator
+        // Build full path
+        size_t pathLen = g_loadingPath.length() + strlen(name) + 2;
         if (pathLen > 255) {
-            ESP_LOGW(TAG, "Path too long for item: %s", name);
             xSemaphoreGive(g_callbackMutex);
             return;
         }
@@ -100,19 +76,14 @@ static void directoryListingCallback(const char* name, bool isDir, size_t size) 
 
         item.isDirectory = isDir;
         item.size = size;
-
-        // Format file size more safely
         item.sizeString.reserve(16);
         item.sizeString = g_manager->formatFileSize(size);
 
-        ESP_LOGD(TAG, "Added item: %s, fullPath: %s, isDir: %s",
-                 item.name.c_str(), item.fullPath.c_str(), item.isDirectory ? "true" : "false");
-
         g_manager->addItem(item);
     } catch (const std::exception& e) {
-        ESP_LOGE(TAG, "EXCEPTION in callback for %s: %s", name, e.what());
+        ESP_LOGE(TAG, "Exception in callback for %s: %s", name, e.what());
     } catch (...) {
-        ESP_LOGE(TAG, "UNKNOWN EXCEPTION occurred in directory listing callback for: %s", name);
+        ESP_LOGE(TAG, "Unknown exception in directory listing callback for: %s", name);
     }
 
     xSemaphoreGive(g_callbackMutex);
@@ -142,7 +113,8 @@ bool FileExplorerManager::init() {
     currentPath = "/";
     state = FE_STATE_IDLE;
     selectedItem = nullptr;
-    uiCreated = false;  // Initialize UI state flag
+    selectedListItem = nullptr;
+    uiCreated = false;
 
     // Initialize dynamic UI components to nullptr
     contentPanel = nullptr;
@@ -156,6 +128,7 @@ bool FileExplorerManager::init() {
     inputDialog = nullptr;
     confirmDialog = nullptr;
     propertiesDialog = nullptr;
+    fileViewerDialog = nullptr;
 
     initialized = true;
     return true;
@@ -176,16 +149,12 @@ void FileExplorerManager::deinit() {
         xSemaphoreGive(g_callbackMutex);
     }
 
-    // Properly clean up UI first
     destroyDynamicUI();
     clearItems();
 
-    // Reset all state
     initialized = false;
     uiCreated = false;
-    g_operationInProgress = false;
 
-    // Clean up mutex
     if (g_callbackMutex) {
         vSemaphoreDelete(g_callbackMutex);
         g_callbackMutex = nullptr;
@@ -203,27 +172,24 @@ bool FileExplorerManager::navigateToPath(const String& path) {
     const char* pathCStr = nullptr;
     try {
         pathCStr = path.c_str();
-        ESP_LOGI(TAG, "Navigating to path: %s", pathCStr ? pathCStr : "NULL");
     } catch (...) {
-        ESP_LOGE(TAG, "EXCEPTION while accessing path.c_str() in navigateToPath");
+        ESP_LOGE(TAG, "Exception while accessing path.c_str()");
         state = FE_STATE_ERROR;
         return false;
     }
 
     if (!pathCStr) {
-        ESP_LOGE(TAG, "CRITICAL: path.c_str() returned NULL in navigateToPath");
+        ESP_LOGE(TAG, "path.c_str() returned NULL");
         state = FE_STATE_ERROR;
         return false;
     }
 
     if (loadDirectory(path)) {
-        ESP_LOGI(TAG, "Successfully loaded directory: %s", pathCStr);
         currentPath = path;
         updateUI();
         return true;
     }
 
-    ESP_LOGE(TAG, "Failed to navigate to path: %s", pathCStr);
     return false;
 }
 
@@ -251,13 +217,11 @@ bool FileExplorerManager::navigateToRoot() {
 }
 
 void FileExplorerManager::refreshCurrentDirectory() {
-    ESP_LOGI(TAG, "Refreshing current directory");
     navigateToPath(currentPath);
 }
 
 bool FileExplorerManager::createDirectory(const String& name) {
     if (!Hardware::SD::isMounted() || name.isEmpty()) {
-        resetButtonState();
         return false;
     }
 
@@ -272,14 +236,10 @@ bool FileExplorerManager::createDirectory(const String& name) {
     bool success = Hardware::SD::createDirectory(fullPath.c_str());
 
     if (success) {
-        ESP_LOGI(TAG, "Directory created successfully, refreshing view");
         refreshCurrentDirectory();
     } else {
         ESP_LOGE(TAG, "Failed to create directory: %s", fullPath.c_str());
     }
-
-    // Always reset button state after operation
-    resetButtonState();
 
     return success;
 }
@@ -358,34 +318,22 @@ bool FileExplorerManager::writeTextFile(const String& path, const String& conten
 
 void FileExplorerManager::updateUI() {
     if (!initialized) {
-        ESP_LOGW(TAG, "updateUI called but manager not initialized");
         return;
     }
 
-    ESP_LOGI(TAG, "=== UI UPDATE === updateUI() called");
-    ESP_LOGI(TAG, "uiCreated: %s, contentPanel: %p, actionPanel: %p",
-             uiCreated ? "true" : "false", contentPanel, actionPanel);
-
-    // Create UI only once - follow proper lifecycle management
+    // Create UI only once
     if (!uiCreated) {
-        ESP_LOGI(TAG, "=== UI UPDATE === Creating UI for the first time");
         createDynamicUI();
         uiCreated = true;
     } else if (!contentPanel || !actionPanel) {
-        // This should not happen if lifecycle is properly managed
-        ESP_LOGW(TAG, "=== UI UPDATE === UI marked as created but objects missing - fixing");
-        ESP_LOGW(TAG, "contentPanel: %p, actionPanel: %p", contentPanel, actionPanel);
         destroyDynamicUI();
         createDynamicUI();
         uiCreated = true;
-    } else {
-        ESP_LOGI(TAG, "=== UI UPDATE === UI already exists, updating content only");
     }
 
     updatePathDisplay();
     updateSDStatus();
     updateFileList();
-    ESP_LOGI(TAG, "=== UI UPDATE === updateUI() completed");
 }
 
 void FileExplorerManager::updateSDStatus() {
@@ -408,18 +356,50 @@ void FileExplorerManager::updatePathDisplay() {
     }
 }
 
+void FileExplorerManager::updateButtonStates() {
+    // Enable/disable buttons based on selection state
+    if (btnDelete) {
+        if (selectedItem) {
+            lv_obj_remove_state(btnDelete, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(btnDelete, LV_STATE_DISABLED);
+        }
+    }
+
+    if (btnProperties) {
+        if (selectedItem) {
+            lv_obj_remove_state(btnProperties, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
+        }
+    }
+}
+
 void FileExplorerManager::updateFileList() {
     if (!fileList) {
         return;
     }
 
-    // Clear existing items
+    // Clear existing items and selection
     lv_obj_clean(fileList);
+    selectedItem = nullptr;
+    selectedListItem = nullptr;
+    updateButtonStates();
 
     // Add ".." entry if not at root
     if (currentPath != "/") {
         lv_obj_t* item = lv_list_add_button(fileList, LV_SYMBOL_DIRECTORY, "..");
         lv_obj_set_user_data(item, (void*)(-1));  // Special marker for parent directory
+
+        // Add event callback for ".." button
+        lv_obj_add_event_cb(item, [](lv_event_t* e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                FileExplorerManager& manager = FileExplorerManager::getInstance();
+                if (manager.getCurrentPath() != "/") {
+                    ESP_LOGI("FileExplorerManager", "Navigating up from: %s", manager.getCurrentPath().c_str());
+                    manager.navigateUp();
+                }
+            } }, LV_EVENT_CLICKED, nullptr);
     }
 
     // Add directory items first, then files
@@ -436,12 +416,11 @@ void FileExplorerManager::updateFileList() {
         lv_obj_t* listItem = lv_list_add_button(fileList, icon, displayText.c_str());
         lv_obj_set_user_data(listItem, (void*)i);  // Store index
 
-        // Add event callback with better validation
+        // Add event callback
         lv_obj_add_event_cb(listItem, [](lv_event_t* e) {
             lv_event_code_t code = lv_event_get_code(e);
             lv_obj_t* item = (lv_obj_t*)lv_event_get_target(e);
             
-            // Validate event and item
             if (!e || !item) {
                 return;
             }
@@ -449,30 +428,39 @@ void FileExplorerManager::updateFileList() {
             int index = (int)(intptr_t)lv_obj_get_user_data(item);
             FileExplorerManager& manager = FileExplorerManager::getInstance();
             
-            // Get current items with bounds checking
             const auto& currentItems = manager.getCurrentItems();
             
             if (code == LV_EVENT_CLICKED) {
-                if (index == -1) {
-                    // Parent directory - validate we're not at root
-                    if (manager.getCurrentPath() != "/") {
-                        manager.navigateUp();
-                    }
-                } else if (index >= 0 && index < (int)currentItems.size()) {
-                    // Validate the item still exists and is valid
+                if (index >= 0 && index < (int)currentItems.size()) {
                     const FileItem& fileItem = currentItems[index];
                     if (!fileItem.name.isEmpty() && !fileItem.fullPath.isEmpty()) {
+                        // Clear previous selection visual feedback
+                        if (manager.selectedListItem) {
+                            lv_obj_set_style_bg_color(manager.selectedListItem, lv_color_white(), LV_PART_MAIN);
+                        }
+                        
+                        // Update selection and visual feedback
+                        manager.selectedItem = &fileItem;
+                        manager.selectedListItem = item;
+                        lv_obj_set_style_bg_color(item, lv_color_make(200, 220, 255), LV_PART_MAIN);
+                        manager.updateButtonStates();
                         manager.onFileItemClicked(&fileItem);
-                    } else {
-                        ESP_LOGW("FileExplorerManager", "Invalid file item at index %d", index);
                     }
-                } else {
-                    ESP_LOGW("FileExplorerManager", "Invalid item index: %d (size: %d)", index, currentItems.size());
                 }
             } else if (code == LV_EVENT_LONG_PRESSED) {
                 if (index >= 0 && index < (int)currentItems.size()) {
                     const FileItem& fileItem = currentItems[index];
                     if (!fileItem.name.isEmpty()) {
+                        // Clear previous selection visual feedback
+                        if (manager.selectedListItem) {
+                            lv_obj_set_style_bg_color(manager.selectedListItem, lv_color_white(), LV_PART_MAIN);
+                        }
+                        
+                        // Update selection and visual feedback
+                        manager.selectedItem = &fileItem;
+                        manager.selectedListItem = item;
+                        lv_obj_set_style_bg_color(item, lv_color_make(200, 220, 255), LV_PART_MAIN);
+                        manager.updateButtonStates();
                         manager.showProperties(&fileItem);
                     }
                 }
@@ -485,8 +473,6 @@ void FileExplorerManager::createDynamicUI() {
         ESP_LOGW(TAG, "File explorer screen not available");
         return;
     }
-
-    ESP_LOGI(TAG, "=== UI CREATION === Creating dynamic UI components");
 
     // Create main content panel (middle 60%)
     contentPanel = lv_obj_create(ui_screenFileExplorer);
@@ -509,68 +495,26 @@ void FileExplorerManager::createDynamicUI() {
     lv_obj_set_flex_align(actionPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(actionPanel, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Create New button with aggressive event filtering
-    ESP_LOGI(TAG, "=== UI CREATION === Creating New button with phantom event protection");
+    // Create New button with debouncing
     btnNewFolder = lv_button_create(actionPanel);
     lv_obj_t* lblNewFolder = lv_label_create(btnNewFolder);
     lv_label_set_text(lblNewFolder, "New");
 
-    // Initialize button tracker
-    g_newButtonTracker.buttonPtr = btnNewFolder;
-    g_newButtonTracker.lastEventTime = 0;
-    g_newButtonTracker.eventCount = 0;
-    g_newButtonTracker.operationActive = false;
-
     lv_obj_add_event_cb(btnNewFolder, [](lv_event_t* e) {
-        lv_event_code_t code = lv_event_get_code(e);
-        lv_obj_t* target = (lv_obj_t*)lv_event_get_target(e);
-        unsigned long currentTime = Hardware::Device::getMillis();
-        
-        ESP_LOGI(TAG, "=== PHANTOM FILTER === Event: code=%d, target=%p, time=%lu", 
-                 code, target, currentTime);
-        ESP_LOGI(TAG, "=== PHANTOM FILTER === Tracker: ptr=%p, lastTime=%lu, count=%u, active=%s",
-                 g_newButtonTracker.buttonPtr, g_newButtonTracker.lastEventTime, 
-                 g_newButtonTracker.eventCount, g_newButtonTracker.operationActive ? "YES" : "NO");
-        
-        if (code == LV_EVENT_CLICKED) {
-            // Validate button pointer
-            if (target != g_newButtonTracker.buttonPtr) {
-                ESP_LOGE(TAG, "=== PHANTOM FILTER === BLOCKED: Button pointer mismatch!");
-                return;
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            unsigned long currentTime = Hardware::Device::getMillis();
+            if (currentTime - g_lastNewButtonTime > BUTTON_DEBOUNCE_MS) {
+                g_lastNewButtonTime = currentTime;
+                FileExplorerManager::getInstance().onNewFolderClicked();
             }
-            
-            // Check if operation is active
-            if (g_newButtonTracker.operationActive) {
-                ESP_LOGW(TAG, "=== PHANTOM FILTER === BLOCKED: Operation already active");
-                return;
-            }
-            
-            // Aggressive time-based filtering
-            unsigned long timeDiff = currentTime - g_newButtonTracker.lastEventTime;
-            if (g_newButtonTracker.lastEventTime != 0 && timeDiff < AGGRESSIVE_DEBOUNCE_MS) {
-                ESP_LOGW(TAG, "=== PHANTOM FILTER === BLOCKED: Phantom event detected (time diff: %lu ms)", timeDiff);
-                return;
-            }
-            
-            // Update tracker
-            g_newButtonTracker.lastEventTime = currentTime;
-            g_newButtonTracker.eventCount++;
-            g_newButtonTracker.operationActive = true;
-            
-            ESP_LOGI(TAG, "=== PHANTOM FILTER === ACCEPTED: Event #%u, calling handler", g_newButtonTracker.eventCount);
-            FileExplorerManager::getInstance().onNewFolderClicked();
-        } else {
-            ESP_LOGD(TAG, "=== PHANTOM FILTER === Non-click event: %d", code);
         } }, LV_EVENT_CLICKED, nullptr);
 
-    // Create other buttons (simplified for now)
-    ESP_LOGI(TAG, "=== UI CREATION === Creating other buttons");
+    // Create other buttons
     btnRefresh = lv_button_create(actionPanel);
     lv_obj_t* lblRefresh = lv_label_create(btnRefresh);
     lv_label_set_text(lblRefresh, LV_SYMBOL_REFRESH);
     lv_obj_add_event_cb(btnRefresh, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "=== LVGL EVENT === Refresh button clicked");
             FileExplorerManager::getInstance().onRefreshClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
@@ -579,7 +523,6 @@ void FileExplorerManager::createDynamicUI() {
     lv_label_set_text(lblProperties, "Info");
     lv_obj_add_event_cb(btnProperties, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "=== LVGL EVENT === Properties button clicked");
             FileExplorerManager::getInstance().onPropertiesClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
@@ -588,38 +531,27 @@ void FileExplorerManager::createDynamicUI() {
     lv_label_set_text(lblDelete, LV_SYMBOL_TRASH);
     lv_obj_add_event_cb(btnDelete, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "=== LVGL EVENT === Delete button clicked");
             FileExplorerManager::getInstance().onDeleteClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
-    ESP_LOGI(TAG, "=== UI CREATION === Dynamic UI creation completed");
+    // Initialize button states (disable delete and properties until item selected)
+    lv_obj_add_state(btnDelete, LV_STATE_DISABLED);
+    lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
 }
 
 void FileExplorerManager::destroyDynamicUI() {
-    ESP_LOGI(TAG, "=== UI CLEANUP === Destroying dynamic UI with explicit event cleanup");
-
-    // Reset button tracker to prevent invalid pointer reference
-    g_newButtonTracker.buttonPtr = nullptr;
-    g_newButtonTracker.lastEventTime = 0;
-    g_newButtonTracker.eventCount = 0;
-    g_newButtonTracker.operationActive = false;
-
-    // BEST PRACTICE: Explicitly remove event callbacks before destroying objects
+    // Remove event callbacks before destroying objects
     if (btnNewFolder) {
-        lv_obj_remove_event_cb(btnNewFolder, nullptr);  // Remove all callbacks
-        ESP_LOGI(TAG, "Removed event callbacks from New button");
+        lv_obj_remove_event_cb(btnNewFolder, nullptr);
     }
     if (btnRefresh) {
         lv_obj_remove_event_cb(btnRefresh, nullptr);
-        ESP_LOGI(TAG, "Removed event callbacks from Refresh button");
     }
     if (btnProperties) {
         lv_obj_remove_event_cb(btnProperties, nullptr);
-        ESP_LOGI(TAG, "Removed event callbacks from Properties button");
     }
     if (btnDelete) {
         lv_obj_remove_event_cb(btnDelete, nullptr);
-        ESP_LOGI(TAG, "Removed event callbacks from Delete button");
     }
 
     // Clean up modal first
@@ -628,7 +560,7 @@ void FileExplorerManager::destroyDynamicUI() {
         modalOverlay = nullptr;
     }
 
-    // Clean up main panels (this will automatically clean up child objects)
+    // Clean up main panels
     if (contentPanel) {
         lv_obj_del(contentPanel);
         contentPanel = nullptr;
@@ -638,7 +570,7 @@ void FileExplorerManager::destroyDynamicUI() {
         actionPanel = nullptr;
     }
 
-    // Reset all pointers to nullptr (LVGL deletes children automatically)
+    // Reset all pointers
     fileList = nullptr;
     btnNewFolder = nullptr;
     btnRefresh = nullptr;
@@ -647,11 +579,9 @@ void FileExplorerManager::destroyDynamicUI() {
     inputDialog = nullptr;
     confirmDialog = nullptr;
     propertiesDialog = nullptr;
+    fileViewerDialog = nullptr;
 
-    // Reset UI creation state
     uiCreated = false;
-
-    ESP_LOGI(TAG, "=== UI CLEANUP === Dynamic UI destruction completed with tracker reset");
 }
 
 bool FileExplorerManager::loadDirectory(const String& path) {
@@ -661,48 +591,40 @@ bool FileExplorerManager::loadDirectory(const String& path) {
     }
 
     if (path.isEmpty() || path.length() > 200) {
-        ESP_LOGW(TAG, "Path is invalid: %s", path.c_str());
+        ESP_LOGW(TAG, "Invalid path: %s", path.c_str());
         return false;
     }
 
-    // Check available memory before starting
-    if (ESP.getFreeHeap() < 10240) {  // Less than 10KB free heap
+    // Check available memory
+    if (ESP.getFreeHeap() < 10240) {
         ESP_LOGW(TAG, "Insufficient memory to load directory");
         state = FE_STATE_ERROR;
         return false;
     }
 
-    ESP_LOGI(TAG, "Loading directory: %s", path.c_str());
-
     state = FE_STATE_LOADING;
     clearItems();
 
-    // Safely convert String to const char* with validation
     const char* pathStr = path.c_str();
 
     if (!pathStr) {
-        ESP_LOGE(TAG, "CRITICAL: path.c_str() returned NULL for path object");
+        ESP_LOGE(TAG, "path.c_str() returned NULL");
         state = FE_STATE_ERROR;
         return false;
     }
 
-    // Additional validation of path content
     if (strlen(pathStr) == 0 || strlen(pathStr) > 200) {
-        ESP_LOGE(TAG, "CRITICAL: Invalid path length: %d", strlen(pathStr));
+        ESP_LOGE(TAG, "Invalid path length: %d", strlen(pathStr));
         state = FE_STATE_ERROR;
         return false;
     }
 
-    // Check if directory exists before trying to list it
+    // Check if directory exists
     if (!Hardware::SD::directoryExists(pathStr)) {
         ESP_LOGE(TAG, "Directory does not exist: %s", pathStr);
         state = FE_STATE_ERROR;
         return false;
     }
-
-    // Add timeout protection to prevent hanging operations
-    unsigned long startTime = Hardware::Device::getMillis();
-    const unsigned long DIRECTORY_LOAD_TIMEOUT_MS = 10000;  // 10 second timeout
 
     // Thread-safe callback setup
     if (!g_callbackMutex || xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
@@ -711,9 +633,8 @@ bool FileExplorerManager::loadDirectory(const String& path) {
         return false;
     }
 
-    // Cancel any previous operation and set up new one
     g_callbackActive = false;
-    Hardware::Device::delay(10);  // Give any active callbacks time to finish
+    Hardware::Device::delay(10);
 
     g_loadingPath = path;
     g_manager = this;
@@ -721,18 +642,12 @@ bool FileExplorerManager::loadDirectory(const String& path) {
 
     xSemaphoreGive(g_callbackMutex);
 
-    // Call the SD listing function with timeout protection
+    // Call the SD listing function
     bool success = false;
     try {
         success = Hardware::SD::listDirectory(pathStr, directoryListingCallback);
-
-        // Check for timeout
-        if (Hardware::Device::getMillis() - startTime > DIRECTORY_LOAD_TIMEOUT_MS) {
-            ESP_LOGW(TAG, "Directory listing timed out after %lu ms", DIRECTORY_LOAD_TIMEOUT_MS);
-            success = false;
-        }
     } catch (...) {
-        ESP_LOGE(TAG, "EXCEPTION occurred during Hardware::SD::listDirectory() call");
+        ESP_LOGE(TAG, "Exception during Hardware::SD::listDirectory()");
         success = false;
     }
 
@@ -755,9 +670,8 @@ bool FileExplorerManager::loadDirectory(const String& path) {
             });
 
             state = FE_STATE_IDLE;
-            ESP_LOGI(TAG, "Loaded %d items from directory", currentItems.size());
         } catch (...) {
-            ESP_LOGE(TAG, "Exception occurred while sorting directory items");
+            ESP_LOGE(TAG, "Exception while sorting directory items");
             state = FE_STATE_ERROR;
             success = false;
         }
@@ -772,6 +686,7 @@ bool FileExplorerManager::loadDirectory(const String& path) {
 void FileExplorerManager::clearItems() {
     currentItems.clear();
     selectedItem = nullptr;
+    selectedListItem = nullptr;
 }
 
 String FileExplorerManager::formatFileSize(size_t bytes) {
@@ -786,166 +701,349 @@ String FileExplorerManager::formatFileSize(size_t bytes) {
 
 // Event handlers
 void FileExplorerManager::onFileItemClicked(const FileItem* item) {
-    // Validate item pointer and state
-    if (!item) {
-        ESP_LOGW(TAG, "Null item clicked, ignoring");
+    if (!item || item->name.isEmpty() || item->fullPath.isEmpty()) {
         return;
     }
 
-    // Check if we're in a valid state for navigation
     if (state == FE_STATE_LOADING) {
-        ESP_LOGW(TAG, "Navigation ignored - still loading directory");
-        return;
-    }
-
-    // Validate item data
-    if (item->name.isEmpty() || item->fullPath.isEmpty()) {
-        ESP_LOGW(TAG, "Invalid item data (empty name or path), ignoring click");
         return;
     }
 
     selectedItem = item;
 
     if (item->isDirectory) {
-        ESP_LOGI(TAG, "Clicking directory: %s, fullPath: %s", item->name.c_str(), item->fullPath.c_str());
-
-        // Additional validation for directory path
         if (item->fullPath.length() > 200) {
-            ESP_LOGW(TAG, "Directory path too long (%d chars), ignoring", item->fullPath.length());
             return;
         }
 
-        // Check available memory before navigation
         if (ESP.getFreeHeap() < 8192) {
-            ESP_LOGW(TAG, "Low memory (%u bytes), delaying directory navigation", ESP.getFreeHeap());
             return;
         }
 
-        // Make a local copy of the path to prevent String corruption issues
         String targetPath = item->fullPath;
-        ESP_LOGI(TAG, "Created local path copy: %s (length: %d)", targetPath.c_str(), targetPath.length());
-
         navigateToPath(targetPath);
     } else {
-        // For now, just select the file
-        ESP_LOGI(TAG, "Selected file: %s, fullPath: %s", item->name.c_str(), item->fullPath.c_str());
+        // File selected - show viewer for text files
+        ESP_LOGI(TAG, "Selected file: %s", item->name.c_str());
+        String fileName = item->name;
+        fileName.toLowerCase();
+        if (fileName.endsWith(".txt") || fileName.endsWith(".log") || fileName.endsWith(".json") || fileName.endsWith(".cfg")) {
+            showFileViewer(item);
+        }
     }
 }
 
 void FileExplorerManager::onFileItemDoubleClicked(const FileItem* item) {
-    onFileItemClicked(item);  // Same behavior for now
+    onFileItemClicked(item);
 }
 
 void FileExplorerManager::onBackButtonClicked() {
-    ESP_LOGI(TAG, "Back button clicked");
     // This will be handled by the event handler in UiEventHandlers.cpp
 }
 
 void FileExplorerManager::onRefreshClicked() {
-    ESP_LOGI(TAG, "=== BUTTON EVENT === Refresh button clicked");
     refreshCurrentDirectory();
 }
 
 void FileExplorerManager::onNewFolderClicked() {
-    unsigned long currentTime = Hardware::Device::getMillis();
-    ESP_LOGI(TAG, "=== BUTTON EVENT === New folder button clicked at %lu ms", currentTime);
-
-    // The phantom filtering is now handled in the LVGL callback
-    // This function is only called for verified, non-phantom events
-    ESP_LOGI(TAG, "BUTTON ACCEPTED: Starting folder creation (verified by phantom filter)");
-
-    // Provide immediate visual feedback
-    if (btnNewFolder) {
-        lv_obj_add_state(btnNewFolder, LV_STATE_DISABLED);
-        lv_obj_t* label = lv_obj_get_child(btnNewFolder, 0);
-        if (label) {
-            lv_label_set_text(label, "...");
-        }
-    }
-
     showCreateFolderDialog();
 }
 
 void FileExplorerManager::onDeleteClicked() {
-    // Get current timestamp for detailed button tracking
-    unsigned long currentTime = Hardware::Device::getMillis();
-    unsigned long timeSinceLastClick = currentTime - g_lastButtonClickTime;
-
-    ESP_LOGI(TAG, "=== BUTTON EVENT === Delete button clicked");
-    ESP_LOGI(TAG, "Current time: %lu ms, Last click: %lu ms, Time diff: %lu ms",
-             currentTime, g_lastButtonClickTime, timeSinceLastClick);
-
-    // Debounce button clicks to prevent double-firing
-    if (timeSinceLastClick < BUTTON_DEBOUNCE_MS) {
-        ESP_LOGW(TAG, "BUTTON DEBOUNCED: Delete button click ignored (time diff: %lu ms)", timeSinceLastClick);
-        return;
-    }
-
-    g_lastButtonClickTime = currentTime;
-    ESP_LOGI(TAG, "BUTTON ACCEPTED: Processing delete action");
-
     if (selectedItem) {
         showDeleteConfirmation(selectedItem);
     }
 }
 
 void FileExplorerManager::onPropertiesClicked() {
-    ESP_LOGI(TAG, "=== BUTTON EVENT === Properties button clicked");
     if (selectedItem) {
         showProperties(selectedItem);
     }
 }
 
-// Dialog implementations - simplified for now
+// Proper dialog implementations
 void FileExplorerManager::showCreateFolderDialog() {
-    // For now, create a simple folder with timestamp
-    String folderName = "NewFolder_" + String(Hardware::Device::getMillis());
-    createDirectory(folderName);
+    if (!ui_screenFileExplorer) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+
+    // Create input dialog
+    inputDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(inputDialog, lv_pct(80), lv_pct(40));
+    lv_obj_set_align(inputDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(inputDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(inputDialog);
+    lv_label_set_text(title, "Create New Folder");
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 10);
+
+    // Text area for folder name
+    lv_obj_t* textArea = lv_textarea_create(inputDialog);
+    lv_obj_set_size(textArea, lv_pct(80), 40);
+    lv_obj_set_align(textArea, LV_ALIGN_CENTER);
+    lv_obj_set_y(textArea, -10);
+    lv_textarea_set_placeholder_text(textArea, "Folder name...");
+
+    // Button panel
+    lv_obj_t* btnPanel = lv_obj_create(inputDialog);
+    lv_obj_set_size(btnPanel, lv_pct(100), 50);
+    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // OK button
+    lv_obj_t* btnOK = lv_button_create(btnPanel);
+    lv_obj_t* lblOK = lv_label_create(btnOK);
+    lv_label_set_text(lblOK, "Create");
+    lv_obj_add_event_cb(btnOK, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager& manager = FileExplorerManager::getInstance();
+            lv_obj_t* dialog = manager.inputDialog;
+            if (dialog) {
+                // Find the text area (second child of dialog)
+                lv_obj_t* textArea = lv_obj_get_child(dialog, 1);
+                if (textArea) {
+                    const char* text = lv_textarea_get_text(textArea);
+                    if (text && strlen(text) > 0) {
+                        String folderName = String(text);
+                        // Validate folder name
+                        if (folderName.indexOf('/') >= 0 || folderName.indexOf('\\') >= 0 || 
+                            folderName.indexOf(':') >= 0 || folderName.indexOf('*') >= 0 ||
+                            folderName.indexOf('?') >= 0 || folderName.indexOf('"') >= 0 ||
+                            folderName.indexOf('<') >= 0 || folderName.indexOf('>') >= 0 ||
+                            folderName.indexOf('|') >= 0) {
+                            ESP_LOGW("FileExplorerManager", "Invalid folder name: %s", folderName.c_str());
+                            return; // Don't close dialog, let user fix name
+                        }
+                        manager.createDirectory(folderName);
+                    }
+                }
+            }
+            manager.closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Cancel button
+    lv_obj_t* btnCancel = lv_button_create(btnPanel);
+    lv_obj_t* lblCancel = lv_label_create(btnCancel);
+    lv_label_set_text(lblCancel, "Cancel");
+    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
 }
 
 void FileExplorerManager::showDeleteConfirmation(const FileItem* item) {
-    // For now, directly delete (in production, show confirmation dialog)
-    ESP_LOGW(TAG, "Deleting item without confirmation: %s", item->name.c_str());
-    deleteItem(item->fullPath);
+    if (!ui_screenFileExplorer || !item) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+
+    // Create confirm dialog
+    confirmDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(confirmDialog, lv_pct(80), lv_pct(35));
+    lv_obj_set_align(confirmDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(confirmDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(confirmDialog);
+    lv_label_set_text(title, "Confirm Delete");
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 10);
+
+    // Message
+    lv_obj_t* message = lv_label_create(confirmDialog);
+    String msgText = "Delete '" + item->name + "'?";
+    lv_label_set_text(message, msgText.c_str());
+    lv_obj_set_align(message, LV_ALIGN_CENTER);
+    lv_obj_set_y(message, -10);
+
+    // Button panel
+    lv_obj_t* btnPanel = lv_obj_create(confirmDialog);
+    lv_obj_set_size(btnPanel, lv_pct(100), 50);
+    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Store the item path for the callback
+    static String itemToDelete;
+    itemToDelete = item->fullPath;
+
+    // Delete button
+    lv_obj_t* btnDelete = lv_button_create(btnPanel);
+    lv_obj_t* lblDelete = lv_label_create(btnDelete);
+    lv_label_set_text(lblDelete, "Delete");
+    lv_obj_set_style_bg_color(btnDelete, lv_color_make(255, 0, 0), LV_PART_MAIN);
+    lv_obj_add_event_cb(btnDelete, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager& manager = FileExplorerManager::getInstance();
+            manager.deleteItem(itemToDelete);
+            manager.closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Cancel button
+    lv_obj_t* btnCancel = lv_button_create(btnPanel);
+    lv_obj_t* lblCancel = lv_label_create(btnCancel);
+    lv_label_set_text(lblCancel, "Cancel");
+    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
 }
 
 void FileExplorerManager::showProperties(const FileItem* item) {
-    ESP_LOGI(TAG, "Properties for: %s", item->name.c_str());
-    ESP_LOGI(TAG, "  Type: %s", item->isDirectory ? "Directory" : "File");
-    ESP_LOGI(TAG, "  Size: %s", item->sizeString.c_str());
-    ESP_LOGI(TAG, "  Path: %s", item->fullPath.c_str());
+    if (!ui_screenFileExplorer || !item) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+
+    // Create properties dialog
+    propertiesDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(propertiesDialog, lv_pct(85), lv_pct(50));
+    lv_obj_set_align(propertiesDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(propertiesDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(propertiesDialog);
+    lv_label_set_text(title, "Properties");
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 10);
+
+    // Content area
+    lv_obj_t* content = lv_obj_create(propertiesDialog);
+    lv_obj_set_size(content, lv_pct(90), lv_pct(60));
+    lv_obj_set_align(content, LV_ALIGN_CENTER);
+    lv_obj_set_y(content, -10);
+    lv_obj_remove_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Name
+    lv_obj_t* lblName = lv_label_create(content);
+    String nameText = "Name: " + item->name;
+    lv_label_set_text(lblName, nameText.c_str());
+    lv_obj_set_align(lblName, LV_ALIGN_TOP_LEFT);
+
+    // Type
+    lv_obj_t* lblType = lv_label_create(content);
+    String typeText = "Type: " + String(item->isDirectory ? "Directory" : "File");
+    lv_label_set_text(lblType, typeText.c_str());
+    lv_obj_set_align(lblType, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblType, 25);
+
+    // Size
+    lv_obj_t* lblSize = lv_label_create(content);
+    String sizeText = "Size: " + item->sizeString;
+    lv_label_set_text(lblSize, sizeText.c_str());
+    lv_obj_set_align(lblSize, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblSize, 50);
+
+    // Path
+    lv_obj_t* lblPath = lv_label_create(content);
+    String pathText = "Path: " + item->fullPath;
+    lv_label_set_text(lblPath, pathText.c_str());
+    lv_obj_set_align(lblPath, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_y(lblPath, 75);
+
+    // Close button
+    lv_obj_t* btnClose = lv_button_create(propertiesDialog);
+    lv_obj_t* lblClose = lv_label_create(btnClose);
+    lv_label_set_text(lblClose, "Close");
+    lv_obj_set_align(btnClose, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(btnClose, -10);
+    lv_obj_add_event_cb(btnClose, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+}
+
+void FileExplorerManager::showFileViewer(const FileItem* item) {
+    if (!ui_screenFileExplorer || !item || item->isDirectory) {
+        return;
+    }
+
+    // Read file content
+    String content;
+    if (!readTextFile(item->fullPath, content)) {
+        ESP_LOGE(TAG, "Failed to read file: %s", item->fullPath.c_str());
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+
+    // Create file viewer dialog
+    fileViewerDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(fileViewerDialog, lv_pct(90), lv_pct(80));
+    lv_obj_set_align(fileViewerDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(fileViewerDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(fileViewerDialog);
+    String titleText = "File: " + item->name;
+    lv_label_set_text(title, titleText.c_str());
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 10);
+
+    // Content area with scrollable text
+    lv_obj_t* contentArea = lv_textarea_create(fileViewerDialog);
+    lv_obj_set_size(contentArea, lv_pct(90), lv_pct(75));
+    lv_obj_set_align(contentArea, LV_ALIGN_CENTER);
+    lv_obj_set_y(contentArea, 5);
+    lv_textarea_set_text(contentArea, content.c_str());
+    lv_obj_add_state(contentArea, LV_STATE_DISABLED);  // Read-only
+
+    // Close button
+    lv_obj_t* btnClose = lv_button_create(fileViewerDialog);
+    lv_obj_t* lblClose = lv_label_create(btnClose);
+    lv_label_set_text(lblClose, "Close");
+    lv_obj_set_align(btnClose, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(btnClose, -10);
+    lv_obj_add_event_cb(btnClose, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+}
+
+void FileExplorerManager::closeDialog() {
+    if (modalOverlay) {
+        lv_obj_del(modalOverlay);
+        modalOverlay = nullptr;
+        inputDialog = nullptr;
+        confirmDialog = nullptr;
+        propertiesDialog = nullptr;
+        fileViewerDialog = nullptr;
+    }
 }
 
 void FileExplorerManager::addItem(const FileItem& item) {
     try {
         if (item.name.isEmpty()) {
-            ESP_LOGW(TAG, "Attempting to add item with empty name, skipping");
             return;
         }
         currentItems.push_back(item);
     } catch (...) {
-        ESP_LOGE(TAG, "Exception occurred while adding item to list");
-    }
-}
-
-// Helper function to reset button state and operation flag
-void FileExplorerManager::resetButtonState() {
-    ESP_LOGI(TAG, "=== BUTTON STATE === Resetting operation state and phantom filter");
-
-    // Reset old operation tracking
-    g_operationInProgress = false;
-
-    // Reset phantom filter state
-    g_newButtonTracker.operationActive = false;
-
-    // Re-enable and restore New button
-    if (btnNewFolder) {
-        lv_obj_remove_state(btnNewFolder, LV_STATE_DISABLED);
-        lv_obj_t* label = lv_obj_get_child(btnNewFolder, 0);
-        if (label) {
-            lv_label_set_text(label, "New");
-        }
-        ESP_LOGI(TAG, "New button re-enabled, phantom filter reset");
+        ESP_LOGE(TAG, "Exception while adding item to list");
     }
 }
 

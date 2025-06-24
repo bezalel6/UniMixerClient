@@ -56,6 +56,8 @@ class FileExplorerManager {
     void showProperties(const FileItem* item);
     void showCreateFolderDialog();
     void showDeleteConfirmation(const FileItem* item);
+    void showFileViewer(const FileItem* item);
+    void closeDialog();
 
     // State getters
     const String& getCurrentPath() const { return currentPath; }
@@ -85,6 +87,7 @@ class FileExplorerManager {
     void clearItems();
     void updatePathDisplay();
     void updateFileList();
+    void updateButtonStates();
     void createDynamicUI();
     void destroyDynamicUI();
 
@@ -93,6 +96,7 @@ class FileExplorerManager {
     std::vector<FileItem> currentItems;
     FileExplorerState state;
     const FileItem* selectedItem;
+    lv_obj_t* selectedListItem;  // Track selected UI item for visual feedback
     bool initialized;
     bool uiCreated;  // Track UI creation state
 
@@ -110,9 +114,7 @@ class FileExplorerManager {
     lv_obj_t* inputDialog;
     lv_obj_t* confirmDialog;
     lv_obj_t* propertiesDialog;
-
-    // UI lifecycle management
-    void resetButtonState();
+    lv_obj_t* fileViewerDialog;
 };
 
 }  // namespace FileExplorer
