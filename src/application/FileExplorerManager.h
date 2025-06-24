@@ -55,6 +55,7 @@ class FileExplorerManager {
     void updateSDStatus();
     void showProperties(const FileItem* item);
     void showCreateFolderDialog();
+    void showSimpleFolderDialog();  // Fallback without keyboard
     void showDeleteConfirmation(const FileItem* item);
     void showFileViewer(const FileItem* item);
     void closeDialog();

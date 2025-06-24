@@ -194,13 +194,19 @@ bool FileExplorerManager::navigateToPath(const String& path) {
 }
 
 bool FileExplorerManager::navigateUp() {
+    ESP_LOGI(TAG, "navigateUp() called, currentPath: %s", currentPath.c_str());
+
     if (currentPath == "/") {
+        ESP_LOGW(TAG, "Already at root, cannot navigate up");
         return false;  // Already at root
     }
 
     // Find parent directory
     int lastSlash = currentPath.lastIndexOf('/');
+    ESP_LOGI(TAG, "Last slash found at position: %d", lastSlash);
+
     if (lastSlash <= 0) {
+        ESP_LOGI(TAG, "Navigating to root directory");
         return navigateToPath("/");
     }
 
@@ -209,6 +215,7 @@ bool FileExplorerManager::navigateUp() {
         parentPath = "/";
     }
 
+    ESP_LOGI(TAG, "Navigating to parent path: %s", parentPath.c_str());
     return navigateToPath(parentPath);
 }
 
@@ -388,17 +395,25 @@ void FileExplorerManager::updateFileList() {
 
     // Add ".." entry if not at root
     if (currentPath != "/") {
-        lv_obj_t* item = lv_list_add_button(fileList, LV_SYMBOL_DIRECTORY, "..");
-        lv_obj_set_user_data(item, (void*)(-1));  // Special marker for parent directory
+        lv_obj_t* parentItem = lv_list_add_button(fileList, LV_SYMBOL_DIRECTORY, "..");
+        lv_obj_set_user_data(parentItem, (void*)(-1));  // Special marker for parent directory
 
-        // Add event callback for ".." button
-        lv_obj_add_event_cb(item, [](lv_event_t* e) {
+        // Add dedicated event callback for ".." button navigation
+        lv_obj_add_event_cb(parentItem, [](lv_event_t* e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
                 FileExplorerManager& manager = FileExplorerManager::getInstance();
-                if (manager.getCurrentPath() != "/") {
-                    ESP_LOGI("FileExplorerManager", "Navigating up from: %s", manager.getCurrentPath().c_str());
-                    manager.navigateUp();
+                ESP_LOGI("FileExplorerManager", ".. button clicked, navigating up from: %s", manager.getCurrentPath().c_str());
+                
+                // Clear any selection when navigating up
+                if (manager.selectedListItem) {
+                    lv_obj_set_style_bg_color(manager.selectedListItem, lv_color_white(), LV_PART_MAIN);
                 }
+                manager.selectedItem = nullptr;
+                manager.selectedListItem = nullptr;
+                manager.updateButtonStates();
+                
+                // Navigate up
+                manager.navigateUp();
             } }, LV_EVENT_CLICKED, nullptr);
     }
 
@@ -746,7 +761,8 @@ void FileExplorerManager::onRefreshClicked() {
 }
 
 void FileExplorerManager::onNewFolderClicked() {
-    showCreateFolderDialog();
+    // Use the simpler dialog for better compatibility
+    showSimpleFolderDialog();
 }
 
 void FileExplorerManager::onDeleteClicked() {
@@ -773,9 +789,9 @@ void FileExplorerManager::showCreateFolderDialog() {
     lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
 
-    // Create input dialog
+    // Create input dialog (larger to accommodate keyboard)
     inputDialog = lv_obj_create(modalOverlay);
-    lv_obj_set_size(inputDialog, lv_pct(80), lv_pct(40));
+    lv_obj_set_size(inputDialog, lv_pct(95), lv_pct(70));
     lv_obj_set_align(inputDialog, LV_ALIGN_CENTER);
     lv_obj_set_style_bg_color(inputDialog, lv_color_white(), LV_PART_MAIN);
 
@@ -788,14 +804,25 @@ void FileExplorerManager::showCreateFolderDialog() {
     // Text area for folder name
     lv_obj_t* textArea = lv_textarea_create(inputDialog);
     lv_obj_set_size(textArea, lv_pct(80), 40);
-    lv_obj_set_align(textArea, LV_ALIGN_CENTER);
-    lv_obj_set_y(textArea, -10);
+    lv_obj_set_align(textArea, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(textArea, 50);
     lv_textarea_set_placeholder_text(textArea, "Folder name...");
+    lv_textarea_set_one_line(textArea, true);  // Single line input
 
-    // Button panel
+    // Button panel (above keyboard)
     lv_obj_t* btnPanel = lv_obj_create(inputDialog);
     lv_obj_set_size(btnPanel, lv_pct(100), 50);
-    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_align(btnPanel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(btnPanel, 100);
+
+    // Create virtual keyboard for text input (at bottom)
+    lv_obj_t* keyboard = lv_keyboard_create(inputDialog);
+    lv_obj_set_size(keyboard, lv_pct(95), lv_pct(50));
+    lv_obj_set_align(keyboard, LV_ALIGN_BOTTOM_MID);
+    lv_keyboard_set_textarea(keyboard, textArea);
+
+    // Focus the text area for immediate input
+    lv_obj_add_state(textArea, LV_STATE_FOCUSED);
     lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
@@ -823,6 +850,93 @@ void FileExplorerManager::showCreateFolderDialog() {
                             folderName.indexOf('|') >= 0) {
                             ESP_LOGW("FileExplorerManager", "Invalid folder name: %s", folderName.c_str());
                             return; // Don't close dialog, let user fix name
+                        }
+                        manager.createDirectory(folderName);
+                    }
+                }
+            }
+            manager.closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Cancel button
+    lv_obj_t* btnCancel = lv_button_create(btnPanel);
+    lv_obj_t* lblCancel = lv_label_create(btnCancel);
+    lv_label_set_text(lblCancel, "Cancel");
+    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+}
+
+void FileExplorerManager::showSimpleFolderDialog() {
+    if (!ui_screenFileExplorer) {
+        return;
+    }
+
+    // Create modal overlay
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
+
+    // Create input dialog (smaller, simpler)
+    inputDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(inputDialog, lv_pct(80), lv_pct(45));
+    lv_obj_set_align(inputDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(inputDialog, lv_color_white(), LV_PART_MAIN);
+
+    // Title
+    lv_obj_t* title = lv_label_create(inputDialog);
+    lv_label_set_text(title, "Create New Folder");
+    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(title, 10);
+
+    // Instructions
+    lv_obj_t* instructions = lv_label_create(inputDialog);
+    lv_label_set_text(instructions, "Touch the text field to enter folder name:");
+    lv_obj_set_align(instructions, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(instructions, 40);
+
+    // Simple text area for folder name
+    lv_obj_t* textArea = lv_textarea_create(inputDialog);
+    lv_obj_set_size(textArea, lv_pct(80), 40);
+    lv_obj_set_align(textArea, LV_ALIGN_CENTER);
+    lv_obj_set_y(textArea, -20);
+    lv_textarea_set_placeholder_text(textArea, "Enter folder name...");
+    lv_textarea_set_one_line(textArea, true);
+
+    // Pre-fill with a default name
+    String defaultName = "NewFolder_" + String(Hardware::Device::getMillis());
+    lv_textarea_set_text(textArea, defaultName.c_str());
+    lv_obj_add_state(textArea, LV_STATE_FOCUSED);
+
+    // Button panel
+    lv_obj_t* btnPanel = lv_obj_create(inputDialog);
+    lv_obj_set_size(btnPanel, lv_pct(100), 50);
+    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // OK button
+    lv_obj_t* btnOK = lv_button_create(btnPanel);
+    lv_obj_t* lblOK = lv_label_create(btnOK);
+    lv_label_set_text(lblOK, "Create");
+    lv_obj_add_event_cb(btnOK, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager& manager = FileExplorerManager::getInstance();
+            lv_obj_t* dialog = manager.inputDialog;
+            if (dialog) {
+                // Find the text area (third child: title, instructions, textArea)
+                lv_obj_t* textArea = lv_obj_get_child(dialog, 2);
+                if (textArea) {
+                    const char* text = lv_textarea_get_text(textArea);
+                    if (text && strlen(text) > 0) {
+                        String folderName = String(text);
+                        // Basic validation
+                        if (folderName.indexOf('/') >= 0 || folderName.indexOf('\\') >= 0) {
+                            ESP_LOGW("FileExplorerManager", "Invalid folder name: %s", folderName.c_str());
+                            return; // Don't close dialog
                         }
                         manager.createDirectory(folderName);
                     }

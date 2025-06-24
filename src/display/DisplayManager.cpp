@@ -416,8 +416,6 @@ void moveUser1WidgetsToBackground(lv_obj_t *parent) {
         return;
     }
 
-    ESP_LOGI(TAG, "Moving widgets with User 1 state to background");
-
     uint32_t child_count = lv_obj_get_child_count(parent);
 
     // Iterate through all children
