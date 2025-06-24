@@ -5,38 +5,58 @@
 #include <ui/ui.h>
 #include <esp_log.h>
 #include <algorithm>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 static const char* TAG = "FileExplorerManager";
 
 namespace Application {
 namespace FileExplorer {
 
-// Static variables for callback
+// Thread-safe callback system
+static SemaphoreHandle_t g_callbackMutex = nullptr;
+static volatile bool g_callbackActive = false;
 static String g_loadingPath;
 static FileExplorerManager* g_manager = nullptr;
 
-// Static callback function for listDirectory
+// Static callback function for listDirectory - now thread-safe
 static void directoryListingCallback(const char* name, bool isDir, size_t size) {
+    // Take mutex to ensure thread safety
+    if (!g_callbackMutex || xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to take callback mutex, skipping item");
+        return;
+    }
+
+    // Check if callback is still active (not cancelled by another thread)
+    if (!g_callbackActive) {
+        xSemaphoreGive(g_callbackMutex);
+        return;
+    }
+
     // Defensive null-checking
     if (!name || strlen(name) == 0 || strlen(name) > 255) {
         ESP_LOGW(TAG, "Callback received invalid name, skipping");
+        xSemaphoreGive(g_callbackMutex);
         return;
     }
 
     if (!g_manager) {
         ESP_LOGW(TAG, "No manager instance available for callback");
+        xSemaphoreGive(g_callbackMutex);
         return;
     }
 
     // Validate the path
     if (g_loadingPath.isEmpty() || g_loadingPath.length() > 200) {
         ESP_LOGW(TAG, "Loading path is invalid in callback");
+        xSemaphoreGive(g_callbackMutex);
         return;
     }
 
     // Check available heap before doing string operations
     if (ESP.getFreeHeap() < 8192) {  // Less than 8KB free heap
         ESP_LOGW(TAG, "Low memory, skipping file item: %s", name);
+        xSemaphoreGive(g_callbackMutex);
         return;
     }
 
@@ -51,6 +71,7 @@ static void directoryListingCallback(const char* name, bool isDir, size_t size) 
         size_t pathLen = g_loadingPath.length() + strlen(name) + 2;  // +2 for "/" and null terminator
         if (pathLen > 255) {
             ESP_LOGW(TAG, "Path too long for item: %s", name);
+            xSemaphoreGive(g_callbackMutex);
             return;
         }
 
@@ -77,6 +98,8 @@ static void directoryListingCallback(const char* name, bool isDir, size_t size) 
     } catch (...) {
         ESP_LOGE(TAG, "Unknown exception occurred in directory listing callback for: %s", name);
     }
+
+    xSemaphoreGive(g_callbackMutex);
 }
 
 FileExplorerManager& FileExplorerManager::getInstance() {
@@ -90,6 +113,15 @@ bool FileExplorerManager::init() {
     }
 
     ESP_LOGI(TAG, "Initializing File Explorer Manager");
+
+    // Create mutex for thread-safe callbacks
+    if (!g_callbackMutex) {
+        g_callbackMutex = xSemaphoreCreateMutex();
+        if (!g_callbackMutex) {
+            ESP_LOGE(TAG, "Failed to create callback mutex");
+            return false;
+        }
+    }
 
     currentPath = "/";
     state = FE_STATE_IDLE;
@@ -119,9 +151,23 @@ void FileExplorerManager::deinit() {
 
     ESP_LOGI(TAG, "Deinitializing File Explorer Manager");
 
+    // Cancel any active callbacks
+    if (g_callbackMutex && xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        g_callbackActive = false;
+        g_loadingPath = "";
+        g_manager = nullptr;
+        xSemaphoreGive(g_callbackMutex);
+    }
+
     destroyDynamicUI();
     clearItems();
     initialized = false;
+
+    // Clean up mutex
+    if (g_callbackMutex) {
+        vSemaphoreDelete(g_callbackMutex);
+        g_callbackMutex = nullptr;
+    }
 }
 
 bool FileExplorerManager::navigateToPath(const String& path) {
@@ -468,16 +514,22 @@ bool FileExplorerManager::loadDirectory(const String& path) {
         return false;
     }
 
-    // Ensure static variables are clear before use
-    g_loadingPath = "";
-    g_manager = nullptr;
+    // Thread-safe callback setup
+    if (!g_callbackMutex || xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to acquire callback mutex");
+        state = FE_STATE_ERROR;
+        return false;
+    }
 
-    // Small delay to ensure any previous operations are complete
-    Hardware::Device::delay(10);
+    // Cancel any previous operation and set up new one
+    g_callbackActive = false;
+    Hardware::Device::delay(10);  // Give any active callbacks time to finish
 
-    // Set up static variables for callback
     g_loadingPath = path;
     g_manager = this;
+    g_callbackActive = true;
+
+    xSemaphoreGive(g_callbackMutex);
 
     // Call the SD listing function
     bool success = false;
@@ -488,9 +540,13 @@ bool FileExplorerManager::loadDirectory(const String& path) {
         success = false;
     }
 
-    // Always clear static variables regardless of success
-    g_loadingPath = "";
-    g_manager = nullptr;
+    // Thread-safe cleanup
+    if (g_callbackMutex && xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        g_callbackActive = false;
+        g_loadingPath = "";
+        g_manager = nullptr;
+        xSemaphoreGive(g_callbackMutex);
+    }
 
     if (success) {
         try {

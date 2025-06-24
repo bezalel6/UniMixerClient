@@ -2,6 +2,8 @@
 #include "DeviceManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 static const char* TAG = "SDManager";
 
@@ -14,6 +16,7 @@ static unsigned long lastActivity = 0;
 static unsigned long lastMountAttempt = 0;
 static bool initializationComplete = false;
 static SDCardInfo cardInfo = {0};
+static SemaphoreHandle_t sdOperationMutex = nullptr;
 
 // Private function declarations
 static void updateCardInfo(void);
@@ -21,12 +24,24 @@ static const char* getCardTypeString(uint8_t cardType);
 static bool initializeSPI(void);
 static void deinitializeSPI(void);
 static SDFileResult createFileResult(bool success, size_t bytes = 0, const char* error = nullptr);
+static bool removeDirectoryRecursive(const char* path);
+static bool removeFileOrDirectory(const char* path);
+
 bool init(void) {
     ESP_LOGI(TAG, "Initializing SD manager for ESP32-8048S070C");
 
     if (initializationComplete) {
         ESP_LOGW(TAG, "SD manager already initialized");
         return currentStatus == SD_STATUS_MOUNTED;
+    }
+
+    // Create mutex for thread-safe SD operations
+    if (!sdOperationMutex) {
+        sdOperationMutex = xSemaphoreCreateMutex();
+        if (!sdOperationMutex) {
+            ESP_LOGE(TAG, "Failed to create SD operation mutex");
+            return false;
+        }
     }
 
     // Initialize variables
@@ -77,6 +92,12 @@ void deinit(void) {
     currentStatus = SD_STATUS_NOT_INITIALIZED;
     initializationComplete = false;
     memset(&cardInfo, 0, sizeof(cardInfo));
+
+    // Clean up mutex
+    if (sdOperationMutex) {
+        vSemaphoreDelete(sdOperationMutex);
+        sdOperationMutex = nullptr;
+    }
 
     ESP_LOGI(TAG, "SD manager deinitialized");
 }
@@ -211,13 +232,21 @@ unsigned long getLastActivity(void) {
 }
 
 bool createDirectory(const char* path) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire SD mutex for directory creation");
+        return false;
+    }
+
+    bool result = false;
+
     if (!isMounted() || !path) {
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
     ESP_LOGI(TAG, "Creating directory: %s", path);
 
-    bool result = ::SD.mkdir(path);
+    result = ::SD.mkdir(path);
     if (result) {
         ESP_LOGI(TAG, "Directory created successfully: %s", path);
         lastActivity = Hardware::Device::getMillis();
@@ -225,17 +254,26 @@ bool createDirectory(const char* path) {
         ESP_LOGW(TAG, "Failed to create directory: %s", path);
     }
 
+    xSemaphoreGive(sdOperationMutex);
     return result;
 }
 
 bool removeDirectory(const char* path) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire SD mutex for directory removal");
+        return false;
+    }
+
+    bool result = false;
+
     if (!isMounted() || !path) {
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
     ESP_LOGI(TAG, "Removing directory: %s", path);
 
-    bool result = ::SD.rmdir(path);
+    result = ::SD.rmdir(path);
     if (result) {
         ESP_LOGI(TAG, "Directory removed successfully: %s", path);
         lastActivity = Hardware::Device::getMillis();
@@ -243,6 +281,7 @@ bool removeDirectory(const char* path) {
         ESP_LOGW(TAG, "Failed to remove directory: %s", path);
     }
 
+    xSemaphoreGive(sdOperationMutex);
     return result;
 }
 
@@ -262,16 +301,26 @@ bool directoryExists(const char* path) {
 }
 
 bool listDirectory(const char* path, void (*callback)(const char* name, bool isDir, size_t size)) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire SD mutex for directory listing");
+        return false;
+    }
+
+    bool result = false;
+
     if (!isMounted()) {
         ESP_LOGW(TAG, "SD card not mounted");
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
     if (!path) {
         ESP_LOGW(TAG, "Path is null");
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
     if (!callback) {
         ESP_LOGW(TAG, "Callback is null");
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
@@ -280,12 +329,14 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
     File root = ::SD.open(path);
     if (!root) {
         ESP_LOGW(TAG, "Failed to open directory: %s", path);
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
     if (!root.isDirectory()) {
         ESP_LOGW(TAG, "Path is not a directory: %s", path);
         root.close();
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
@@ -308,7 +359,16 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
                 try {
                     bool isDir = file.isDirectory();
                     size_t size = isDir ? 0 : file.size();
-                    callback(fileName, isDir, size);
+
+                    // Extract just the filename without path
+                    const char* baseName = strrchr(fileName, '/');
+                    if (baseName) {
+                        baseName++;  // Skip the '/'
+                    } else {
+                        baseName = fileName;
+                    }
+
+                    callback(baseName, isDir, size);
                 } catch (...) {
                     ESP_LOGW(TAG, "Exception while processing file: %s", fileName ? fileName : "unknown");
                 }
@@ -333,19 +393,32 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
     root.close();
     lastActivity = Hardware::Device::getMillis();
     ESP_LOGI(TAG, "Listed %d items from directory: %s", fileCount, path);
-    return true;
+    result = true;
+
+    xSemaphoreGive(sdOperationMutex);
+    return result;
 }
 
 SDFileResult readFile(const char* path, char* buffer, size_t maxLength) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        return createFileResult(false, 0, "Failed to acquire SD mutex");
+    }
+
+    SDFileResult result;
+
     if (!isMounted() || !path || !buffer || maxLength == 0) {
-        return createFileResult(false, 0, "Invalid parameters");
+        result = createFileResult(false, 0, "Invalid parameters");
+        xSemaphoreGive(sdOperationMutex);
+        return result;
     }
 
     ESP_LOGI(TAG, "Reading file: %s", path);
 
     File file = ::SD.open(path, FILE_READ);
     if (!file) {
-        return createFileResult(false, 0, "Failed to open file");
+        result = createFileResult(false, 0, "Failed to open file");
+        xSemaphoreGive(sdOperationMutex);
+        return result;
     }
 
     size_t bytesToRead = min((size_t)file.size(), maxLength - 1);  // Reserve space for null terminator
@@ -356,19 +429,32 @@ SDFileResult readFile(const char* path, char* buffer, size_t maxLength) {
     lastActivity = Hardware::Device::getMillis();
 
     ESP_LOGI(TAG, "File read successfully: %zu bytes", bytesRead);
-    return createFileResult(true, bytesRead, nullptr);
+    result = createFileResult(true, bytesRead, nullptr);
+
+    xSemaphoreGive(sdOperationMutex);
+    return result;
 }
 
 SDFileResult writeFile(const char* path, const char* data, bool append) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        return createFileResult(false, 0, "Failed to acquire SD mutex");
+    }
+
+    SDFileResult result;
+
     if (!isMounted() || !path || !data) {
-        return createFileResult(false, 0, "Invalid parameters");
+        result = createFileResult(false, 0, "Invalid parameters");
+        xSemaphoreGive(sdOperationMutex);
+        return result;
     }
 
     ESP_LOGI(TAG, "Writing file: %s (append: %s)", path, append ? "true" : "false");
 
     File file = ::SD.open(path, append ? FILE_APPEND : FILE_WRITE);
     if (!file) {
-        return createFileResult(false, 0, "Failed to open file for writing");
+        result = createFileResult(false, 0, "Failed to open file for writing");
+        xSemaphoreGive(sdOperationMutex);
+        return result;
     }
 
     size_t dataLength = strlen(data);
@@ -379,16 +465,27 @@ SDFileResult writeFile(const char* path, const char* data, bool append) {
 
     if (bytesWritten == dataLength) {
         ESP_LOGI(TAG, "File written successfully: %zu bytes", bytesWritten);
-        return createFileResult(true, bytesWritten, nullptr);
+        result = createFileResult(true, bytesWritten, nullptr);
     } else {
         ESP_LOGW(TAG, "Incomplete write: %zu/%zu bytes", bytesWritten, dataLength);
-        return createFileResult(false, bytesWritten, "Incomplete write");
+        result = createFileResult(false, bytesWritten, "Incomplete write");
     }
+
+    xSemaphoreGive(sdOperationMutex);
+    return result;
 }
 
 SDFileResult deleteFile(const char* path) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        return createFileResult(false, 0, "Failed to acquire SD mutex");
+    }
+
+    SDFileResult fileResult;
+
     if (!isMounted() || !path) {
-        return createFileResult(false, 0, "Invalid parameters");
+        fileResult = createFileResult(false, 0, "Invalid parameters");
+        xSemaphoreGive(sdOperationMutex);
+        return fileResult;
     }
 
     ESP_LOGI(TAG, "Deleting file: %s", path);
@@ -398,11 +495,14 @@ SDFileResult deleteFile(const char* path) {
 
     if (result) {
         ESP_LOGI(TAG, "File deleted successfully: %s", path);
-        return createFileResult(true, 0, nullptr);
+        fileResult = createFileResult(true, 0, nullptr);
     } else {
         ESP_LOGW(TAG, "Failed to delete file: %s", path);
-        return createFileResult(false, 0, "Delete failed");
+        fileResult = createFileResult(false, 0, "Delete failed");
     }
+
+    xSemaphoreGive(sdOperationMutex);
+    return fileResult;
 }
 
 bool fileExists(const char* path) {
@@ -509,8 +609,16 @@ bool copyFile(const char* sourcePath, const char* destPath) {
 }
 
 bool format(void) {
+    if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(30000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to acquire SD mutex for format operation");
+        return false;
+    }
+
+    bool result = false;
+
     if (!isMounted()) {
         ESP_LOGW(TAG, "Cannot format: SD card not mounted");
+        xSemaphoreGive(sdOperationMutex);
         return false;
     }
 
@@ -524,10 +632,6 @@ bool format(void) {
     unmount();
     Hardware::Device::delay(1000);  // Give time for unmount
 
-    // Try to remount in raw mode for formatting
-    // Note: ESP32 SD library doesn't provide direct format support
-    // This is a workaround that recreates the file system
-
     bool formatSuccess = false;
     int attempts = 0;
     const int MAX_ATTEMPTS = 3;
@@ -540,36 +644,11 @@ bool format(void) {
         if (mount()) {
             ESP_LOGI(TAG, "Card remounted, attempting to clear root directory");
 
-            // Delete all files and directories in root
-            bool clearSuccess = true;
-            File root = ::SD.open("/");
-            if (root && root.isDirectory()) {
-                File file = root.openNextFile();
-                while (file) {
-                    String fileName = file.name();
-                    bool isDir = file.isDirectory();
-                    file.close();
+            // Delete all files and directories in root using recursive approach
+            formatSuccess = removeDirectoryRecursive("/");
 
-                    if (isDir) {
-                        if (!removeDirectory(fileName.c_str())) {
-                            ESP_LOGW(TAG, "Failed to remove directory: %s", fileName.c_str());
-                            clearSuccess = false;
-                        }
-                    } else {
-                        if (!::SD.remove(fileName.c_str())) {
-                            ESP_LOGW(TAG, "Failed to remove file: %s", fileName.c_str());
-                            clearSuccess = false;
-                        }
-                    }
-
-                    file = root.openNextFile();
-                }
-                root.close();
-            }
-
-            if (clearSuccess) {
+            if (formatSuccess) {
                 ESP_LOGI(TAG, "SD card formatted successfully (all content cleared)");
-                formatSuccess = true;
                 // Update card info after format
                 updateCardInfo();
                 lastActivity = Hardware::Device::getMillis();
@@ -590,7 +669,9 @@ bool format(void) {
         mount();
     }
 
-    return formatSuccess;
+    result = formatSuccess;
+    xSemaphoreGive(sdOperationMutex);
+    return result;
 }
 
 void printCardInfo(void) {
@@ -730,6 +811,99 @@ static SDFileResult createFileResult(bool success, size_t bytes, const char* err
     }
 
     return result;
+}
+
+static bool removeDirectoryRecursive(const char* path) {
+    if (!path) return false;
+
+    ESP_LOGI(TAG, "Recursively removing directory contents: %s", path);
+
+    File root = ::SD.open(path);
+    if (!root || !root.isDirectory()) {
+        if (root) root.close();
+        return false;
+    }
+
+    bool success = true;
+    File file = root.openNextFile();
+
+    while (file) {
+        String fullPath = String(path);
+        if (!fullPath.endsWith("/")) {
+            fullPath += "/";
+        }
+
+        // Get the base filename without path
+        const char* fileName = file.name();
+        const char* baseName = strrchr(fileName, '/');
+        if (baseName) {
+            baseName++;  // Skip the '/'
+        } else {
+            baseName = fileName;
+        }
+
+        fullPath += baseName;
+        bool isDir = file.isDirectory();
+        file.close();
+
+        ESP_LOGI(TAG, "Processing: %s (isDirectory: %s)", fullPath.c_str(), isDir ? "true" : "false");
+
+        if (isDir) {
+            // Recursively remove subdirectory contents first
+            if (!removeDirectoryRecursive(fullPath.c_str())) {
+                ESP_LOGW(TAG, "Failed to recursively remove directory: %s", fullPath.c_str());
+                success = false;
+            }
+            // Then remove the empty directory
+            if (!::SD.rmdir(fullPath.c_str())) {
+                ESP_LOGW(TAG, "Failed to remove empty directory: %s", fullPath.c_str());
+                success = false;
+            } else {
+                ESP_LOGI(TAG, "Successfully removed directory: %s", fullPath.c_str());
+            }
+        } else {
+            // Remove file
+            if (!::SD.remove(fullPath.c_str())) {
+                ESP_LOGW(TAG, "Failed to remove file: %s", fullPath.c_str());
+                success = false;
+            } else {
+                ESP_LOGI(TAG, "Successfully removed file: %s", fullPath.c_str());
+            }
+        }
+
+        file = root.openNextFile();
+    }
+
+    root.close();
+
+    // Don't remove the root directory itself if it's "/"
+    if (strcmp(path, "/") != 0) {
+        if (!::SD.rmdir(path)) {
+            ESP_LOGW(TAG, "Failed to remove directory: %s", path);
+            success = false;
+        }
+    }
+
+    return success;
+}
+
+static bool removeFileOrDirectory(const char* path) {
+    if (!path) return false;
+
+    File item = ::SD.open(path);
+    if (!item) {
+        ESP_LOGW(TAG, "Cannot open item for removal: %s", path);
+        return false;
+    }
+
+    bool isDir = item.isDirectory();
+    item.close();
+
+    if (isDir) {
+        return removeDirectoryRecursive(path);
+    } else {
+        return ::SD.remove(path);
+    }
 }
 
 }  // namespace SD
