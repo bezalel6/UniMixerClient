@@ -19,6 +19,10 @@ static volatile bool g_callbackActive = false;
 static String g_loadingPath;
 static FileExplorerManager* g_manager = nullptr;
 
+// Button debouncing to prevent double-clicks
+static unsigned long g_lastButtonClickTime = 0;
+static const unsigned long BUTTON_DEBOUNCE_MS = 500;
+
 // Static callback function for listDirectory - now thread-safe
 static void directoryListingCallback(const char* name, bool isDir, size_t size) {
     // Take mutex to ensure thread safety
@@ -316,8 +320,13 @@ void FileExplorerManager::updateUI() {
         return;
     }
 
-    // Create dynamic UI if not exists
-    if (!contentPanel) {
+    // Create dynamic UI if not exists - but only once
+    if (!contentPanel && !actionPanel) {
+        ESP_LOGI(TAG, "Creating dynamic UI for the first time");
+        createDynamicUI();
+    } else if (!contentPanel || !actionPanel) {
+        ESP_LOGW(TAG, "UI components partially missing, destroying and recreating");
+        destroyDynamicUI();
         createDynamicUI();
     }
 
@@ -374,24 +383,45 @@ void FileExplorerManager::updateFileList() {
         lv_obj_t* listItem = lv_list_add_button(fileList, icon, displayText.c_str());
         lv_obj_set_user_data(listItem, (void*)i);  // Store index
 
-        // Add event callback
+        // Add event callback with better validation
         lv_obj_add_event_cb(listItem, [](lv_event_t* e) {
             lv_event_code_t code = lv_event_get_code(e);
             lv_obj_t* item = (lv_obj_t*)lv_event_get_target(e);
-            int index = (int)(intptr_t)lv_obj_get_user_data(item);
             
+            // Validate event and item
+            if (!e || !item) {
+                return;
+            }
+            
+            int index = (int)(intptr_t)lv_obj_get_user_data(item);
             FileExplorerManager& manager = FileExplorerManager::getInstance();
+            
+            // Get current items with bounds checking
+            const auto& currentItems = manager.getCurrentItems();
             
             if (code == LV_EVENT_CLICKED) {
                 if (index == -1) {
-                    // Parent directory
-                    manager.navigateUp();
-                } else if (index >= 0 && index < manager.getCurrentItems().size()) {
-                    manager.onFileItemClicked(&manager.getCurrentItems()[index]);
+                    // Parent directory - validate we're not at root
+                    if (manager.getCurrentPath() != "/") {
+                        manager.navigateUp();
+                    }
+                } else if (index >= 0 && index < (int)currentItems.size()) {
+                    // Validate the item still exists and is valid
+                    const FileItem& fileItem = currentItems[index];
+                    if (!fileItem.name.isEmpty() && !fileItem.fullPath.isEmpty()) {
+                        manager.onFileItemClicked(&fileItem);
+                    } else {
+                        ESP_LOGW("FileExplorerManager", "Invalid file item at index %d", index);
+                    }
+                } else {
+                    ESP_LOGW("FileExplorerManager", "Invalid item index: %d (size: %d)", index, currentItems.size());
                 }
             } else if (code == LV_EVENT_LONG_PRESSED) {
-                if (index >= 0 && index < manager.getCurrentItems().size()) {
-                    manager.showProperties(&manager.getCurrentItems()[index]);
+                if (index >= 0 && index < (int)currentItems.size()) {
+                    const FileItem& fileItem = currentItems[index];
+                    if (!fileItem.name.isEmpty()) {
+                        manager.showProperties(&fileItem);
+                    }
                 }
             } }, LV_EVENT_ALL, nullptr);
     }
@@ -514,6 +544,10 @@ bool FileExplorerManager::loadDirectory(const String& path) {
         return false;
     }
 
+    // Add timeout protection to prevent hanging operations
+    unsigned long startTime = Hardware::Device::getMillis();
+    const unsigned long DIRECTORY_LOAD_TIMEOUT_MS = 10000;  // 10 second timeout
+
     // Thread-safe callback setup
     if (!g_callbackMutex || xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to acquire callback mutex");
@@ -531,10 +565,16 @@ bool FileExplorerManager::loadDirectory(const String& path) {
 
     xSemaphoreGive(g_callbackMutex);
 
-    // Call the SD listing function
+    // Call the SD listing function with timeout protection
     bool success = false;
     try {
         success = Hardware::SD::listDirectory(path.c_str(), directoryListingCallback);
+
+        // Check for timeout
+        if (Hardware::Device::getMillis() - startTime > DIRECTORY_LOAD_TIMEOUT_MS) {
+            ESP_LOGW(TAG, "Directory listing timed out after %lu ms", DIRECTORY_LOAD_TIMEOUT_MS);
+            success = false;
+        }
     } catch (...) {
         ESP_LOGE(TAG, "Exception occurred during directory listing");
         success = false;
@@ -590,10 +630,41 @@ String FileExplorerManager::formatFileSize(size_t bytes) {
 
 // Event handlers
 void FileExplorerManager::onFileItemClicked(const FileItem* item) {
+    // Validate item pointer and state
+    if (!item) {
+        ESP_LOGW(TAG, "Null item clicked, ignoring");
+        return;
+    }
+
+    // Check if we're in a valid state for navigation
+    if (state == FE_STATE_LOADING) {
+        ESP_LOGW(TAG, "Navigation ignored - still loading directory");
+        return;
+    }
+
+    // Validate item data
+    if (item->name.isEmpty() || item->fullPath.isEmpty()) {
+        ESP_LOGW(TAG, "Invalid item data (empty name or path), ignoring click");
+        return;
+    }
+
     selectedItem = item;
 
     if (item->isDirectory) {
         ESP_LOGI(TAG, "Clicking directory: %s, fullPath: %s", item->name.c_str(), item->fullPath.c_str());
+
+        // Additional validation for directory path
+        if (item->fullPath.length() > 200) {
+            ESP_LOGW(TAG, "Directory path too long (%d chars), ignoring", item->fullPath.length());
+            return;
+        }
+
+        // Check available memory before navigation
+        if (ESP.getFreeHeap() < 8192) {
+            ESP_LOGW(TAG, "Low memory (%u bytes), delaying directory navigation", ESP.getFreeHeap());
+            return;
+        }
+
         navigateToPath(item->fullPath);
     } else {
         // For now, just select the file
@@ -616,11 +687,27 @@ void FileExplorerManager::onRefreshClicked() {
 }
 
 void FileExplorerManager::onNewFolderClicked() {
+    // Debounce button clicks to prevent double-firing
+    unsigned long currentTime = Hardware::Device::getMillis();
+    if (currentTime - g_lastButtonClickTime < BUTTON_DEBOUNCE_MS) {
+        ESP_LOGW(TAG, "Button click ignored due to debouncing (time diff: %lu ms)", currentTime - g_lastButtonClickTime);
+        return;
+    }
+    g_lastButtonClickTime = currentTime;
+
     ESP_LOGI(TAG, "New folder clicked");
     showCreateFolderDialog();
 }
 
 void FileExplorerManager::onDeleteClicked() {
+    // Debounce button clicks to prevent double-firing
+    unsigned long currentTime = Hardware::Device::getMillis();
+    if (currentTime - g_lastButtonClickTime < BUTTON_DEBOUNCE_MS) {
+        ESP_LOGW(TAG, "Delete button click ignored due to debouncing");
+        return;
+    }
+    g_lastButtonClickTime = currentTime;
+
     ESP_LOGI(TAG, "Delete clicked");
     if (selectedItem) {
         showDeleteConfirmation(selectedItem);
