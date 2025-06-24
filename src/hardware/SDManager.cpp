@@ -344,45 +344,99 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
     int fileCount = 0;
     const int MAX_FILES = 1000;  // Prevent infinite loops
 
-    File file = root.openNextFile();
+    ESP_LOGD(TAG, "Starting directory iteration for: %s", path);
+    ESP_LOGD(TAG, "Free heap before iteration: %u bytes", ESP.getFreeHeap());
+
+    File file;
+    try {
+        file = root.openNextFile();
+    } catch (...) {
+        ESP_LOGW(TAG, "Exception while opening first file, directory might be empty");
+        try {
+            root.close();
+        } catch (...) {
+        }
+        result = true;  // Empty directory is still successful
+        xSemaphoreGive(sdOperationMutex);
+        return result;
+    }
+
+    // Special handling for empty directories
+    if (!file) {
+        ESP_LOGI(TAG, "Directory is empty: %s", path);
+        try {
+            root.close();
+        } catch (...) {
+        }
+        result = true;
+        xSemaphoreGive(sdOperationMutex);
+        return result;
+    }
+
     while (file && fileCount < MAX_FILES) {
+        ESP_LOGD(TAG, "Processing file %d", fileCount + 1);
         // Reset watchdog timer every 10 files to prevent timeout
         if (fileCount % 10 == 0) {
             esp_task_wdt_reset();
+            ESP_LOGD(TAG, "Free heap during iteration: %u bytes", ESP.getFreeHeap());
         }
 
-        // Validate file object before using it
-        if (file.available() >= 0) {  // This checks if the file object is valid
-            const char* fileName = file.name();
-            if (fileName && strlen(fileName) > 0 && strlen(fileName) < 256) {
-                // Additional safety check - ensure we can call the methods safely
-                try {
-                    bool isDir = file.isDirectory();
-                    size_t size = isDir ? 0 : file.size();
-
-                    // Extract just the filename without path
-                    const char* baseName = strrchr(fileName, '/');
-                    if (baseName) {
-                        baseName++;  // Skip the '/'
-                    } else {
-                        baseName = fileName;
-                    }
-
-                    callback(baseName, isDir, size);
-                } catch (...) {
-                    ESP_LOGW(TAG, "Exception while processing file: %s", fileName ? fileName : "unknown");
-                }
-            } else {
-                ESP_LOGW(TAG, "Skipping file with invalid name");
-            }
-        } else {
-            ESP_LOGW(TAG, "Invalid file object encountered, stopping iteration");
+        // Check for low memory conditions
+        if (ESP.getFreeHeap() < 4096) {
+            ESP_LOGW(TAG, "Low memory detected (%u bytes), stopping directory iteration", ESP.getFreeHeap());
             break;
         }
 
-        // Explicitly close current file before getting next one
-        file.close();
-        file = root.openNextFile();
+        // More robust file object validation - avoid calling methods that may cause crashes
+        bool fileValid = false;
+        const char* fileName = nullptr;
+
+        try {
+            // First check if we can safely get the filename
+            fileName = file.name();
+            if (fileName && strlen(fileName) > 0 && strlen(fileName) < 256) {
+                fileValid = true;
+            }
+        } catch (...) {
+            ESP_LOGW(TAG, "Exception while getting file name");
+            fileValid = false;
+        }
+
+        if (fileValid) {
+            try {
+                bool isDir = file.isDirectory();
+                size_t size = isDir ? 0 : file.size();
+
+                // Extract just the filename without path
+                const char* baseName = strrchr(fileName, '/');
+                if (baseName) {
+                    baseName++;  // Skip the '/'
+                } else {
+                    baseName = fileName;
+                }
+
+                callback(baseName, isDir, size);
+                ESP_LOGD(TAG, "Processed file: %s (isDir: %s)", baseName, isDir ? "true" : "false");
+            } catch (...) {
+                ESP_LOGW(TAG, "Exception while processing file: %s", fileName ? fileName : "unknown");
+            }
+        } else {
+            ESP_LOGW(TAG, "Skipping invalid file object");
+        }
+
+        // Safely close current file before getting next one
+        try {
+            file.close();
+        } catch (...) {
+            ESP_LOGW(TAG, "Exception while closing file");
+        }
+
+        try {
+            file = root.openNextFile();
+        } catch (...) {
+            ESP_LOGW(TAG, "Exception while getting next file, stopping iteration");
+            break;
+        }
         fileCount++;
     }
 
@@ -390,7 +444,13 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
         ESP_LOGW(TAG, "Reached maximum file limit (%d), stopping iteration", MAX_FILES);
     }
 
-    root.close();
+    ESP_LOGD(TAG, "Directory iteration completed, closing root");
+    try {
+        root.close();
+    } catch (...) {
+        ESP_LOGW(TAG, "Exception while closing root directory");
+    }
+
     lastActivity = Hardware::Device::getMillis();
     ESP_LOGI(TAG, "Listed %d items from directory: %s", fileCount, path);
     result = true;
