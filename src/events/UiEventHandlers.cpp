@@ -2,6 +2,7 @@
 #include "../application/AudioManager.h"
 #include "../application/AudioUI.h"
 #include "../application/LVGLMessageHandler.h"
+#include "../application/FileExplorerManager.h"
 #include "../hardware/DeviceManager.h"
 
 #include <ArduinoJson.h>
@@ -252,6 +253,41 @@ void stateOverviewLongPressHandler(lv_event_t *e) {
 
     // Show state overview overlay
     Application::LVGLMessageHandler::showStateOverview();
+}
+
+// File Explorer event handlers
+void fileExplorerBackButtonHandler(lv_event_t *e) {
+    ON_EVENT(LV_EVENT_CLICKED);
+
+    UI_LOG("UIEventHandlers", "File explorer back button clicked");
+
+    // Navigate back to main screen
+    _ui_screen_change(&ui_screenMain, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_screenMain_screen_init);
+
+    // Cleanup file explorer
+    Application::FileExplorer::FileExplorerManager::getInstance().deinit();
+}
+
+void fileExplorerNavigationHandler(lv_event_t *e) {
+    ON_EVENT(LV_EVENT_CLICKED);
+
+    UI_LOG("UIEventHandlers", "Navigating to file explorer");
+
+    // Initialize file explorer if needed
+    Application::FileExplorer::FileExplorerManager &manager =
+        Application::FileExplorer::FileExplorerManager::getInstance();
+
+    if (!manager.init()) {
+        ESP_LOGE("UIEventHandlers", "Failed to initialize file explorer");
+        return;
+    }
+
+    // Navigate to file explorer screen
+    _ui_screen_change(&ui_screenFileExplorer, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_screenFileExplorer_screen_init);
+
+    // Load root directory and update UI
+    manager.navigateToRoot();
+    manager.updateUI();
 }
 
 // Cleanup function for debounce timers

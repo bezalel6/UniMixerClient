@@ -6,6 +6,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
+#include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
 #include "../messaging/SerialBridge.h"
 #include "AudioManager.h"
@@ -36,6 +37,16 @@ bool init(void) {
     if (!Hardware::Device::init()) {
         ESP_LOGE(TAG, "Failed to initialize device manager");
         return false;
+    }
+    esp_task_wdt_reset();
+
+    // Initialize SD card manager
+    ESP_LOGI(TAG, "WDT Reset: Initializing SD Manager...");
+    if (!Hardware::SD::init()) {
+        ESP_LOGW(TAG, "SD Manager initialization failed - SD card functionality will be unavailable");
+        // Note: SD card failure is not fatal for the application
+    } else {
+        ESP_LOGI(TAG, "SD Manager initialized successfully");
     }
     esp_task_wdt_reset();
 
@@ -213,6 +224,7 @@ void deinit(void) {
 #endif
 
     Display::deinit();
+    Hardware::SD::deinit();
     Hardware::Device::deinit();
 }
 
@@ -351,6 +363,22 @@ void setupUiComponents(void) {
     Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
                                                        "OTA Ready");
 #endif
+
+    // Setup file explorer navigation
+    ESP_LOGI(TAG, "Setting up file explorer event handlers");
+
+    // SD container click handler for file explorer navigation
+    if (ui_sdContainer) {
+        lv_obj_add_event_cb(ui_sdContainer, Events::UI::fileExplorerNavigationHandler, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_flag(ui_sdContainer, LV_OBJ_FLAG_CLICKABLE);
+        ESP_LOGI(TAG, "SD container click handler registered");
+    }
+
+    // File explorer back button handler (if screen exists)
+    if (ui_btnFileExplorerBack) {
+        lv_obj_add_event_cb(ui_btnFileExplorerBack, Events::UI::fileExplorerBackButtonHandler, LV_EVENT_CLICKED, NULL);
+        ESP_LOGI(TAG, "File explorer back button handler registered");
+    }
 }
 
 }  // namespace Application

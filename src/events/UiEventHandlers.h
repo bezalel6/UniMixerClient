@@ -53,6 +53,10 @@ const char *getTabName(TabState tab);
 // State overview handler
 void stateOverviewLongPressHandler(lv_event_t *e);
 
+// File Explorer handlers
+void fileExplorerBackButtonHandler(lv_event_t *e);
+void fileExplorerNavigationHandler(lv_event_t *e);
+
 // Cleanup function for debounce timers
 void cleanupVolumeDebouncing();
 

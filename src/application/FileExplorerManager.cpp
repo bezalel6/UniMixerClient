@@ -1,0 +1,499 @@
+#include "FileExplorerManager.h"
+#include "../hardware/SDManager.h"
+#include "../hardware/DeviceManager.h"
+#include "LVGLMessageHandler.h"
+#include <ui/ui.h>
+#include <esp_log.h>
+#include <algorithm>
+
+static const char* TAG = "FileExplorerManager";
+
+namespace Application {
+namespace FileExplorer {
+
+FileExplorerManager& FileExplorerManager::getInstance() {
+    static FileExplorerManager instance;
+    return instance;
+}
+
+bool FileExplorerManager::init() {
+    if (initialized) {
+        return true;
+    }
+
+    ESP_LOGI(TAG, "Initializing File Explorer Manager");
+
+    currentPath = "/";
+    state = FE_STATE_IDLE;
+    selectedItem = nullptr;
+
+    // Initialize dynamic UI components to nullptr
+    contentPanel = nullptr;
+    fileList = nullptr;
+    actionPanel = nullptr;
+    btnNewFolder = nullptr;
+    btnRefresh = nullptr;
+    btnProperties = nullptr;
+    btnDelete = nullptr;
+    modalOverlay = nullptr;
+    inputDialog = nullptr;
+    confirmDialog = nullptr;
+    propertiesDialog = nullptr;
+
+    initialized = true;
+    return true;
+}
+
+void FileExplorerManager::deinit() {
+    if (!initialized) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Deinitializing File Explorer Manager");
+
+    destroyDynamicUI();
+    clearItems();
+    initialized = false;
+}
+
+bool FileExplorerManager::navigateToPath(const String& path) {
+    if (!Hardware::SD::isMounted()) {
+        ESP_LOGW(TAG, "Cannot navigate: SD card not mounted");
+        state = FE_STATE_ERROR;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Navigating to path: %s", path.c_str());
+
+    if (loadDirectory(path)) {
+        currentPath = path;
+        updateUI();
+        return true;
+    }
+
+    return false;
+}
+
+bool FileExplorerManager::navigateUp() {
+    if (currentPath == "/") {
+        return false;  // Already at root
+    }
+
+    // Find parent directory
+    int lastSlash = currentPath.lastIndexOf('/');
+    if (lastSlash <= 0) {
+        return navigateToPath("/");
+    }
+
+    String parentPath = currentPath.substring(0, lastSlash);
+    if (parentPath.isEmpty()) {
+        parentPath = "/";
+    }
+
+    return navigateToPath(parentPath);
+}
+
+bool FileExplorerManager::navigateToRoot() {
+    return navigateToPath("/");
+}
+
+void FileExplorerManager::refreshCurrentDirectory() {
+    ESP_LOGI(TAG, "Refreshing current directory");
+    navigateToPath(currentPath);
+}
+
+bool FileExplorerManager::createDirectory(const String& name) {
+    if (!Hardware::SD::isMounted() || name.isEmpty()) {
+        return false;
+    }
+
+    String fullPath = currentPath;
+    if (!fullPath.endsWith("/")) {
+        fullPath += "/";
+    }
+    fullPath += name;
+
+    ESP_LOGI(TAG, "Creating directory: %s", fullPath.c_str());
+
+    if (Hardware::SD::createDirectory(fullPath.c_str())) {
+        refreshCurrentDirectory();
+        return true;
+    }
+
+    return false;
+}
+
+bool FileExplorerManager::deleteItem(const String& path) {
+    if (!Hardware::SD::isMounted() || path.isEmpty()) {
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Deleting item: %s", path.c_str());
+
+    // Check if it's a directory
+    if (Hardware::SD::directoryExists(path.c_str())) {
+        if (Hardware::SD::removeDirectory(path.c_str())) {
+            refreshCurrentDirectory();
+            return true;
+        }
+    } else {
+        // It's a file
+        auto result = Hardware::SD::deleteFile(path.c_str());
+        if (result.success) {
+            refreshCurrentDirectory();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool FileExplorerManager::createTextFile(const String& name, const String& content) {
+    if (!Hardware::SD::isMounted() || name.isEmpty()) {
+        return false;
+    }
+
+    String fullPath = currentPath;
+    if (!fullPath.endsWith("/")) {
+        fullPath += "/";
+    }
+    fullPath += name;
+
+    ESP_LOGI(TAG, "Creating text file: %s", fullPath.c_str());
+
+    auto result = Hardware::SD::writeFile(fullPath.c_str(), content.c_str(), false);
+    if (result.success) {
+        refreshCurrentDirectory();
+        return true;
+    }
+
+    return false;
+}
+
+bool FileExplorerManager::readTextFile(const String& path, String& content) {
+    if (!Hardware::SD::isMounted() || path.isEmpty()) {
+        return false;
+    }
+
+    char buffer[2048];  // 2KB buffer for text files
+    auto result = Hardware::SD::readFile(path.c_str(), buffer, sizeof(buffer));
+
+    if (result.success) {
+        content = String(buffer);
+        return true;
+    }
+
+    return false;
+}
+
+bool FileExplorerManager::writeTextFile(const String& path, const String& content) {
+    if (!Hardware::SD::isMounted() || path.isEmpty()) {
+        return false;
+    }
+
+    auto result = Hardware::SD::writeFile(path.c_str(), content.c_str(), false);
+    return result.success;
+}
+
+void FileExplorerManager::updateUI() {
+    if (!initialized) {
+        return;
+    }
+
+    // Create dynamic UI if not exists
+    if (!contentPanel) {
+        createDynamicUI();
+    }
+
+    updatePathDisplay();
+    updateSDStatus();
+    updateFileList();
+}
+
+void FileExplorerManager::updateSDStatus() {
+    if (!ui_objSDStatusIndicator) {
+        return;
+    }
+
+    if (Hardware::SD::isMounted()) {
+        lv_label_set_text(ui_objSDStatusIndicator, LV_SYMBOL_OK);
+        lv_obj_set_style_text_color(ui_objSDStatusIndicator, lv_color_make(0, 255, 0), LV_PART_MAIN);
+    } else {
+        lv_label_set_text(ui_objSDStatusIndicator, LV_SYMBOL_CLOSE);
+        lv_obj_set_style_text_color(ui_objSDStatusIndicator, lv_color_make(255, 0, 0), LV_PART_MAIN);
+    }
+}
+
+void FileExplorerManager::updatePathDisplay() {
+    if (ui_lblCurrentPath) {
+        lv_label_set_text(ui_lblCurrentPath, currentPath.c_str());
+    }
+}
+
+void FileExplorerManager::updateFileList() {
+    if (!fileList) {
+        return;
+    }
+
+    // Clear existing items
+    lv_obj_clean(fileList);
+
+    // Add ".." entry if not at root
+    if (currentPath != "/") {
+        lv_obj_t* item = lv_list_add_button(fileList, LV_SYMBOL_DIRECTORY, "..");
+        lv_obj_set_user_data(item, (void*)(-1));  // Special marker for parent directory
+    }
+
+    // Add directory items first, then files
+    for (size_t i = 0; i < currentItems.size(); i++) {
+        const FileItem& item = currentItems[i];
+
+        const char* icon = item.isDirectory ? LV_SYMBOL_DIRECTORY : LV_SYMBOL_FILE;
+        String displayText = item.name;
+
+        if (!item.isDirectory) {
+            displayText += " (" + item.sizeString + ")";
+        }
+
+        lv_obj_t* listItem = lv_list_add_button(fileList, icon, displayText.c_str());
+        lv_obj_set_user_data(listItem, (void*)i);  // Store index
+
+        // Add event callback
+        lv_obj_add_event_cb(listItem, [](lv_event_t* e) {
+            lv_event_code_t code = lv_event_get_code(e);
+            lv_obj_t* item = (lv_obj_t*)lv_event_get_target(e);
+            int index = (int)(intptr_t)lv_obj_get_user_data(item);
+            
+            FileExplorerManager& manager = FileExplorerManager::getInstance();
+            
+            if (code == LV_EVENT_CLICKED) {
+                if (index == -1) {
+                    // Parent directory
+                    manager.navigateUp();
+                } else if (index >= 0 && index < manager.getCurrentItems().size()) {
+                    manager.onFileItemClicked(&manager.getCurrentItems()[index]);
+                }
+            } else if (code == LV_EVENT_LONG_PRESSED) {
+                if (index >= 0 && index < manager.getCurrentItems().size()) {
+                    manager.showProperties(&manager.getCurrentItems()[index]);
+                }
+            } }, LV_EVENT_ALL, nullptr);
+    }
+}
+
+void FileExplorerManager::createDynamicUI() {
+    if (!ui_screenFileExplorer) {
+        ESP_LOGW(TAG, "File explorer screen not available");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Creating dynamic UI components");
+
+    // Create main content panel (middle 60%)
+    contentPanel = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_width(contentPanel, lv_pct(100));
+    lv_obj_set_height(contentPanel, lv_pct(60));
+    lv_obj_set_align(contentPanel, LV_ALIGN_CENTER);
+    lv_obj_remove_flag(contentPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create file list
+    fileList = lv_list_create(contentPanel);
+    lv_obj_set_size(fileList, lv_pct(100), lv_pct(100));
+    lv_obj_set_align(fileList, LV_ALIGN_CENTER);
+
+    // Create action panel (bottom 10%)
+    actionPanel = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_width(actionPanel, lv_pct(100));
+    lv_obj_set_height(actionPanel, lv_pct(10));
+    lv_obj_set_align(actionPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_flex_flow(actionPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(actionPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(actionPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create action buttons
+    btnNewFolder = lv_button_create(actionPanel);
+    lv_obj_t* lblNewFolder = lv_label_create(btnNewFolder);
+    lv_label_set_text(lblNewFolder, "New");
+    lv_obj_add_event_cb(btnNewFolder, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onNewFolderClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    btnRefresh = lv_button_create(actionPanel);
+    lv_obj_t* lblRefresh = lv_label_create(btnRefresh);
+    lv_label_set_text(lblRefresh, LV_SYMBOL_REFRESH);
+    lv_obj_add_event_cb(btnRefresh, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onRefreshClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    btnProperties = lv_button_create(actionPanel);
+    lv_obj_t* lblProperties = lv_label_create(btnProperties);
+    lv_label_set_text(lblProperties, "Info");
+    lv_obj_add_event_cb(btnProperties, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onPropertiesClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    btnDelete = lv_button_create(actionPanel);
+    lv_obj_t* lblDelete = lv_label_create(btnDelete);
+    lv_label_set_text(lblDelete, LV_SYMBOL_TRASH);
+    lv_obj_add_event_cb(btnDelete, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onDeleteClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+}
+
+void FileExplorerManager::destroyDynamicUI() {
+    if (modalOverlay) {
+        lv_obj_del(modalOverlay);
+        modalOverlay = nullptr;
+    }
+    if (contentPanel) {
+        lv_obj_del(contentPanel);
+        contentPanel = nullptr;
+    }
+    if (actionPanel) {
+        lv_obj_del(actionPanel);
+        actionPanel = nullptr;
+    }
+
+    // Reset pointers
+    fileList = nullptr;
+    btnNewFolder = nullptr;
+    btnRefresh = nullptr;
+    btnProperties = nullptr;
+    btnDelete = nullptr;
+    inputDialog = nullptr;
+    confirmDialog = nullptr;
+    propertiesDialog = nullptr;
+}
+
+bool FileExplorerManager::loadDirectory(const String& path) {
+    if (!Hardware::SD::isMounted()) {
+        ESP_LOGW(TAG, "SD card not mounted");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Loading directory: %s", path.c_str());
+    state = FE_STATE_LOADING;
+    clearItems();
+
+    bool success = Hardware::SD::listDirectory(path.c_str(), [](const char* name, bool isDir, size_t size) {
+        FileExplorerManager& manager = FileExplorerManager::getInstance();
+
+        FileItem item;
+        item.name = String(name);
+        item.fullPath = manager.getCurrentPath();
+        if (!item.fullPath.endsWith("/")) {
+            item.fullPath += "/";
+        }
+        item.fullPath += name;
+        item.isDirectory = isDir;
+        item.size = size;
+        item.sizeString = manager.formatFileSize(size);
+
+        manager.currentItems.push_back(item);
+    });
+
+    if (success) {
+        // Sort items: directories first, then files, both alphabetically
+        std::sort(currentItems.begin(), currentItems.end(), [](const FileItem& a, const FileItem& b) {
+            if (a.isDirectory != b.isDirectory) {
+                return a.isDirectory > b.isDirectory;  // Directories first
+            }
+            return a.name.compareTo(b.name) < 0;  // Alphabetical
+        });
+
+        state = FE_STATE_IDLE;
+        ESP_LOGI(TAG, "Loaded %d items from directory", currentItems.size());
+    } else {
+        state = FE_STATE_ERROR;
+        ESP_LOGE(TAG, "Failed to load directory");
+    }
+
+    return success;
+}
+
+void FileExplorerManager::clearItems() {
+    currentItems.clear();
+    selectedItem = nullptr;
+}
+
+String FileExplorerManager::formatFileSize(size_t bytes) {
+    if (bytes < 1024) {
+        return String(bytes) + "B";
+    } else if (bytes < 1024 * 1024) {
+        return String(bytes / 1024.0, 1) + "KB";
+    } else {
+        return String(bytes / (1024.0 * 1024.0), 1) + "MB";
+    }
+}
+
+// Event handlers
+void FileExplorerManager::onFileItemClicked(const FileItem* item) {
+    selectedItem = item;
+
+    if (item->isDirectory) {
+        navigateToPath(item->fullPath);
+    } else {
+        // For now, just select the file
+        ESP_LOGI(TAG, "Selected file: %s", item->name.c_str());
+    }
+}
+
+void FileExplorerManager::onFileItemDoubleClicked(const FileItem* item) {
+    onFileItemClicked(item);  // Same behavior for now
+}
+
+void FileExplorerManager::onBackButtonClicked() {
+    ESP_LOGI(TAG, "Back button clicked");
+    // This will be handled by the event handler in UiEventHandlers.cpp
+}
+
+void FileExplorerManager::onRefreshClicked() {
+    ESP_LOGI(TAG, "Refresh clicked");
+    refreshCurrentDirectory();
+}
+
+void FileExplorerManager::onNewFolderClicked() {
+    ESP_LOGI(TAG, "New folder clicked");
+    showCreateFolderDialog();
+}
+
+void FileExplorerManager::onDeleteClicked() {
+    ESP_LOGI(TAG, "Delete clicked");
+    if (selectedItem) {
+        showDeleteConfirmation(selectedItem);
+    }
+}
+
+void FileExplorerManager::onPropertiesClicked() {
+    ESP_LOGI(TAG, "Properties clicked");
+    if (selectedItem) {
+        showProperties(selectedItem);
+    }
+}
+
+// Dialog implementations - simplified for now
+void FileExplorerManager::showCreateFolderDialog() {
+    // For now, create a simple folder with timestamp
+    String folderName = "NewFolder_" + String(Hardware::Device::getMillis());
+    createDirectory(folderName);
+}
+
+void FileExplorerManager::showDeleteConfirmation(const FileItem* item) {
+    // For now, directly delete (in production, show confirmation dialog)
+    ESP_LOGW(TAG, "Deleting item without confirmation: %s", item->name.c_str());
+    deleteItem(item->fullPath);
+}
+
+void FileExplorerManager::showProperties(const FileItem* item) {
+    ESP_LOGI(TAG, "Properties for: %s", item->name.c_str());
+    ESP_LOGI(TAG, "  Type: %s", item->isDirectory ? "Directory" : "File");
+    ESP_LOGI(TAG, "  Size: %s", item->sizeString.c_str());
+    ESP_LOGI(TAG, "  Path: %s", item->fullPath.c_str());
+}
+
+}  // namespace FileExplorer
+}  // namespace Application
