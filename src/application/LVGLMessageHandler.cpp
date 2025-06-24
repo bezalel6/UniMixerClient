@@ -44,8 +44,6 @@ static lv_obj_t *state_overlay_panel = NULL;
 static lv_obj_t *state_system_label = NULL;
 static lv_obj_t *state_network_label = NULL;
 static lv_obj_t *state_audio_label = NULL;
-static lv_obj_t *state_gesture_container = NULL;
-static lv_obj_t *state_gesture_list = NULL;
 static lv_obj_t *state_heap_bar = NULL;
 static lv_obj_t *state_wifi_bar = NULL;
 
@@ -55,60 +53,11 @@ static lv_obj_t *format_dialog_panel = NULL;
 static lv_obj_t *format_progress_bar = NULL;
 static lv_obj_t *format_status_label = NULL;
 
-// Gesture logging
-#define MAX_GESTURE_ENTRIES 15
-static int gesture_entry_count = 0;
-
 static const char *TAG = "LVGLMessageHandler";
 
 namespace Application {
 namespace LVGLMessageHandler {
 
-// Helper function to add gesture entry to visual list
-void addGestureEntry(const char *gesture_text) {
-    if (!state_gesture_list) return;
-
-    // Create timestamp
-    uint32_t timestamp = Hardware::Device::getMillis() / 1000;  // Convert to seconds
-    uint32_t minutes = (timestamp / 60) % 60;
-    uint32_t seconds = timestamp % 60;
-
-    // Create new gesture entry
-    lv_obj_t *entry = lv_label_create(state_gesture_list);
-
-    // Format with timestamp and gesture info
-    char entry_text[128];
-    snprintf(entry_text, sizeof(entry_text), "[%02u:%02u] %s", minutes, seconds, gesture_text);
-
-    lv_label_set_text(entry, entry_text);
-    lv_obj_set_width(entry, LV_PCT(100));
-    lv_obj_set_style_text_color(entry, lv_color_hex(0xE0E0E0), 0);
-    lv_obj_set_style_text_font(entry, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_pad_bottom(entry, 2, 0);
-
-    // Move to top of list
-    lv_obj_move_to_index(entry, 0);
-
-    gesture_entry_count++;
-
-    // Remove old entries if we exceed the limit
-    if (gesture_entry_count > MAX_GESTURE_ENTRIES) {
-        // Find and delete the oldest entry (last child)
-        uint32_t child_count = lv_obj_get_child_count(state_gesture_list);
-        if (child_count > 0) {
-            lv_obj_t *oldest_child = lv_obj_get_child(state_gesture_list, child_count - 1);
-            if (oldest_child) {
-                lv_obj_delete(oldest_child);
-                gesture_entry_count--;
-            }
-        }
-    }
-
-    // Scroll to top to show the newest entry
-    lv_obj_scroll_to_y(state_gesture_container, 0, LV_ANIM_ON);
-
-    ESP_LOGI(TAG, "Gesture Log: %s", entry_text);
-}
 #define VOLUME_CASE(enum_name, field_name) \
     case MSG_UPDATE_##enum_name:           \
         return &msg->data.field_name.volume;
@@ -422,7 +371,7 @@ void processMessageQueue(lv_timer_t *timer) {
                     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
                     lv_obj_set_style_bg_color(close_btn, lv_color_hex(0xFF4444), 0);
                     lv_obj_t *close_label = lv_label_create(close_btn);
-                    lv_label_set_text(close_label, "×");
+                    lv_label_set_text(close_label, "X");
                     lv_obj_set_style_text_font(close_label, &lv_font_montserrat_14, 0);
                     lv_obj_center(close_label);
 
@@ -448,7 +397,7 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // System info column with progress bar
                     lv_obj_t *system_container = lv_obj_create(content);
-                    lv_obj_set_size(system_container, LV_PCT(23), LV_PCT(100));
+                    lv_obj_set_size(system_container, LV_PCT(33), LV_PCT(100));
                     lv_obj_set_style_bg_opa(system_container, 0, 0);
                     lv_obj_set_style_border_opa(system_container, 0, 0);
                     lv_obj_set_style_pad_all(system_container, 5, 0);
@@ -469,7 +418,7 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // Network info column with signal bar
                     lv_obj_t *network_container = lv_obj_create(content);
-                    lv_obj_set_size(network_container, LV_PCT(23), LV_PCT(100));
+                    lv_obj_set_size(network_container, LV_PCT(33), LV_PCT(100));
                     lv_obj_set_style_bg_opa(network_container, 0, 0);
                     lv_obj_set_style_border_opa(network_container, 0, 0);
                     lv_obj_set_style_pad_all(network_container, 5, 0);
@@ -490,7 +439,7 @@ void processMessageQueue(lv_timer_t *timer) {
 
                     // Audio info column (scrollable for many devices)
                     lv_obj_t *audio_container = lv_obj_create(content);
-                    lv_obj_set_size(audio_container, LV_PCT(23), LV_PCT(100));
+                    lv_obj_set_size(audio_container, LV_PCT(33), LV_PCT(100));
                     lv_obj_set_style_bg_opa(audio_container, 0, 0);
                     lv_obj_set_style_border_opa(audio_container, 0, 0);
                     lv_obj_set_style_pad_all(audio_container, 5, 0);
@@ -500,106 +449,6 @@ void processMessageQueue(lv_timer_t *timer) {
                     lv_obj_set_style_text_color(state_audio_label, lv_color_hex(0xE0E0E0), 0);
                     lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_14, 0);
                     lv_obj_set_width(state_audio_label, LV_PCT(100));
-
-                    // Gesture log column (scrollable list)
-                    state_gesture_container = lv_obj_create(content);
-                    lv_obj_set_size(state_gesture_container, LV_PCT(23), LV_PCT(100));
-                    lv_obj_set_style_bg_opa(state_gesture_container, 0, 0);
-                    lv_obj_set_style_border_opa(state_gesture_container, 0, 0);
-                    lv_obj_set_style_pad_all(state_gesture_container, 5, 0);
-                    lv_obj_set_scroll_dir(state_gesture_container, LV_DIR_VER);
-                    lv_obj_set_flex_flow(state_gesture_container, LV_FLEX_FLOW_COLUMN);
-                    lv_obj_set_flex_align(state_gesture_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
-                    // Reset gesture counter
-                    gesture_entry_count = 0;
-
-                    // Add initial welcome message to gesture log
-                    addGestureEntry("Overlay opened");
-
-                    // Add comprehensive gesture and event logging
-                    lv_obj_add_event_cb(state_overlay, [](lv_event_t *e) {
-                        lv_event_code_t code = lv_event_get_code(e);
-                        lv_indev_t *indev = lv_event_get_indev(e);
-                        
-                        switch(code){
-                            case LV_EVENT_CLICKED:
-                                addGestureEntry("CLICKED - Closing overlay");
-                                hideStateOverview();
-                                break;
-                                
-                            case LV_EVENT_LONG_PRESSED:
-                                addGestureEntry("LONG_PRESSED detected");
-                                break;
-                                
-                            case LV_EVENT_PRESSED:
-                                addGestureEntry("PRESSED - Touch start");
-                                break;
-                                
-                            case LV_EVENT_RELEASED:
-                                addGestureEntry("RELEASED - Touch end");
-                                break;
-                                
-                            case LV_EVENT_GESTURE: {
-                                if (indev) {
-                                    lv_dir_t gesture = lv_indev_get_gesture_dir(indev);
-                                    const char* gesture_name = "UNKNOWN";
-                                    
-                                    switch(gesture) {
-                                        case LV_DIR_LEFT:
-                                            gesture_name = "SWIPE_LEFT";
-                                            break;
-                                        case LV_DIR_RIGHT:
-                                            gesture_name = "SWIPE_RIGHT";
-                                            break;
-                                        case LV_DIR_TOP:
-                                            gesture_name = "SWIPE_UP";
-                                            break;
-                                        case LV_DIR_BOTTOM:
-                                            gesture_name = "SWIPE_DOWN";
-                                            break;
-                                        default:
-                                            gesture_name = "GESTURE_OTHER";
-                                            break;
-                                    }
-                                    
-                                    char gesture_text[64];
-                                    snprintf(gesture_text, sizeof(gesture_text), "GESTURE - %s", gesture_name);
-                                    addGestureEntry(gesture_text);
-                                    
-                                    if (gesture == LV_DIR_BOTTOM){
-                                        addGestureEntry("Swipe down → closing");
-                                        hideStateOverview();
-                                    }
-                                }
-                                break;
-                            }
-                            
-                            case LV_EVENT_SCROLL_BEGIN:
-                                addGestureEntry("SCROLL_BEGIN");
-                                break;
-                                
-                            case LV_EVENT_SCROLL_END:
-                                addGestureEntry("SCROLL_END");
-                                break;
-                                
-                            default:
-                                if (code >= LV_EVENT_PRESSED && code <= LV_EVENT_SCROLL_END) {
-                                    char event_text[32];
-                                    snprintf(event_text, sizeof(event_text), "Event code %d", code);
-                                    addGestureEntry(event_text);
-                                }
-                                break;
-                        }
-                        
-                        // Log touch coordinates for specific touch events
-                        if (indev && (code == LV_EVENT_PRESSED || code == LV_EVENT_RELEASED || code == LV_EVENT_GESTURE)) {
-                            lv_point_t point;
-                            lv_indev_get_point(indev, &point);
-                            char coord_text[48];
-                            snprintf(coord_text, sizeof(coord_text), "Touch at (%d, %d)", point.x, point.y);
-                            addGestureEntry(coord_text);
-                        } }, LV_EVENT_ALL, NULL);
 
                     // Add close button functionality
                     lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
@@ -618,7 +467,7 @@ void processMessageQueue(lv_timer_t *timer) {
                             if (Hardware::SD::isMounted()) {
                                 requestSDFormat();
                             } else {
-                                addGestureEntry("Format failed: No SD card");
+                                ESP_LOGW(TAG, "Format failed: No SD card");
                             }
                         } }, LV_EVENT_ALL, NULL);
                 }
@@ -640,7 +489,7 @@ void processMessageQueue(lv_timer_t *timer) {
                                                           2000, NULL);
                 }
 
-                ESP_LOGI(TAG, "State Overlay: CREATED and SHOWN with gesture logging enabled");
+                ESP_LOGI(TAG, "State Overlay: CREATED and SHOWN");
                 break;
 
             case MSG_UPDATE_STATE_OVERVIEW:
@@ -868,13 +717,8 @@ void processMessageQueue(lv_timer_t *timer) {
                     state_system_label = NULL;
                     state_network_label = NULL;
                     state_audio_label = NULL;
-                    state_gesture_container = NULL;
-                    state_gesture_list = NULL;
                     state_heap_bar = NULL;
                     state_wifi_bar = NULL;
-
-                    // Reset gesture counter
-                    gesture_entry_count = 0;
                 }
 
                 // Also cleanup format dialog if it's open
@@ -975,7 +819,6 @@ void processMessageQueue(lv_timer_t *timer) {
                                 lv_obj_del(format_dialog);
                                 format_dialog = NULL;
                                 format_dialog_panel = NULL;
-                                addGestureEntry("Format cancelled");
                             }
                         } }, LV_EVENT_CLICKED, NULL);
 
@@ -1084,8 +927,6 @@ void processMessageQueue(lv_timer_t *timer) {
                         lv_timer_delete(timer);
                     },
                                     2000, NULL);
-
-                    addGestureEntry(message.data.sd_format.success ? "Format completed!" : "Format failed!");
                 }
                 break;
 

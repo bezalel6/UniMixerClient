@@ -286,11 +286,7 @@ bool removeDirectory(const char* path) {
 }
 
 bool directoryExists(const char* path) {
-    // Thread-safe implementation with comprehensive logging
-    ESP_LOGI(TAG, "=== directoryExists() ENTRY ===");
-    ESP_LOGI(TAG, "Checking if directory exists: %s", path ? path : "NULL");
-    ESP_LOGI(TAG, "Free heap: %u bytes", ESP.getFreeHeap());
-
+    // Thread-safe implementation with minimal logging
     if (!sdOperationMutex || xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
         ESP_LOGE(TAG, "FAILED to acquire SD mutex for directoryExists");
         return false;
@@ -305,12 +301,9 @@ bool directoryExists(const char* path) {
         return false;
     }
 
-    ESP_LOGI(TAG, "About to call ::SD.open() for path: %s", path);
-
     File dir;
     try {
         dir = ::SD.open(path);
-        ESP_LOGI(TAG, "::SD.open() completed successfully");
     } catch (...) {
         ESP_LOGE(TAG, "EXCEPTION during ::SD.open() for path: %s", path);
         xSemaphoreGive(sdOperationMutex);
@@ -318,31 +311,24 @@ bool directoryExists(const char* path) {
     }
 
     if (!dir) {
-        ESP_LOGI(TAG, "Directory does not exist: %s", path);
+        ESP_LOGD(TAG, "Directory does not exist: %s", path);
         xSemaphoreGive(sdOperationMutex);
         return false;
     }
-    ESP_LOGI(TAG, "File object created successfully");
 
-    ESP_LOGI(TAG, "About to call dir.isDirectory()...");
     try {
         bool isDir = dir.isDirectory();
-        ESP_LOGI(TAG, "dir.isDirectory() returned: %s", isDir ? "true" : "false");
         result = isDir;
     } catch (...) {
         ESP_LOGE(TAG, "EXCEPTION during dir.isDirectory() for path: %s", path);
         result = false;
     }
 
-    ESP_LOGI(TAG, "About to close directory file object...");
     try {
         dir.close();
-        ESP_LOGI(TAG, "Directory file object closed successfully");
     } catch (...) {
         ESP_LOGE(TAG, "EXCEPTION during dir.close() for path: %s", path);
     }
-
-    ESP_LOGI(TAG, "=== directoryExists() EXIT === result: %s", result ? "true" : "false");
 
     xSemaphoreGive(sdOperationMutex);
     return result;
@@ -372,46 +358,30 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
         return false;
     }
 
-    ESP_LOGI(TAG, "=== listDirectory() ENTRY DEBUG ===");
     ESP_LOGI(TAG, "Listing directory: %s", path);
-    ESP_LOGI(TAG, "SD card mounted: %s", isMounted() ? "YES" : "NO");
-    ESP_LOGI(TAG, "Free heap at start: %u bytes", ESP.getFreeHeap());
 
-    ESP_LOGI(TAG, "About to call ::SD.open()...");
     File root = ::SD.open(path);
-    ESP_LOGI(TAG, "::SD.open() completed");
 
     if (!root) {
         ESP_LOGE(TAG, "FAILED to open directory: %s", path);
         xSemaphoreGive(sdOperationMutex);
         return false;
     }
-    ESP_LOGI(TAG, "Directory opened successfully");
 
-    ESP_LOGI(TAG, "About to check if path is directory...");
     if (!root.isDirectory()) {
         ESP_LOGE(TAG, "Path is not a directory: %s", path);
         root.close();
         xSemaphoreGive(sdOperationMutex);
         return false;
     }
-    ESP_LOGI(TAG, "Confirmed path is a directory");
 
-    // Safer file iteration with explicit validation
+    // Safer file iteration with minimal logging
     int fileCount = 0;
     const int MAX_FILES = 1000;  // Prevent infinite loops
 
-    ESP_LOGI(TAG, "=== STARTING DIRECTORY ITERATION DEBUG ===");
-    ESP_LOGI(TAG, "Path: %s", path);
-    ESP_LOGI(TAG, "Free heap before iteration: %u bytes", ESP.getFreeHeap());
-    ESP_LOGI(TAG, "Root directory object valid: %s", root ? "YES" : "NO");
-
     File file;
-    ESP_LOGI(TAG, "About to call root.openNextFile()...");
-
     try {
         file = root.openNextFile();
-        ESP_LOGI(TAG, "root.openNextFile() completed successfully");
     } catch (...) {
         ESP_LOGE(TAG, "EXCEPTION during root.openNextFile()!");
         try {
@@ -423,8 +393,6 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
         xSemaphoreGive(sdOperationMutex);
         return result;
     }
-
-    ESP_LOGI(TAG, "Checking if file object is valid...");
 
     // Special handling for empty directories
     if (!file) {
@@ -438,16 +406,10 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
         return result;
     }
 
-    ESP_LOGI(TAG, "File object exists, starting iteration loop...");
-
     while (file && fileCount < MAX_FILES) {
-        ESP_LOGI(TAG, "=== PROCESSING FILE %d ===", fileCount + 1);
-        ESP_LOGI(TAG, "File object pointer: %p", &file);
-
         // Reset watchdog timer every 10 files to prevent timeout
         if (fileCount % 10 == 0) {
             esp_task_wdt_reset();
-            ESP_LOGI(TAG, "Free heap during iteration: %u bytes", ESP.getFreeHeap());
         }
 
         // Check for low memory conditions
@@ -460,15 +422,11 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
         bool fileValid = false;
         const char* fileName = nullptr;
 
-        ESP_LOGI(TAG, "About to call file.name()...");
-
         try {
             // First check if we can safely get the filename
             fileName = file.name();
-            ESP_LOGI(TAG, "file.name() returned: %s", fileName ? fileName : "NULL");
 
             if (fileName && strlen(fileName) > 0 && strlen(fileName) < 256) {
-                ESP_LOGI(TAG, "Filename is valid: %s (length: %d)", fileName, strlen(fileName));
                 fileValid = true;
             } else {
                 ESP_LOGW(TAG, "Filename is invalid - null or bad length");
@@ -479,30 +437,19 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
         }
 
         if (fileValid) {
-            ESP_LOGI(TAG, "Processing valid file: %s", fileName);
-
             try {
-                ESP_LOGI(TAG, "About to call file.isDirectory()...");
                 bool isDir = file.isDirectory();
-                ESP_LOGI(TAG, "file.isDirectory() returned: %s", isDir ? "true" : "false");
-
-                ESP_LOGI(TAG, "About to get file size...");
                 size_t size = isDir ? 0 : file.size();
-                ESP_LOGI(TAG, "File size: %zu", size);
 
                 // Extract just the filename without path
-                ESP_LOGI(TAG, "Extracting base filename...");
                 const char* baseName = strrchr(fileName, '/');
                 if (baseName) {
                     baseName++;  // Skip the '/'
                 } else {
                     baseName = fileName;
                 }
-                ESP_LOGI(TAG, "Base filename: %s", baseName);
 
-                ESP_LOGI(TAG, "About to call callback function...");
                 callback(baseName, isDir, size);
-                ESP_LOGI(TAG, "Callback completed successfully for: %s", baseName);
             } catch (...) {
                 ESP_LOGE(TAG, "EXCEPTION while processing file: %s", fileName ? fileName : "unknown");
             }
@@ -510,32 +457,26 @@ bool listDirectory(const char* path, void (*callback)(const char* name, bool isD
             ESP_LOGW(TAG, "Skipping invalid file object");
         }
 
-        ESP_LOGI(TAG, "About to close current file...");
         // Safely close current file before getting next one
         try {
             file.close();
-            ESP_LOGI(TAG, "File closed successfully");
         } catch (...) {
             ESP_LOGE(TAG, "EXCEPTION while closing file");
         }
 
-        ESP_LOGI(TAG, "About to get next file...");
         try {
             file = root.openNextFile();
-            ESP_LOGI(TAG, "root.openNextFile() completed, got file: %s", file ? "YES" : "NO");
         } catch (...) {
             ESP_LOGE(TAG, "EXCEPTION while getting next file, stopping iteration");
             break;
         }
         fileCount++;
-        ESP_LOGI(TAG, "File count now: %d", fileCount);
     }
 
     if (fileCount >= MAX_FILES) {
         ESP_LOGW(TAG, "Reached maximum file limit (%d), stopping iteration", MAX_FILES);
     }
 
-    ESP_LOGD(TAG, "Directory iteration completed, closing root");
     try {
         root.close();
     } catch (...) {

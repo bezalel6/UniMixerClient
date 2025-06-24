@@ -94,6 +94,7 @@ class FileExplorerManager {
     FileExplorerState state;
     const FileItem* selectedItem;
     bool initialized;
+    bool uiCreated;  // Track UI creation state
 
     // Dynamic UI components
     lv_obj_t* contentPanel;
@@ -109,6 +110,9 @@ class FileExplorerManager {
     lv_obj_t* inputDialog;
     lv_obj_t* confirmDialog;
     lv_obj_t* propertiesDialog;
+
+    // UI lifecycle management
+    void resetButtonState();
 };
 
 }  // namespace FileExplorer
