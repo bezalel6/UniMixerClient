@@ -10,10 +10,10 @@ namespace Hardware {
 namespace SD {
 
 // SD card configuration for ESP32-8048S070C (ESP32-S3)
-#define SD_CS_PIN 21
-#define SD_MOSI_PIN 47
-#define SD_SCLK_PIN 48
-#define SD_MISO_PIN 45
+#define SD_CS_PIN TF_CS
+#define SD_MOSI_PIN TF_SPI_MOSI
+#define SD_SCLK_PIN TF_SPI_SCLK
+#define SD_MISO_PIN TF_SPI_MISO
 #define SD_SPI_FREQUENCY 10000000  // Reduce to 10MHz for stability
 #define SD_RETRY_ATTEMPTS 3
 #define SD_MOUNT_TIMEOUT_MS 5000

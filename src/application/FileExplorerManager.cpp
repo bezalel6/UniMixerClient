@@ -11,6 +11,74 @@ static const char* TAG = "FileExplorerManager";
 namespace Application {
 namespace FileExplorer {
 
+// Static variables for callback
+static String g_loadingPath;
+static FileExplorerManager* g_manager = nullptr;
+
+// Static callback function for listDirectory
+static void directoryListingCallback(const char* name, bool isDir, size_t size) {
+    // Defensive null-checking
+    if (!name || strlen(name) == 0 || strlen(name) > 255) {
+        ESP_LOGW(TAG, "Callback received invalid name, skipping");
+        return;
+    }
+
+    if (!g_manager) {
+        ESP_LOGW(TAG, "No manager instance available for callback");
+        return;
+    }
+
+    // Validate the path
+    if (g_loadingPath.isEmpty() || g_loadingPath.length() > 200) {
+        ESP_LOGW(TAG, "Loading path is invalid in callback");
+        return;
+    }
+
+    // Check available heap before doing string operations
+    if (ESP.getFreeHeap() < 8192) {  // Less than 8KB free heap
+        ESP_LOGW(TAG, "Low memory, skipping file item: %s", name);
+        return;
+    }
+
+    try {
+        FileItem item;
+
+        // Use safer string operations with pre-allocation
+        item.name.reserve(strlen(name) + 1);
+        item.name = String(name);
+
+        // Build full path more safely
+        size_t pathLen = g_loadingPath.length() + strlen(name) + 2;  // +2 for "/" and null terminator
+        if (pathLen > 255) {
+            ESP_LOGW(TAG, "Path too long for item: %s", name);
+            return;
+        }
+
+        item.fullPath.reserve(pathLen);
+        item.fullPath = g_loadingPath;
+        if (!item.fullPath.endsWith("/")) {
+            item.fullPath += "/";
+        }
+        item.fullPath += name;
+
+        item.isDirectory = isDir;
+        item.size = size;
+
+        // Format file size more safely
+        item.sizeString.reserve(16);
+        item.sizeString = g_manager->formatFileSize(size);
+
+        ESP_LOGD(TAG, "Added item: %s, fullPath: %s, isDir: %s",
+                 item.name.c_str(), item.fullPath.c_str(), item.isDirectory ? "true" : "false");
+
+        g_manager->addItem(item);
+    } catch (const std::exception& e) {
+        ESP_LOGE(TAG, "Exception in callback for %s: %s", name, e.what());
+    } catch (...) {
+        ESP_LOGE(TAG, "Unknown exception occurred in directory listing callback for: %s", name);
+    }
+}
+
 FileExplorerManager& FileExplorerManager::getInstance() {
     static FileExplorerManager instance;
     return instance;
@@ -66,11 +134,13 @@ bool FileExplorerManager::navigateToPath(const String& path) {
     ESP_LOGI(TAG, "Navigating to path: %s", path.c_str());
 
     if (loadDirectory(path)) {
+        ESP_LOGI(TAG, "Successfully loaded directory: %s", path.c_str());
         currentPath = path;
         updateUI();
         return true;
     }
 
+    ESP_LOGE(TAG, "Failed to navigate to path: %s", path.c_str());
     return false;
 }
 
@@ -375,41 +445,73 @@ bool FileExplorerManager::loadDirectory(const String& path) {
         return false;
     }
 
+    if (path.isEmpty() || path.length() > 200) {
+        ESP_LOGW(TAG, "Path is invalid: %s", path.c_str());
+        return false;
+    }
+
+    // Check available memory before starting
+    if (ESP.getFreeHeap() < 10240) {  // Less than 10KB free heap
+        ESP_LOGW(TAG, "Insufficient memory to load directory");
+        state = FE_STATE_ERROR;
+        return false;
+    }
+
     ESP_LOGI(TAG, "Loading directory: %s", path.c_str());
     state = FE_STATE_LOADING;
     clearItems();
 
-    bool success = Hardware::SD::listDirectory(path.c_str(), [](const char* name, bool isDir, size_t size) {
-        FileExplorerManager& manager = FileExplorerManager::getInstance();
+    // Check if directory exists before trying to list it
+    if (!Hardware::SD::directoryExists(path.c_str())) {
+        ESP_LOGW(TAG, "Directory does not exist: %s", path.c_str());
+        state = FE_STATE_ERROR;
+        return false;
+    }
 
-        FileItem item;
-        item.name = String(name);
-        item.fullPath = manager.getCurrentPath();
-        if (!item.fullPath.endsWith("/")) {
-            item.fullPath += "/";
-        }
-        item.fullPath += name;
-        item.isDirectory = isDir;
-        item.size = size;
-        item.sizeString = manager.formatFileSize(size);
+    // Ensure static variables are clear before use
+    g_loadingPath = "";
+    g_manager = nullptr;
 
-        manager.currentItems.push_back(item);
-    });
+    // Small delay to ensure any previous operations are complete
+    Hardware::Device::delay(10);
+
+    // Set up static variables for callback
+    g_loadingPath = path;
+    g_manager = this;
+
+    // Call the SD listing function
+    bool success = false;
+    try {
+        success = Hardware::SD::listDirectory(path.c_str(), directoryListingCallback);
+    } catch (...) {
+        ESP_LOGE(TAG, "Exception occurred during directory listing");
+        success = false;
+    }
+
+    // Always clear static variables regardless of success
+    g_loadingPath = "";
+    g_manager = nullptr;
 
     if (success) {
-        // Sort items: directories first, then files, both alphabetically
-        std::sort(currentItems.begin(), currentItems.end(), [](const FileItem& a, const FileItem& b) {
-            if (a.isDirectory != b.isDirectory) {
-                return a.isDirectory > b.isDirectory;  // Directories first
-            }
-            return a.name.compareTo(b.name) < 0;  // Alphabetical
-        });
+        try {
+            // Sort items: directories first, then files, both alphabetically
+            std::sort(currentItems.begin(), currentItems.end(), [](const FileItem& a, const FileItem& b) {
+                if (a.isDirectory != b.isDirectory) {
+                    return a.isDirectory > b.isDirectory;  // Directories first
+                }
+                return a.name.compareTo(b.name) < 0;  // Alphabetical
+            });
 
-        state = FE_STATE_IDLE;
-        ESP_LOGI(TAG, "Loaded %d items from directory", currentItems.size());
+            state = FE_STATE_IDLE;
+            ESP_LOGI(TAG, "Loaded %d items from directory", currentItems.size());
+        } catch (...) {
+            ESP_LOGE(TAG, "Exception occurred while sorting directory items");
+            state = FE_STATE_ERROR;
+            success = false;
+        }
     } else {
         state = FE_STATE_ERROR;
-        ESP_LOGE(TAG, "Failed to load directory");
+        ESP_LOGE(TAG, "Failed to load directory: %s", path.c_str());
     }
 
     return success;
@@ -435,10 +537,11 @@ void FileExplorerManager::onFileItemClicked(const FileItem* item) {
     selectedItem = item;
 
     if (item->isDirectory) {
+        ESP_LOGI(TAG, "Clicking directory: %s, fullPath: %s", item->name.c_str(), item->fullPath.c_str());
         navigateToPath(item->fullPath);
     } else {
         // For now, just select the file
-        ESP_LOGI(TAG, "Selected file: %s", item->name.c_str());
+        ESP_LOGI(TAG, "Selected file: %s, fullPath: %s", item->name.c_str(), item->fullPath.c_str());
     }
 }
 
@@ -493,6 +596,18 @@ void FileExplorerManager::showProperties(const FileItem* item) {
     ESP_LOGI(TAG, "  Type: %s", item->isDirectory ? "Directory" : "File");
     ESP_LOGI(TAG, "  Size: %s", item->sizeString.c_str());
     ESP_LOGI(TAG, "  Path: %s", item->fullPath.c_str());
+}
+
+void FileExplorerManager::addItem(const FileItem& item) {
+    try {
+        if (item.name.isEmpty()) {
+            ESP_LOGW(TAG, "Attempting to add item with empty name, skipping");
+            return;
+        }
+        currentItems.push_back(item);
+    } catch (...) {
+        ESP_LOGE(TAG, "Exception occurred while adding item to list");
+    }
 }
 
 }  // namespace FileExplorer

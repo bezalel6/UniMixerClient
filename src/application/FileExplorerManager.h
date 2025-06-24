@@ -63,6 +63,10 @@ class FileExplorerManager {
     FileExplorerState getState() const { return state; }
     const FileItem* getSelectedItem() const { return selectedItem; }
 
+    // Utility methods
+    String formatFileSize(size_t bytes);
+    void addItem(const FileItem& item);
+
     // Event handling
     void onFileItemClicked(const FileItem* item);
     void onFileItemDoubleClicked(const FileItem* item);
@@ -83,7 +87,6 @@ class FileExplorerManager {
     void updateFileList();
     void createDynamicUI();
     void destroyDynamicUI();
-    String formatFileSize(size_t bytes);
 
     // State
     String currentPath;

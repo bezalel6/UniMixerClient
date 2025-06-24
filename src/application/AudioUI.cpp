@@ -192,7 +192,7 @@ void AudioUI::refreshAllUI() {
         return;
     }
 
-    ESP_LOGI(TAG, "Refreshing all UI elements");
+    ESP_LOGD(TAG, "Refreshing all UI elements");
 
     updateDeviceSelectors();
     updateVolumeDisplay();
@@ -213,7 +213,7 @@ void AudioUI::updateVolumeDisplay() {
     lv_obj_t* slider = getCurrentVolumeSlider();
     if (slider) {
         lv_arc_set_value(slider, currentVolume);
-        ESP_LOGI(TAG, "Set %s tab slider to volume: %d",
+        ESP_LOGD(TAG, "Set %s tab slider to volume: %d",
                  AudioManager::getInstance().getTabName(state.currentTab), currentVolume);
     } else {
         ESP_LOGW(TAG, "No slider found for current tab: %s",
@@ -223,7 +223,7 @@ void AudioUI::updateVolumeDisplay() {
     // Use message handler for thread-safe UI updates (labels, etc.)
     LVGLMessageHandler::updateCurrentTabVolume(currentVolume);
 
-    ESP_LOGI(TAG, "Updated %s tab volume display to: %d",
+    ESP_LOGD(TAG, "Updated %s tab volume display to: %d",
              AudioManager::getInstance().getTabName(state.currentTab), currentVolume);
 }
 
@@ -272,7 +272,7 @@ void AudioUI::onAudioStateChanged(const AudioStateChangeEvent& event) {
 
     switch (event.type) {
         case AudioStateChangeEvent::DEVICES_UPDATED:
-            ESP_LOGI(TAG, "Devices updated - comprehensive UI refresh");
+            ESP_LOGD(TAG, "Devices updated - comprehensive UI refresh");
             updateDeviceSelectors();
             updateVolumeDisplay();
             updateDefaultDeviceLabel();
@@ -292,7 +292,7 @@ void AudioUI::onAudioStateChanged(const AudioStateChangeEvent& event) {
             break;
 
         case AudioStateChangeEvent::TAB_CHANGED:
-            ESP_LOGI(TAG, "Tab changed - full reactive UI refresh");
+            ESP_LOGD(TAG, "Tab changed - full reactive UI refresh");
             refreshAllUI();
             // Tab changes are already handled comprehensively in onTabChanged
             break;

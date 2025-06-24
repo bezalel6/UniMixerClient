@@ -40,7 +40,13 @@ typedef enum {
     MSG_HIDE_STATE_OVERVIEW,
 
     // SD card status messages
-    MSG_UPDATE_SD_STATUS
+    MSG_UPDATE_SD_STATUS,
+
+    // SD card format messages
+    MSG_FORMAT_SD_REQUEST,
+    MSG_FORMAT_SD_CONFIRM,
+    MSG_FORMAT_SD_PROGRESS,
+    MSG_FORMAT_SD_COMPLETE
 } LVGLMessageType_t;
 
 // Message data structures
@@ -142,6 +148,14 @@ typedef struct {
             uint64_t used_mb;
             uint8_t card_type;
         } sd_status;
+
+        // SD card format data
+        struct {
+            bool in_progress;
+            bool success;
+            uint8_t progress;
+            char message[64];
+        } sd_format;
     } data;
 } LVGLMessage_t;
 
@@ -188,6 +202,12 @@ bool hideStateOverview(void);
 
 // Helper functions for SD status
 bool updateSDStatus(const char *status, bool mounted, uint64_t total_mb, uint64_t used_mb, uint8_t card_type);
+
+// Helper functions for SD format operations
+bool requestSDFormat(void);
+bool confirmSDFormat(void);
+bool updateSDFormatProgress(uint8_t progress, const char *message);
+bool completeSDFormat(bool success, const char *message);
 
 }  // namespace LVGLMessageHandler
 }  // namespace Application

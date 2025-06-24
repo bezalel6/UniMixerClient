@@ -49,6 +49,12 @@ static lv_obj_t *state_gesture_list = NULL;
 static lv_obj_t *state_heap_bar = NULL;
 static lv_obj_t *state_wifi_bar = NULL;
 
+// SD format dialog elements
+static lv_obj_t *format_dialog = NULL;
+static lv_obj_t *format_dialog_panel = NULL;
+static lv_obj_t *format_progress_bar = NULL;
+static lv_obj_t *format_status_label = NULL;
+
 // Gesture logging
 #define MAX_GESTURE_ENTRIES 15
 static int gesture_entry_count = 0;
@@ -420,6 +426,16 @@ void processMessageQueue(lv_timer_t *timer) {
                     lv_obj_set_style_text_font(close_label, &lv_font_montserrat_14, 0);
                     lv_obj_center(close_label);
 
+                    // Create SD Format button next to close button
+                    lv_obj_t *format_btn = lv_button_create(state_overlay_panel);
+                    lv_obj_set_size(format_btn, 60, 30);
+                    lv_obj_align(format_btn, LV_ALIGN_TOP_RIGHT, -60, 5);
+                    lv_obj_set_style_bg_color(format_btn, lv_color_hex(0xFF8800), 0);
+                    lv_obj_t *format_label = lv_label_create(format_btn);
+                    lv_label_set_text(format_label, "Format");
+                    lv_obj_set_style_text_font(format_label, &lv_font_montserrat_12, 0);
+                    lv_obj_center(format_label);
+
                     // Create horizontal layout for data columns
                     lv_obj_t *content = lv_obj_create(state_overlay_panel);
                     lv_obj_set_size(content, LV_PCT(100), LV_PCT(85));
@@ -591,6 +607,19 @@ void processMessageQueue(lv_timer_t *timer) {
                         
                         if (code == LV_EVENT_CLICKED) {
                             hideStateOverview();
+                        } }, LV_EVENT_ALL, NULL);
+
+                    // Add format button functionality
+                    lv_obj_add_event_cb(format_btn, [](lv_event_t *e) {
+                        lv_event_code_t code = lv_event_get_code(e);
+                        
+                        if (code == LV_EVENT_CLICKED) {
+                            // Check if SD card is available before showing format dialog
+                            if (Hardware::SD::isMounted()) {
+                                requestSDFormat();
+                            } else {
+                                addGestureEntry("Format failed: No SD card");
+                            }
                         } }, LV_EVENT_ALL, NULL);
                 }
                 // Request initial state update and set up periodic updates
@@ -847,6 +876,16 @@ void processMessageQueue(lv_timer_t *timer) {
                     // Reset gesture counter
                     gesture_entry_count = 0;
                 }
+
+                // Also cleanup format dialog if it's open
+                if (format_dialog) {
+                    lv_obj_del(format_dialog);
+                    format_dialog = NULL;
+                    format_dialog_panel = NULL;
+                    format_progress_bar = NULL;
+                    format_status_label = NULL;
+                }
+
                 ESP_LOGI(TAG, "State Overlay: HIDDEN successfully");
                 break;
 
@@ -863,6 +902,190 @@ void processMessageQueue(lv_timer_t *timer) {
                         lv_obj_set_style_bg_color(ui_objSDIndicator, lv_color_hex(0xFF0000),
                                                   LV_PART_MAIN);
                     }
+                }
+                break;
+
+            case MSG_FORMAT_SD_REQUEST:
+                // Show format confirmation dialog
+                if (!format_dialog) {
+                    // Create format confirmation dialog
+                    format_dialog = lv_obj_create(lv_scr_act());
+                    lv_obj_set_size(format_dialog, LV_PCT(100), LV_PCT(100));
+                    lv_obj_set_pos(format_dialog, 0, 0);
+                    lv_obj_set_style_bg_color(format_dialog, lv_color_hex(0x000000), 0);
+                    lv_obj_set_style_bg_opa(format_dialog, 200, 0);
+                    lv_obj_remove_flag(format_dialog, LV_OBJ_FLAG_SCROLLABLE);
+                    lv_obj_move_foreground(format_dialog);
+
+                    // Create dialog panel
+                    format_dialog_panel = lv_obj_create(format_dialog);
+                    lv_obj_set_size(format_dialog_panel, 400, 250);
+                    lv_obj_center(format_dialog_panel);
+                    lv_obj_set_style_bg_color(format_dialog_panel, lv_color_hex(0x2A2A2A), 0);
+                    lv_obj_set_style_border_color(format_dialog_panel, lv_color_hex(0xFF4444), 0);
+                    lv_obj_set_style_border_width(format_dialog_panel, 2, 0);
+                    lv_obj_set_style_radius(format_dialog_panel, 8, 0);
+                    lv_obj_set_style_pad_all(format_dialog_panel, 20, 0);
+
+                    // Create warning title
+                    lv_obj_t *title = lv_label_create(format_dialog_panel);
+                    lv_label_set_text(title, LV_SYMBOL_WARNING " Format SD Card");
+                    lv_obj_set_style_text_color(title, lv_color_hex(0xFF4444), 0);
+                    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+                    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+                    // Create warning message
+                    lv_obj_t *warning = lv_label_create(format_dialog_panel);
+                    lv_label_set_text(warning, "WARNING!\n\nThis will permanently delete ALL\ndata on the SD card.\n\nThis action cannot be undone!");
+                    lv_obj_set_style_text_color(warning, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_text_font(warning, &lv_font_montserrat_12, 0);
+                    lv_obj_set_style_text_align(warning, LV_TEXT_ALIGN_CENTER, 0);
+                    lv_obj_align(warning, LV_ALIGN_CENTER, 0, -10);
+
+                    // Create button container
+                    lv_obj_t *btn_container = lv_obj_create(format_dialog_panel);
+                    lv_obj_set_size(btn_container, LV_PCT(100), 40);
+                    lv_obj_align(btn_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+                    lv_obj_set_style_bg_opa(btn_container, 0, 0);
+                    lv_obj_set_style_border_opa(btn_container, 0, 0);
+                    lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_ROW);
+                    lv_obj_set_flex_align(btn_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+                    // Create Cancel button
+                    lv_obj_t *cancel_btn = lv_button_create(btn_container);
+                    lv_obj_set_size(cancel_btn, 100, 35);
+                    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x666666), 0);
+                    lv_obj_t *cancel_label = lv_label_create(cancel_btn);
+                    lv_label_set_text(cancel_label, "Cancel");
+                    lv_obj_center(cancel_label);
+
+                    // Create Format button
+                    lv_obj_t *confirm_btn = lv_button_create(btn_container);
+                    lv_obj_set_size(confirm_btn, 100, 35);
+                    lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(0xFF4444), 0);
+                    lv_obj_t *confirm_label = lv_label_create(confirm_btn);
+                    lv_label_set_text(confirm_label, "FORMAT");
+                    lv_obj_center(confirm_label);
+
+                    // Add button event handlers
+                    lv_obj_add_event_cb(cancel_btn, [](lv_event_t *e) {
+                        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                            // Close format dialog
+                            if (format_dialog) {
+                                lv_obj_del(format_dialog);
+                                format_dialog = NULL;
+                                format_dialog_panel = NULL;
+                                addGestureEntry("Format cancelled");
+                            }
+                        } }, LV_EVENT_CLICKED, NULL);
+
+                    lv_obj_add_event_cb(confirm_btn, [](lv_event_t *e) {
+                        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                            confirmSDFormat();
+                        } }, LV_EVENT_CLICKED, NULL);
+                }
+                break;
+
+            case MSG_FORMAT_SD_CONFIRM:
+                // Start the actual format process
+                if (format_dialog_panel) {
+                    // Clear the dialog and show progress
+                    lv_obj_clean(format_dialog_panel);
+
+                    // Create progress title
+                    lv_obj_t *title = lv_label_create(format_dialog_panel);
+                    lv_label_set_text(title, LV_SYMBOL_SETTINGS " Formatting SD Card...");
+                    lv_obj_set_style_text_color(title, lv_color_hex(0xFF8800), 0);
+                    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+                    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+
+                    // Create progress bar
+                    format_progress_bar = lv_bar_create(format_dialog_panel);
+                    lv_obj_set_size(format_progress_bar, 300, 20);
+                    lv_obj_align(format_progress_bar, LV_ALIGN_CENTER, 0, 0);
+                    lv_bar_set_range(format_progress_bar, 0, 100);
+                    lv_bar_set_value(format_progress_bar, 0, LV_ANIM_OFF);
+
+                    // Create status label
+                    format_status_label = lv_label_create(format_dialog_panel);
+                    lv_label_set_text(format_status_label, "Preparing to format...");
+                    lv_obj_set_style_text_color(format_status_label, lv_color_hex(0xFFFFFF), 0);
+                    lv_obj_set_style_text_font(format_status_label, &lv_font_montserrat_12, 0);
+                    lv_obj_align(format_status_label, LV_ALIGN_BOTTOM_MID, 0, -20);
+
+                    // Start format in a separate task to avoid blocking UI
+                    xTaskCreate([](void *param) {
+                        updateSDFormatProgress(10, "Starting format...");
+                        vTaskDelay(pdMS_TO_TICKS(500));
+
+                        updateSDFormatProgress(30, "Unmounting SD card...");
+                        vTaskDelay(pdMS_TO_TICKS(500));
+
+                        updateSDFormatProgress(50, "Formatting...");
+                        bool success = Hardware::SD::format();
+
+                        if (success) {
+                            updateSDFormatProgress(80, "Remounting card...");
+                            vTaskDelay(pdMS_TO_TICKS(500));
+                            updateSDFormatProgress(100, "Format complete!");
+                            vTaskDelay(pdMS_TO_TICKS(1000));
+                            completeSDFormat(true, "SD card formatted successfully!");
+                        } else {
+                            completeSDFormat(false, "Format failed!");
+                        }
+
+                        vTaskDelete(NULL);
+                    },
+                                "SDFormat", 4096, NULL, 1, NULL);
+                }
+                break;
+
+            case MSG_FORMAT_SD_PROGRESS:
+                // Update format progress
+                if (format_progress_bar) {
+                    lv_bar_set_value(format_progress_bar, message.data.sd_format.progress, LV_ANIM_ON);
+                }
+                if (format_status_label) {
+                    lv_label_set_text(format_status_label, message.data.sd_format.message);
+                }
+                break;
+
+            case MSG_FORMAT_SD_COMPLETE:
+                // Format operation completed
+                if (format_dialog) {
+                    // Show completion message for 2 seconds then close
+                    if (format_status_label) {
+                        lv_label_set_text(format_status_label, message.data.sd_format.message);
+                    }
+
+                    // Set bar to full
+                    if (format_progress_bar) {
+                        lv_bar_set_value(format_progress_bar, 100, LV_ANIM_ON);
+                    }
+
+                    // Change bar color based on success
+                    if (format_progress_bar) {
+                        if (message.data.sd_format.success) {
+                            lv_obj_set_style_bg_color(format_progress_bar, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+                        } else {
+                            lv_obj_set_style_bg_color(format_progress_bar, lv_color_hex(0xFF0000), LV_PART_INDICATOR);
+                        }
+                    }
+
+                    // Close dialog after delay
+                    lv_timer_create([](lv_timer_t *timer) {
+                        if (format_dialog) {
+                            lv_obj_del(format_dialog);
+                            format_dialog = NULL;
+                            format_dialog_panel = NULL;
+                            format_progress_bar = NULL;
+                            format_status_label = NULL;
+                        }
+                        lv_timer_delete(timer);
+                    },
+                                    2000, NULL);
+
+                    addGestureEntry(message.data.sd_format.success ? "Format completed!" : "Format failed!");
                 }
                 break;
 
@@ -1175,6 +1398,56 @@ bool updateSDStatus(const char *status, bool mounted, uint64_t total_mb, uint64_
     message.data.sd_status.total_mb = total_mb;
     message.data.sd_status.used_mb = used_mb;
     message.data.sd_status.card_type = card_type;
+    return sendMessage(&message);
+}
+
+// Helper functions for SD format operations
+bool requestSDFormat(void) {
+    LVGLMessage_t message;
+    message.type = MSG_FORMAT_SD_REQUEST;
+    return sendMessage(&message);
+}
+
+bool confirmSDFormat(void) {
+    LVGLMessage_t message;
+    message.type = MSG_FORMAT_SD_CONFIRM;
+    return sendMessage(&message);
+}
+
+bool updateSDFormatProgress(uint8_t progress, const char *msg) {
+    LVGLMessage_t message;
+    message.type = MSG_FORMAT_SD_PROGRESS;
+    message.data.sd_format.progress = progress;
+    message.data.sd_format.in_progress = true;
+
+    // Safely copy message string
+    if (msg) {
+        strncpy(message.data.sd_format.message, msg,
+                sizeof(message.data.sd_format.message) - 1);
+        message.data.sd_format.message[sizeof(message.data.sd_format.message) - 1] = '\0';
+    } else {
+        message.data.sd_format.message[0] = '\0';
+    }
+
+    return sendMessage(&message);
+}
+
+bool completeSDFormat(bool success, const char *msg) {
+    LVGLMessage_t message;
+    message.type = MSG_FORMAT_SD_COMPLETE;
+    message.data.sd_format.success = success;
+    message.data.sd_format.in_progress = false;
+    message.data.sd_format.progress = success ? 100 : 0;
+
+    // Safely copy message string
+    if (msg) {
+        strncpy(message.data.sd_format.message, msg,
+                sizeof(message.data.sd_format.message) - 1);
+        message.data.sd_format.message[sizeof(message.data.sd_format.message) - 1] = '\0';
+    } else {
+        message.data.sd_format.message[0] = '\0';
+    }
+
     return sendMessage(&message);
 }
 
