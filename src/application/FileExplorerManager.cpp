@@ -191,16 +191,34 @@ bool FileExplorerManager::navigateToPath(const String& path) {
         return false;
     }
 
-    ESP_LOGI(TAG, "Navigating to path: %s", path.c_str());
+    // Validate the path parameter immediately
+    ESP_LOGI(TAG, "=== navigateToPath() ENTRY ===");
+    ESP_LOGI(TAG, "Path object length: %d, isEmpty: %s", path.length(), path.isEmpty() ? "true" : "false");
+
+    const char* pathCStr = nullptr;
+    try {
+        pathCStr = path.c_str();
+        ESP_LOGI(TAG, "Navigating to path: %s", pathCStr ? pathCStr : "NULL");
+    } catch (...) {
+        ESP_LOGE(TAG, "EXCEPTION while accessing path.c_str() in navigateToPath");
+        state = FE_STATE_ERROR;
+        return false;
+    }
+
+    if (!pathCStr) {
+        ESP_LOGE(TAG, "CRITICAL: path.c_str() returned NULL in navigateToPath");
+        state = FE_STATE_ERROR;
+        return false;
+    }
 
     if (loadDirectory(path)) {
-        ESP_LOGI(TAG, "Successfully loaded directory: %s", path.c_str());
+        ESP_LOGI(TAG, "Successfully loaded directory: %s", pathCStr);
         currentPath = path;
         updateUI();
         return true;
     }
 
-    ESP_LOGE(TAG, "Failed to navigate to path: %s", path.c_str());
+    ESP_LOGE(TAG, "Failed to navigate to path: %s", pathCStr);
     return false;
 }
 
@@ -544,16 +562,49 @@ bool FileExplorerManager::loadDirectory(const String& path) {
     }
 
     ESP_LOGI(TAG, "=== loadDirectory() ENTRY ===");
-    ESP_LOGI(TAG, "Loading directory: %s", path.c_str());
     ESP_LOGI(TAG, "Free heap at start: %u bytes", ESP.getFreeHeap());
+
+    // Validate the String object itself
+    ESP_LOGI(TAG, "Path object length: %d", path.length());
+    ESP_LOGI(TAG, "Path object isEmpty: %s", path.isEmpty() ? "true" : "false");
+
+    // Try to safely access the path
+    try {
+        const char* testPath = path.c_str();
+        ESP_LOGI(TAG, "Loading directory: %s", testPath ? testPath : "NULL_PATH");
+    } catch (...) {
+        ESP_LOGE(TAG, "EXCEPTION while accessing path.c_str() in entry");
+        state = FE_STATE_ERROR;
+        return false;
+    }
 
     state = FE_STATE_LOADING;
     clearItems();
 
     ESP_LOGI(TAG, "About to check if directory exists...");
+
+    // Safely convert String to const char* with validation
+    const char* pathStr = path.c_str();
+    ESP_LOGI(TAG, "Path.c_str() returned: %s", pathStr ? pathStr : "NULL");
+
+    if (!pathStr) {
+        ESP_LOGE(TAG, "CRITICAL: path.c_str() returned NULL for path object");
+        state = FE_STATE_ERROR;
+        return false;
+    }
+
+    // Additional validation of path content
+    if (strlen(pathStr) == 0 || strlen(pathStr) > 200) {
+        ESP_LOGE(TAG, "CRITICAL: Invalid path length: %d", strlen(pathStr));
+        state = FE_STATE_ERROR;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "About to call directoryExists() with validated path: %s", pathStr);
+
     // Check if directory exists before trying to list it
-    if (!Hardware::SD::directoryExists(path.c_str())) {
-        ESP_LOGE(TAG, "Directory does not exist: %s", path.c_str());
+    if (!Hardware::SD::directoryExists(pathStr)) {
+        ESP_LOGE(TAG, "Directory does not exist: %s", pathStr);
         state = FE_STATE_ERROR;
         return false;
     }
@@ -582,9 +633,14 @@ bool FileExplorerManager::loadDirectory(const String& path) {
 
     // Call the SD listing function with timeout protection
     ESP_LOGI(TAG, "About to call Hardware::SD::listDirectory()...");
+
+    // Re-validate path before SD call
+    const char* listPathStr = pathStr;  // Use the already validated pathStr
+    ESP_LOGI(TAG, "Final path validation before SD call: %s", listPathStr ? listPathStr : "NULL");
+
     bool success = false;
     try {
-        success = Hardware::SD::listDirectory(path.c_str(), directoryListingCallback);
+        success = Hardware::SD::listDirectory(listPathStr, directoryListingCallback);
         ESP_LOGI(TAG, "Hardware::SD::listDirectory() returned: %s", success ? "true" : "false");
 
         // Check for timeout
@@ -682,7 +738,11 @@ void FileExplorerManager::onFileItemClicked(const FileItem* item) {
             return;
         }
 
-        navigateToPath(item->fullPath);
+        // Make a local copy of the path to prevent String corruption issues
+        String targetPath = item->fullPath;
+        ESP_LOGI(TAG, "Created local path copy: %s (length: %d)", targetPath.c_str(), targetPath.length());
+
+        navigateToPath(targetPath);
     } else {
         // For now, just select the file
         ESP_LOGI(TAG, "Selected file: %s, fullPath: %s", item->name.c_str(), item->fullPath.c_str());
