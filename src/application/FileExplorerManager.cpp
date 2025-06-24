@@ -25,11 +25,17 @@ static const unsigned long BUTTON_DEBOUNCE_MS = 500;
 
 // Static callback function for listDirectory - now thread-safe
 static void directoryListingCallback(const char* name, bool isDir, size_t size) {
+    ESP_LOGI(TAG, "=== CALLBACK ENTRY === name: %s, isDir: %s, size: %zu",
+             name ? name : "NULL", isDir ? "true" : "false", size);
+    ESP_LOGI(TAG, "Free heap in callback: %u bytes", ESP.getFreeHeap());
+
     // Take mutex to ensure thread safety
+    ESP_LOGI(TAG, "About to take callback mutex...");
     if (!g_callbackMutex || xSemaphoreTake(g_callbackMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGW(TAG, "Failed to take callback mutex, skipping item");
+        ESP_LOGE(TAG, "FAILED to take callback mutex, skipping item");
         return;
     }
+    ESP_LOGI(TAG, "Callback mutex acquired successfully");
 
     // Check if callback is still active (not cancelled by another thread)
     if (!g_callbackActive) {
@@ -96,14 +102,18 @@ static void directoryListingCallback(const char* name, bool isDir, size_t size) 
         ESP_LOGD(TAG, "Added item: %s, fullPath: %s, isDir: %s",
                  item.name.c_str(), item.fullPath.c_str(), item.isDirectory ? "true" : "false");
 
+        ESP_LOGI(TAG, "About to add item to manager...");
         g_manager->addItem(item);
+        ESP_LOGI(TAG, "Item added to manager successfully");
     } catch (const std::exception& e) {
-        ESP_LOGE(TAG, "Exception in callback for %s: %s", name, e.what());
+        ESP_LOGE(TAG, "EXCEPTION in callback for %s: %s", name, e.what());
     } catch (...) {
-        ESP_LOGE(TAG, "Unknown exception occurred in directory listing callback for: %s", name);
+        ESP_LOGE(TAG, "UNKNOWN EXCEPTION occurred in directory listing callback for: %s", name);
     }
 
+    ESP_LOGI(TAG, "About to release callback mutex...");
     xSemaphoreGive(g_callbackMutex);
+    ESP_LOGI(TAG, "=== CALLBACK EXIT ===");
 }
 
 FileExplorerManager& FileExplorerManager::getInstance() {
@@ -533,16 +543,21 @@ bool FileExplorerManager::loadDirectory(const String& path) {
         return false;
     }
 
+    ESP_LOGI(TAG, "=== loadDirectory() ENTRY ===");
     ESP_LOGI(TAG, "Loading directory: %s", path.c_str());
+    ESP_LOGI(TAG, "Free heap at start: %u bytes", ESP.getFreeHeap());
+
     state = FE_STATE_LOADING;
     clearItems();
 
+    ESP_LOGI(TAG, "About to check if directory exists...");
     // Check if directory exists before trying to list it
     if (!Hardware::SD::directoryExists(path.c_str())) {
-        ESP_LOGW(TAG, "Directory does not exist: %s", path.c_str());
+        ESP_LOGE(TAG, "Directory does not exist: %s", path.c_str());
         state = FE_STATE_ERROR;
         return false;
     }
+    ESP_LOGI(TAG, "Directory exists, continuing...");
 
     // Add timeout protection to prevent hanging operations
     unsigned long startTime = Hardware::Device::getMillis();
@@ -566,9 +581,11 @@ bool FileExplorerManager::loadDirectory(const String& path) {
     xSemaphoreGive(g_callbackMutex);
 
     // Call the SD listing function with timeout protection
+    ESP_LOGI(TAG, "About to call Hardware::SD::listDirectory()...");
     bool success = false;
     try {
         success = Hardware::SD::listDirectory(path.c_str(), directoryListingCallback);
+        ESP_LOGI(TAG, "Hardware::SD::listDirectory() returned: %s", success ? "true" : "false");
 
         // Check for timeout
         if (Hardware::Device::getMillis() - startTime > DIRECTORY_LOAD_TIMEOUT_MS) {
@@ -576,7 +593,7 @@ bool FileExplorerManager::loadDirectory(const String& path) {
             success = false;
         }
     } catch (...) {
-        ESP_LOGE(TAG, "Exception occurred during directory listing");
+        ESP_LOGE(TAG, "EXCEPTION occurred during Hardware::SD::listDirectory() call");
         success = false;
     }
 
