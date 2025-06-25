@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <functional>
-#include "LogoIndex.h"
 #include "LogoBinaryStorage.h"
 
 // Forward declaration for LVGL
@@ -13,8 +12,26 @@ typedef struct _lv_obj_t lv_obj_t;
 namespace Logo {
 
 /**
+ * Logo information structure
+ */
+struct LogoBinaryInfo {
+    String processName;     // "chrome.exe"
+    String binaryFileName;  // "chrome_v1.bin"
+    String binaryPath;      // "S:/logos/binaries/chrome_v1.bin" (for LVGL)
+    size_t fileSize;        // Size in bytes
+
+    // Metadata flags
+    bool verified;       // User verified as correct
+    bool flagged;        // User flagged as incorrect
+    uint64_t timestamp;  // When received/saved
+
+    LogoBinaryInfo() : fileSize(0), verified(false), flagged(false), timestamp(0) {}
+};
+
+/**
  * Main coordinator for LVGL logo management system
  * Provides high-level interface for saving, loading, and managing logo binary files
+ * Uses organized directory structure: /logos/binaries/, /logos/mappings/, /logos/metadata/
  */
 class LogoManager {
    public:
@@ -27,7 +44,7 @@ class LogoManager {
 
     // Primary logo operations
     bool saveLogo(const char* processName, const uint8_t* binaryData, size_t size);
-    String getLogoPath(const char* processName);  // Returns "S:/logos/process_xxx.bin" for LVGL
+    String getLogoPath(const char* processName);  // Returns "S:/logos/binaries/xxx.bin" for LVGL
     bool deleteLogo(const char* processName);
     bool hasLogo(const char* processName);
 
@@ -47,7 +64,7 @@ class LogoManager {
 
     // System operations
     std::vector<String> listAvailableLogos();
-    bool rebuildIndex();
+    bool rebuildMappings();
     size_t getLogoCount();
     String getSystemStatus();
 
@@ -61,16 +78,18 @@ class LogoManager {
     LogoManager(const LogoManager&) = delete;
     LogoManager& operator=(const LogoManager&) = delete;
 
+    // Internal state
     bool initialized = false;
 
-    // Internal helpers
-    bool ensureInitialized();
-    void logOperation(const char* operation, const char* processName, bool success);
+    // Statistics
+    size_t logosLoaded = 0;
+    size_t logosSaved = 0;
+    size_t logosDeleted = 0;
 
-    // Statistics tracking
-    unsigned long logosLoaded = 0;
-    unsigned long logosSaved = 0;
-    unsigned long logosDeleted = 0;
+    // Helper methods
+    bool ensureInitialized();
+    void logOperation(const String& operation, const char* processName, bool success);
+    String generateBinaryName(const char* processName);
 };
 
 }  // namespace Logo

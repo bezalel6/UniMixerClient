@@ -3,6 +3,7 @@
 #include "../hardware/DeviceManager.h"
 #include "LVGLMessageHandler.h"
 #include "../logo/LogoManager.h"
+#include "../logo/LogoBinaryStorage.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 #include <algorithm>
@@ -1268,7 +1269,7 @@ void FileExplorerManager::addItem(const FileItem& item) {
 // =============================================================================
 
 bool FileExplorerManager::navigateToLogosRoot() {
-    return navigateToPath("/logos");
+    return navigateToPath("/logos/binaries");
 }
 
 bool FileExplorerManager::isInLogosDirectory() const {
@@ -1280,18 +1281,34 @@ bool FileExplorerManager::isLogoDirectory(const String& path) const {
 }
 
 String FileExplorerManager::extractProcessNameFromLogoFile(const String& filename) const {
-    if (filename.endsWith(".bin") && filename.startsWith("process_")) {
-        // Extract from "process_chrome.bin" -> "chrome"
-        String processName = filename.substring(8);                        // Remove "process_" prefix
-        processName = processName.substring(0, processName.length() - 4);  // Remove ".bin" suffix
+    if (filename.endsWith(".bin")) {
+        // New system: try to find matching process mapping
+        Logo::LogoBinaryStorage& storage = Logo::LogoBinaryStorage::getInstance();
 
-        // Convert back from sanitized format (basic reverse)
-        processName.replace("_", ".");
-        if (!processName.endsWith(".exe") && !processName.endsWith(".app")) {
-            processName += ".exe";  // Default assumption
+        // Check all mapped processes to find one that maps to this binary file
+        std::vector<String> processes = storage.listMappedProcesses();
+        for (const String& processName : processes) {
+            String mappedBinary = storage.getProcessMapping(processName);
+            if (mappedBinary == filename) {
+                return processName;
+            }
         }
 
-        return processName;
+        // Fallback: try to extract from filename (remove .bin and _vX suffixes)
+        String baseName = filename.substring(0, filename.length() - 4);  // Remove .bin
+
+        // Remove version suffixes (_v1, _v2, etc.)
+        int versionPos = baseName.lastIndexOf("_v");
+        if (versionPos > 0) {
+            baseName = baseName.substring(0, versionPos);
+        }
+
+        // Add .exe extension if not present
+        if (!baseName.endsWith(".exe") && !baseName.endsWith(".app")) {
+            baseName += ".exe";
+        }
+
+        return baseName;
     }
     return "";
 }
@@ -1307,25 +1324,31 @@ void FileExplorerManager::enhanceItemWithLogoInfo(FileItem& item) {
         return;
     }
 
-    // Extract process name from filename
-    item.processNameFromFile = extractProcessNameFromLogoFile(item.name);
-
-    if (item.processNameFromFile.isEmpty()) {
-        return;
-    }
-
-    // Check if it's a logo binary file
-    if (item.name.endsWith(".bin") && item.name.startsWith("process_")) {
+    // Check if it's a logo binary file (any .bin file in logos directory)
+    if (item.name.endsWith(".bin")) {
         item.isLogoFile = true;
 
-        // Get logo info from new LogoManager
-        auto logoInfo = Logo::LogoManager::getInstance().getLogoInfo(item.processNameFromFile.c_str());
+        // Extract process name from filename or mapping
+        item.processNameFromFile = extractProcessNameFromLogoFile(item.name);
 
-        if (!logoInfo.processName.isEmpty()) {
-            item.hasLogoMetadata = true;
-            item.logoVerified = logoInfo.verified;
-            item.logoFlagged = logoInfo.flagged;
+        if (!item.processNameFromFile.isEmpty()) {
+            // Get logo info from new LogoManager
+            auto logoInfo = Logo::LogoManager::getInstance().getLogoInfo(item.processNameFromFile.c_str());
+
+            if (!logoInfo.processName.isEmpty()) {
+                item.hasLogoMetadata = true;
+                item.logoVerified = logoInfo.verified;
+                item.logoFlagged = logoInfo.flagged;
+            }
         }
+    }
+
+    // Check for metadata files (.json files in metadata subdirectories)
+    if (item.name.endsWith(".json") && currentPath.startsWith("/logos/metadata")) {
+        item.isLogoMetadata = true;
+        // Extract process name from json filename
+        String processName = item.name.substring(0, item.name.length() - 5);  // Remove .json
+        item.processNameFromFile = processName;
     }
 }
 

@@ -1,5 +1,6 @@
 #include "LogoManager.h"
 #include "../hardware/SDManager.h"
+#include "../hardware/DeviceManager.h"
 #include <esp_log.h>
 #include <lvgl.h>
 
@@ -18,7 +19,7 @@ bool LogoManager::init() {
         return true;
     }
 
-    ESP_LOGI(TAG, "Initializing LogoManager");
+    ESP_LOGI(TAG, "Initializing LogoManager with organized directory structure");
 
     // Ensure SD card is available
     if (!Hardware::SD::isMounted()) {
@@ -26,14 +27,9 @@ bool LogoManager::init() {
         // Don't fail init, just mark as not ready until SD is available
     }
 
-    // Ensure logos directory exists
-    if (!LogoBinaryStorage::getInstance().ensureLogosDirectory()) {
-        ESP_LOGW(TAG, "Failed to create logos directory");
-    }
-
-    // Load index from file
-    if (!LogoIndex::getInstance().loadFromFile()) {
-        ESP_LOGW(TAG, "Failed to load logo index, will rebuild if needed");
+    // Ensure directory structure exists
+    if (!LogoBinaryStorage::getInstance().ensureDirectoryStructure()) {
+        ESP_LOGW(TAG, "Failed to create directory structure");
     }
 
     // Reset statistics
@@ -53,9 +49,6 @@ void LogoManager::deinit() {
 
     ESP_LOGI(TAG, "Deinitializing LogoManager");
 
-    // Save any pending index changes
-    LogoIndex::getInstance().saveToFile();
-
     initialized = false;
     ESP_LOGI(TAG, "LogoManager deinitialized");
 }
@@ -66,20 +59,32 @@ bool LogoManager::saveLogo(const char* processName, const uint8_t* binaryData, s
         return false;
     }
 
-    // Generate filename
-    String binFileName = LogoBinaryStorage::getInstance().makeFileName(processName);
+    ESP_LOGI(TAG, "Saving logo for process: %s (%zu bytes)", processName, size);
 
-    ESP_LOGI(TAG, "Saving logo for process: %s -> %s (%zu bytes)",
-             processName, binFileName.c_str(), size);
+    // Generate unique binary filename
+    String binaryFileName = generateBinaryName(processName);
 
     // Save binary file
-    bool success = LogoBinaryStorage::getInstance().saveBinaryFile(binFileName.c_str(), binaryData, size);
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+    bool success = storage.saveBinaryFile(binaryFileName, binaryData, size);
 
     if (success) {
-        // Add to index
-        LogoIndex::getInstance().addEntry(processName, binFileName, size);
-        logosSaved++;
-        logOperation("SAVE", processName, true);
+        // Create process mapping
+        bool mappingSuccess = storage.saveProcessMapping(processName, binaryFileName);
+
+        // Save initial metadata
+        bool metadataSuccess = storage.saveMetadata(processName, false, false, Hardware::Device::getMillis());
+
+        if (mappingSuccess && metadataSuccess) {
+            logosSaved++;
+            logOperation("SAVE", processName, true);
+            ESP_LOGI(TAG, "Successfully saved logo: %s -> %s", processName, binaryFileName.c_str());
+        } else {
+            // Cleanup binary file if mapping/metadata failed
+            storage.deleteBinaryFile(binaryFileName);
+            success = false;
+            logOperation("SAVE", processName, false);
+        }
     } else {
         logOperation("SAVE", processName, false);
     }
@@ -92,11 +97,13 @@ String LogoManager::getLogoPath(const char* processName) {
         return "";
     }
 
-    String filePath = LogoIndex::getInstance().findFilePath(processName);
-    if (!filePath.isEmpty()) {
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+    String binaryFileName = storage.getProcessMapping(processName);
+
+    if (!binaryFileName.isEmpty()) {
         logosLoaded++;
         logOperation("GET_PATH", processName, true);
-        return filePath;
+        return storage.getBinaryPath(binaryFileName);
     }
 
     logOperation("GET_PATH", processName, false);
@@ -110,27 +117,34 @@ bool LogoManager::deleteLogo(const char* processName) {
 
     ESP_LOGI(TAG, "Deleting logo for process: %s", processName);
 
-    // Get binary filename from index
-    String binFileName = LogoIndex::getInstance().findBinFile(processName);
-    if (binFileName.isEmpty()) {
-        ESP_LOGW(TAG, "No logo found for process: %s", processName);
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Get binary filename from mapping
+    String binaryFileName = storage.getProcessMapping(processName);
+    if (binaryFileName.isEmpty()) {
+        ESP_LOGW(TAG, "No logo mapping found for process: %s", processName);
         return false;
     }
 
     // Delete binary file
-    bool fileDeleted = LogoBinaryStorage::getInstance().deleteBinaryFile(binFileName.c_str());
+    bool binaryDeleted = storage.deleteBinaryFile(binaryFileName);
 
-    // Remove from index (even if file deletion failed)
-    bool indexRemoved = LogoIndex::getInstance().removeEntry(processName);
+    // Delete mapping
+    bool mappingDeleted = storage.deleteProcessMapping(processName);
 
-    bool success = fileDeleted && indexRemoved;
+    // Delete metadata
+    bool metadataDeleted = storage.deleteMetadata(processName);
+
+    bool success = binaryDeleted && mappingDeleted && metadataDeleted;
     if (success) {
         logosDeleted++;
         logOperation("DELETE", processName, true);
+        ESP_LOGI(TAG, "Successfully deleted logo: %s", processName);
     } else {
         logOperation("DELETE", processName, false);
-        ESP_LOGW(TAG, "Partial deletion: file=%s, index=%s",
-                 fileDeleted ? "OK" : "FAIL", indexRemoved ? "OK" : "FAIL");
+        ESP_LOGW(TAG, "Partial deletion for %s: binary=%s, mapping=%s, metadata=%s",
+                 processName, binaryDeleted ? "OK" : "FAIL",
+                 mappingDeleted ? "OK" : "FAIL", metadataDeleted ? "OK" : "FAIL");
     }
 
     return success;
@@ -141,7 +155,7 @@ bool LogoManager::hasLogo(const char* processName) {
         return false;
     }
 
-    return LogoIndex::getInstance().hasEntry(processName);
+    return LogoBinaryStorage::getInstance().hasProcessMapping(processName);
 }
 
 bool LogoManager::loadLogoToImage(const char* processName, lv_obj_t* imgObj, bool useDefault) {
@@ -178,11 +192,36 @@ bool LogoManager::setDefaultLogo(lv_obj_t* imgObj) {
 }
 
 LogoBinaryInfo LogoManager::getLogoInfo(const char* processName) {
+    LogoBinaryInfo info;
+
     if (!ensureInitialized() || !processName) {
-        return LogoBinaryInfo();
+        return info;
     }
 
-    return LogoIndex::getInstance().getLogoInfo(processName);
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Get binary filename from mapping
+    String binaryFileName = storage.getProcessMapping(processName);
+    if (binaryFileName.isEmpty()) {
+        return info;
+    }
+
+    // Fill basic info
+    info.processName = processName;
+    info.binaryFileName = binaryFileName;
+    info.binaryPath = storage.getBinaryPath(binaryFileName);
+    info.fileSize = storage.getBinaryFileSize(binaryFileName);
+
+    // Get metadata
+    bool verified, flagged;
+    uint64_t timestamp;
+    if (storage.getMetadata(processName, verified, flagged, timestamp)) {
+        info.verified = verified;
+        info.flagged = flagged;
+        info.timestamp = timestamp;
+    }
+
+    return info;
 }
 
 size_t LogoManager::getLogoFileSize(const char* processName) {
@@ -195,7 +234,20 @@ bool LogoManager::flagAsIncorrect(const char* processName, bool incorrect) {
         return false;
     }
 
-    bool success = LogoIndex::getInstance().setFlagged(processName, incorrect);
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Get current metadata
+    bool verified, flagged;
+    uint64_t timestamp;
+    if (!storage.getMetadata(processName, verified, flagged, timestamp)) {
+        // No existing metadata, create default
+        verified = false;
+        timestamp = Hardware::Device::getMillis();
+    }
+
+    // Update flagged status
+    bool success = storage.saveMetadata(processName, verified, incorrect, timestamp);
+
     if (success) {
         ESP_LOGI(TAG, "Logo flagged as %s: %s", incorrect ? "incorrect" : "correct", processName);
         logOperation("FLAG", processName, true);
@@ -211,7 +263,20 @@ bool LogoManager::markAsVerified(const char* processName, bool verified) {
         return false;
     }
 
-    bool success = LogoIndex::getInstance().setVerified(processName, verified);
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Get current metadata
+    bool currentVerified, flagged;
+    uint64_t timestamp;
+    if (!storage.getMetadata(processName, currentVerified, flagged, timestamp)) {
+        // No existing metadata, create default
+        flagged = false;
+        timestamp = Hardware::Device::getMillis();
+    }
+
+    // Update verified status
+    bool success = storage.saveMetadata(processName, verified, flagged, timestamp);
+
     if (success) {
         ESP_LOGI(TAG, "Logo marked as %s: %s", verified ? "verified" : "unverified", processName);
         logOperation("VERIFY", processName, true);
@@ -237,16 +302,49 @@ std::vector<String> LogoManager::listAvailableLogos() {
         return std::vector<String>();
     }
 
-    return LogoIndex::getInstance().listAllProcesses();
+    return LogoBinaryStorage::getInstance().listMappedProcesses();
 }
 
-bool LogoManager::rebuildIndex() {
+bool LogoManager::rebuildMappings() {
     if (!ensureInitialized()) {
         return false;
     }
 
-    ESP_LOGI(TAG, "Rebuilding logo index from file system");
-    return LogoIndex::getInstance().rebuildFromFileSystem();
+    ESP_LOGI(TAG, "Rebuilding logo mappings from binary files");
+
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Get list of binary files
+    std::vector<String> binaryFiles = storage.listBinaryFiles();
+
+    ESP_LOGI(TAG, "Found %zu binary files to process", binaryFiles.size());
+
+    // For each binary file, try to create a reasonable mapping
+    for (const String& binaryFile : binaryFiles) {
+        // Extract base name (remove .bin extension)
+        String baseName = binaryFile;
+        if (baseName.endsWith(".bin")) {
+            baseName = baseName.substring(0, baseName.length() - 4);
+        }
+
+        // Remove version suffixes (_v1, _v2, etc.)
+        int versionPos = baseName.lastIndexOf("_v");
+        if (versionPos > 0) {
+            baseName = baseName.substring(0, versionPos);
+        }
+
+        // Convert to reasonable process name
+        String processName = baseName + ".exe";  // Default assumption
+
+        // Only create mapping if none exists
+        if (!storage.hasProcessMapping(processName)) {
+            storage.saveProcessMapping(processName, binaryFile);
+            ESP_LOGD(TAG, "Created mapping: %s -> %s", processName.c_str(), binaryFile.c_str());
+        }
+    }
+
+    ESP_LOGI(TAG, "Mapping rebuild complete");
+    return true;
 }
 
 size_t LogoManager::getLogoCount() {
@@ -254,14 +352,14 @@ size_t LogoManager::getLogoCount() {
         return 0;
     }
 
-    return LogoIndex::getInstance().getEntryCount();
+    return LogoBinaryStorage::getInstance().listMappedProcesses().size();
 }
 
 String LogoManager::getSystemStatus() {
     String status = "LogoManager Status:\n";
     status += "- Initialized: " + String(initialized ? "Yes" : "No") + "\n";
     status += "- SD Card: " + String(Hardware::SD::isMounted() ? "Mounted" : "Not mounted") + "\n";
-    status += "- Logos Directory: " + String(LogoBinaryStorage::getInstance().isLogosDirectoryReady() ? "Ready" : "Not ready") + "\n";
+    status += "- Directory Structure: " + String(LogoBinaryStorage::getInstance().isReady() ? "Ready" : "Not ready") + "\n";
     status += "- Logo Count: " + String(getLogoCount()) + "\n";
     status += "- Total Storage Used: " + String(getTotalStorageUsed()) + " bytes\n";
     status += "- Logos Saved: " + String(logosSaved) + "\n";
@@ -278,10 +376,38 @@ bool LogoManager::cleanupOrphanedFiles() {
 
     ESP_LOGI(TAG, "Cleaning up orphaned logo files");
 
-    // This could be implemented to scan the filesystem and remove
-    // .bin files that don't have corresponding index entries
-    // For now, just rebuild the index which is safer
-    return rebuildIndex();
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Get all binary files and mapped processes
+    std::vector<String> binaryFiles = storage.listBinaryFiles();
+    std::vector<String> mappedProcesses = storage.listMappedProcesses();
+
+    // Find binary files that are not referenced by any mapping
+    std::vector<String> orphanedBinaries;
+    for (const String& binaryFile : binaryFiles) {
+        bool referenced = false;
+
+        for (const String& processName : mappedProcesses) {
+            String mappedBinary = storage.getProcessMapping(processName);
+            if (mappedBinary == binaryFile) {
+                referenced = true;
+                break;
+            }
+        }
+
+        if (!referenced) {
+            orphanedBinaries.push_back(binaryFile);
+        }
+    }
+
+    // Delete orphaned binary files
+    for (const String& orphan : orphanedBinaries) {
+        ESP_LOGI(TAG, "Deleting orphaned binary: %s", orphan.c_str());
+        storage.deleteBinaryFile(orphan);
+    }
+
+    ESP_LOGI(TAG, "Cleanup complete. Removed %zu orphaned files", orphanedBinaries.size());
+    return true;
 }
 
 size_t LogoManager::getTotalStorageUsed() {
@@ -290,27 +416,44 @@ size_t LogoManager::getTotalStorageUsed() {
     }
 
     size_t totalSize = 0;
-    auto processes = listAvailableLogos();
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
 
-    for (const String& processName : processes) {
-        LogoBinaryInfo info = getLogoInfo(processName.c_str());
-        totalSize += info.fileSize;
+    std::vector<String> binaryFiles = storage.listBinaryFiles();
+    for (const String& binaryFile : binaryFiles) {
+        totalSize += storage.getBinaryFileSize(binaryFile);
     }
 
     return totalSize;
 }
+
+// =============================================================================
+// PRIVATE HELPER METHODS
+// =============================================================================
 
 bool LogoManager::ensureInitialized() {
     if (!initialized) {
         ESP_LOGW(TAG, "LogoManager not initialized");
         return false;
     }
-
     return true;
 }
 
-void LogoManager::logOperation(const char* operation, const char* processName, bool success) {
-    ESP_LOGD(TAG, "Operation %s for %s: %s", operation, processName, success ? "SUCCESS" : "FAILED");
+void LogoManager::logOperation(const String& operation, const char* processName, bool success) {
+    const char* status = success ? "SUCCESS" : "FAILED";
+    ESP_LOGD(TAG, "Operation %s for %s: %s", operation.c_str(), processName, status);
+}
+
+String LogoManager::generateBinaryName(const char* processName) {
+    LogoBinaryStorage& storage = LogoBinaryStorage::getInstance();
+
+    // Use the storage's sanitization and unique name generation
+    String baseName = storage.sanitizeFileName(processName);
+
+    // Remove common extensions for cleaner names
+    baseName.replace(".exe", "");
+    baseName.replace(".app", "");
+
+    return storage.generateUniqueBinaryName(baseName);
 }
 
 }  // namespace Logo
