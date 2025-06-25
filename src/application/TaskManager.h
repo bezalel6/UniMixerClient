@@ -36,7 +36,7 @@ namespace TaskManager {
 #define LVGL_UPDATE_INTERVAL 16  // 16ms = 60 FPS (was 33ms = 30 FPS)
 #define NETWORK_UPDATE_INTERVAL \
     500                               // 500ms for network checks (reduced frequency for performance)
-#define MESSAGING_UPDATE_INTERVAL 50  // 50ms to reduce CPU load (was 20ms for responsive messaging)
+#define MESSAGING_UPDATE_INTERVAL 20  // 50ms to reduce CPU load (was 20ms for responsive messaging)
 #define OTA_UPDATE_INTERVAL \
     2000  // 2000ms for OTA checks (further reduced CPU usage)
 #define AUDIO_UPDATE_INTERVAL \
