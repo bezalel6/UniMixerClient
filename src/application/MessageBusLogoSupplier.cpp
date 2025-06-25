@@ -434,18 +434,18 @@ bool MessageBusLogoSupplier::saveAssetToStorage(const AssetResponse& response) {
 
     // Use the new LogoManager to save the LVGL binary data
     // The response.assetData is already in LVGL binary format from the server
-    bool success = Logo::LogoManager::getInstance().saveLogo(
+    String logoPath = Logo::LogoManager::getInstance().saveLogo(
         response.processName.c_str(),
         response.assetData,
         response.assetDataSize);
 
-    if (success) {
-        ESP_LOGI(TAG, "Successfully saved LVGL logo for: %s", response.processName.c_str());
+    if (!logoPath.isEmpty()) {
+        ESP_LOGI(TAG, "Successfully saved LVGL logo for: %s at path: %s", response.processName.c_str(), logoPath.c_str());
+        return true;
     } else {
         ESP_LOGE(TAG, "Failed to save LVGL logo for: %s", response.processName.c_str());
+        return false;
     }
-
-    return success;
 }
 
 }  // namespace LogoAssets

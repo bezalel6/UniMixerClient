@@ -53,10 +53,10 @@ void LogoManager::deinit() {
     ESP_LOGI(TAG, "LogoManager deinitialized");
 }
 
-bool LogoManager::saveLogo(const char* processName, const uint8_t* binaryData, size_t size) {
+String LogoManager::saveLogo(const char* processName, const uint8_t* binaryData, size_t size) {
     if (!ensureInitialized() || !processName || !binaryData || size == 0) {
         ESP_LOGW(TAG, "Invalid parameters for saveLogo");
-        return false;
+        return "";
     }
 
     ESP_LOGI(TAG, "Saving logo for process: %s (%zu bytes)", processName, size);
@@ -78,18 +78,19 @@ bool LogoManager::saveLogo(const char* processName, const uint8_t* binaryData, s
         if (mappingSuccess && metadataSuccess) {
             logosSaved++;
             logOperation("SAVE", processName, true);
-            ESP_LOGI(TAG, "Successfully saved logo: %s -> %s", processName, binaryFileName.c_str());
+            String logoPath = storage.getBinaryPath(binaryFileName);
+            ESP_LOGI(TAG, "Successfully saved logo: %s -> %s (path: %s)", processName, binaryFileName.c_str(), logoPath.c_str());
+            return logoPath;
         } else {
             // Cleanup binary file if mapping/metadata failed
             storage.deleteBinaryFile(binaryFileName);
-            success = false;
             logOperation("SAVE", processName, false);
         }
     } else {
         logOperation("SAVE", processName, false);
     }
 
-    return success;
+    return "";
 }
 
 String LogoManager::getLogoPath(const char* processName) {

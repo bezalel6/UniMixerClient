@@ -43,8 +43,8 @@ class LogoManager {
     bool isInitialized() const { return initialized; }
 
     // Primary logo operations
-    bool saveLogo(const char* processName, const uint8_t* binaryData, size_t size);
-    String getLogoPath(const char* processName);  // Returns "S:/logos/binaries/xxx.bin" for LVGL
+    String saveLogo(const char* processName, const uint8_t* binaryData, size_t size);  // Returns path on success, empty string on failure
+    String getLogoPath(const char* processName);                                       // Returns "S:/logos/binaries/xxx.bin" for LVGL
     bool deleteLogo(const char* processName);
     bool hasLogo(const char* processName);
 

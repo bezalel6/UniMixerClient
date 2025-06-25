@@ -52,6 +52,7 @@ lv_obj_t * ui_btnGOTOLog = NULL;
 lv_obj_t * ui_Label1 = NULL;
 lv_obj_t * ui_btnGOTOSD = NULL;
 lv_obj_t * ui_lblFPS = NULL;
+lv_obj_t * ui_img = NULL;
 // event funtions
 void ui_event_containerSingleVolumeSlider_containerSingleVolumeSlider_singleVolumeSlider(lv_event_t * e)
 {
@@ -394,6 +395,15 @@ void ui_screenMain_screen_init(void)
     lv_label_set_long_mode(ui_lblFPS, LV_LABEL_LONG_DOT);
     lv_label_set_text(ui_lblFPS, "FPS: 1000");
 
+    ui_img = lv_image_create(ui_screenMain);
+    lv_obj_set_width(ui_img, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_img, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_img, 255);
+    lv_obj_set_y(ui_img, -67);
+    lv_obj_set_align(ui_img, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_img, LV_OBJ_FLAG_CLICKABLE);     /// Flags
+    lv_obj_remove_flag(ui_img, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
     lv_obj_add_event_cb(ui_comp_get_child(ui_containerSingleVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
                         ui_event_containerSingleVolumeSlider_containerSingleVolumeSlider_singleVolumeSlider, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
@@ -464,5 +474,6 @@ void ui_screenMain_screen_destroy(void)
     ui_Label1 = NULL;
     ui_btnGOTOSD = NULL;
     ui_lblFPS = NULL;
+    ui_img = NULL;
 
 }
