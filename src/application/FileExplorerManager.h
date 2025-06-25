@@ -77,6 +77,7 @@ class FileExplorerManager {
     void showLogoProperties(const FileItem* item);           // Enhanced logo properties
     void showLogoAssignmentDialog(const FileItem* item);     // Assign logo to process
     void showPatternManagementDialog(const FileItem* item);  // Manage fuzzy patterns
+    void showLogoPreview(const FileItem* item);              // Preview logo on neutral background
     void showCreateFolderDialog();
     void showDeleteConfirmation(const FileItem* item);
     void showFileViewer(const FileItem* item);
@@ -109,6 +110,7 @@ class FileExplorerManager {
     void onLogoFlagClicked();
     void onLogoVerifyClicked();
     void onLogoPatternsClicked();
+    void onLogoPreviewClicked();
 
     void enhanceItemWithLogoInfo(FileItem& item);
 
@@ -128,6 +130,7 @@ class FileExplorerManager {
     // Logo-specific private methods
     void createLogoSpecificButtons();
     void updateLogoButtonStates();
+    void updateLogoPanelVisibility();
     String getLogoDisplayText(const FileItem& item);
     const char* getLogoIcon(const FileItem& item);
 
@@ -155,6 +158,7 @@ class FileExplorerManager {
     lv_obj_t* btnLogoFlag;       // Flag as incorrect
     lv_obj_t* btnLogoVerify;     // Mark as verified
     lv_obj_t* btnLogoPatterns;   // Manage fuzzy patterns
+    lv_obj_t* btnLogoPreview;    // Preview logo on neutral background
     lv_obj_t* btnNavigateLogos;  // Quick navigation to logos directory
 
     // Dialog components
@@ -166,6 +170,7 @@ class FileExplorerManager {
     lv_obj_t* logoPropertiesDialog;
     lv_obj_t* logoAssignmentDialog;
     lv_obj_t* patternManagementDialog;
+    lv_obj_t* logoPreviewDialog;
 };
 
 }  // namespace FileExplorer

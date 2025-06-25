@@ -17,30 +17,64 @@ namespace TaskManager {
 #define OTA_TASK_STACK_SIZE (8 * 1024)
 #define AUDIO_TASK_STACK_SIZE (4 * 1024)
 
-// Task priorities (higher number = higher priority)
-#define LVGL_TASK_PRIORITY (configMAX_PRIORITIES - 1)       // Highest priority
-#define MESSAGING_TASK_PRIORITY (configMAX_PRIORITIES - 2)  // High priority
-#define OTA_TASK_PRIORITY (configMAX_PRIORITIES - 3)        // Medium priority
-#define NETWORK_TASK_PRIORITY (configMAX_PRIORITIES - 4)    // Medium-high priority
-#define AUDIO_TASK_PRIORITY 1                               // Lower priority to prevent watchdog issues
+// Dynamic priority management
+#define LVGL_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 1)       // During normal operation
+#define LVGL_TASK_PRIORITY_CRITICAL (configMAX_PRIORITIES - 1)   // During OTA (maintain UI)
+#define MESSAGING_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 2)  // Normal operation
+#define MESSAGING_TASK_PRIORITY_LOW (3)                          // During OTA
+#define OTA_TASK_PRIORITY_IDLE (2)                               // When no OTA active
+#define OTA_TASK_PRIORITY_CRITICAL (configMAX_PRIORITIES - 1)    // During active OTA
+#define NETWORK_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 3)    // Normal + OTA support
+#define AUDIO_TASK_PRIORITY_NORMAL (4)                           // Improved from 1
+#define AUDIO_TASK_PRIORITY_SUSPENDED (0)                        // During OTA
 
 // Core assignment for ESP32-S3 (optimized for performance)
-#define LVGL_TASK_CORE 0     // Core 0 for UI/LVGL (Arduino loop core)
-#define NETWORK_TASK_CORE 1  // Core 1 for network operations
-#define MESSAGING_TASK_CORE \
-    1                      // Core 1 for messaging (moved from Core 0 for better performance)
-#define OTA_TASK_CORE 1    // Core 1 for OTA (network intensive)
-#define AUDIO_TASK_CORE 0  // Core 0 for audio (needs UI updates)
+#define LVGL_TASK_CORE 0       // Core 0 for UI/LVGL (Arduino loop core)
+#define NETWORK_TASK_CORE 1    // Core 1 for network operations
+#define MESSAGING_TASK_CORE 0  // Moved to Core 0 to balance load
+#define OTA_TASK_CORE 1        // Core 1 for OTA (network intensive)
+#define AUDIO_TASK_CORE 0      // Core 0 for audio (needs UI updates)
 
-// Update intervals (in milliseconds)
-#define LVGL_UPDATE_INTERVAL 16  // 16ms = 60 FPS (was 33ms = 30 FPS)
-#define NETWORK_UPDATE_INTERVAL \
-    500                               // 500ms for network checks (reduced frequency for performance)
-#define MESSAGING_UPDATE_INTERVAL 20  // 50ms to reduce CPU load (was 20ms for responsive messaging)
-#define OTA_UPDATE_INTERVAL \
-    2000  // 2000ms for OTA checks (further reduced CPU usage)
-#define AUDIO_UPDATE_INTERVAL \
-    1000  // 1000ms for audio status (reduced frequency for performance)
+// Adaptive update intervals
+#define LVGL_UPDATE_INTERVAL 16                 // 16ms = 60 FPS (maintained)
+#define NETWORK_UPDATE_INTERVAL_NORMAL 500      // Normal operation
+#define NETWORK_UPDATE_INTERVAL_OTA 100         // During OTA for responsiveness
+#define MESSAGING_UPDATE_INTERVAL_NORMAL 50     // Reduced CPU load from 20ms
+#define MESSAGING_UPDATE_INTERVAL_HIGH_LOAD 20  // When high message volume
+#define OTA_UPDATE_INTERVAL_IDLE 30000          // 30s when idle (massive improvement)
+#define OTA_UPDATE_INTERVAL_CHECKING 5000       // 5s when checking for updates
+#define OTA_UPDATE_INTERVAL_ACTIVE 50           // 50ms during active download
+#define AUDIO_UPDATE_INTERVAL_NORMAL 1000       // Normal operation
+#define AUDIO_UPDATE_INTERVAL_REDUCED 5000      // Low priority mode
+
+// Task state management
+typedef enum {
+    TASK_STATE_NORMAL,
+    TASK_STATE_OTA_ACTIVE,
+    TASK_STATE_HIGH_LOAD,
+    TASK_STATE_LOW_POWER,
+    TASK_STATE_EMERGENCY
+} TaskSystemState_t;
+
+// OTA state management
+typedef enum {
+    OTA_STATE_IDLE,         // No OTA activity
+    OTA_STATE_CHECKING,     // Checking for updates
+    OTA_STATE_DOWNLOADING,  // Active download
+    OTA_STATE_INSTALLING,   // Installing update
+    OTA_STATE_COMPLETE,     // Update complete
+    OTA_STATE_ERROR         // Error occurred
+} OTAState_t;
+
+// Dynamic task configuration
+typedef struct {
+    TaskSystemState_t currentState;
+    OTAState_t otaState;
+    uint32_t messageLoad;         // Messages per second
+    uint32_t lastStateChange;     // Timestamp of last state change
+    bool emergencyMode;           // Critical operation in progress
+    uint32_t taskLoadMetrics[5];  // CPU usage per task (if available)
+} TaskSystemConfig_t;
 
 // Task handles
 extern TaskHandle_t lvglTaskHandle;
@@ -52,6 +86,10 @@ extern TaskHandle_t audioTaskHandle;
 // Synchronization objects
 extern SemaphoreHandle_t lvglMutex;
 extern QueueHandle_t otaProgressQueue;
+
+// Dynamic task management
+extern TaskSystemConfig_t taskSystemConfig;
+extern SemaphoreHandle_t taskConfigMutex;
 
 // OTA Progress structure
 typedef struct {
@@ -74,9 +112,19 @@ void deinit(void);
 void suspend(void);
 void resume(void);
 
+// Dynamic task management functions
+void setTaskSystemState(TaskSystemState_t newState);
+void setOTAState(OTAState_t newState);
+void optimizeTaskPriorities(void);
+void adjustTaskIntervals(void);
+bool enterEmergencyMode(uint32_t durationMs);
+void exitEmergencyMode(void);
+
 // OTA-specific task management
 void suspendForOTA(void);
 void resumeFromOTA(void);
+void configureForOTADownload(void);  // High-performance OTA mode
+void configureForOTAInstall(void);   // Minimize interruptions during install
 
 // LVGL thread safety functions
 void lvglLock(void);
@@ -88,10 +136,16 @@ void updateOTAProgress(uint8_t progress, bool inProgress, bool success,
                        const char *message);
 bool getOTAProgress(OTAProgressData_t *data);
 
-// Task monitoring
+// Task monitoring and diagnostics
 void printTaskStats(void);
+void printTaskLoadAnalysis(void);
 uint32_t getLvglTaskHighWaterMark(void);
 uint32_t getNetworkTaskHighWaterMark(void);
+uint32_t getTaskCPUUsage(TaskHandle_t taskHandle);  // If FreeRTOS stats available
+
+// Message load monitoring
+void reportMessageActivity(void);
+uint32_t getMessageLoadPerSecond(void);
 
 }  // namespace TaskManager
 }  // namespace Application

@@ -29,7 +29,11 @@ static void onOTAStart() {
     ESP_LOGI(TAG, "Start updating %s", type.c_str());
 
     otaInProgress = true;
-    Application::TaskManager::suspendForOTA();
+
+    // Signal OTA start to dynamic task manager
+    Application::TaskManager::setOTAState(Application::TaskManager::OTA_STATE_DOWNLOADING);
+    Application::TaskManager::configureForOTADownload();
+
     Application::LVGLMessageHandler::showOtaScreen();
 }
 
@@ -39,7 +43,11 @@ static void onOTAEnd() {
         100, "Update complete! Restarting...");
     vTaskDelay(pdMS_TO_TICKS(1000));
     Application::LVGLMessageHandler::hideOtaScreen();
+
+    // Signal OTA completion to dynamic task manager
+    Application::TaskManager::setOTAState(Application::TaskManager::OTA_STATE_COMPLETE);
     Application::TaskManager::resumeFromOTA();
+
     otaInProgress = false;
 }
 
@@ -48,6 +56,20 @@ static void onOTAProgress(unsigned int progress, unsigned int total) {
     char msg[64];
     snprintf(msg, sizeof(msg), "Updating: %d%%", percentage);
     Application::LVGLMessageHandler::updateOtaScreenProgress(percentage, msg);
+
+    // Update task manager with progress
+    Application::TaskManager::updateOTAProgress(percentage, true, false, msg);
+
+    // Switch to installation mode when near completion
+    if (percentage > 90 && percentage < 100) {
+        static bool installModeSet = false;
+        if (!installModeSet) {
+            ESP_LOGI(TAG, "OTA near completion, switching to installation mode");
+            Application::TaskManager::setOTAState(Application::TaskManager::OTA_STATE_INSTALLING);
+            Application::TaskManager::configureForOTAInstall();
+            installModeSet = true;
+        }
+    }
 }
 
 static void onOTAError(ota_error_t error) {
@@ -69,6 +91,9 @@ static void onOTAError(ota_error_t error) {
     errorHandlingInProgress = true;
 
     ESP_LOGE(TAG, "OTA Error[%u]: ", error);
+
+    // Signal OTA error to dynamic task manager
+    Application::TaskManager::setOTAState(Application::TaskManager::OTA_STATE_ERROR);
 
     // Do not call Update.abort() here.
     // ArduinoOTA.end() will handle the necessary cleanup.
@@ -96,10 +121,16 @@ static void onOTAError(ota_error_t error) {
     }
 
     Application::LVGLMessageHandler::updateOtaScreenProgress(0, errorMsg);
+    Application::TaskManager::updateOTAProgress(0, false, false, errorMsg);
+
     vTaskDelay(pdMS_TO_TICKS(3000));
     Application::LVGLMessageHandler::hideOtaScreen();
     ESP_LOGI(TAG, "Resuming tasks after OTA error.");
     Application::TaskManager::resumeFromOTA();
+
+    // Return to idle state after error
+    Application::TaskManager::setOTAState(Application::TaskManager::OTA_STATE_IDLE);
+
     otaInProgress = false;
     errorHandlingInProgress = false;
 }

@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <functional>
-#include "LogoBinaryStorage.h"
+#include "LogoStorage.h"
 
 // Forward declaration for LVGL
 struct _lv_obj_t;
@@ -12,21 +12,21 @@ typedef struct _lv_obj_t lv_obj_t;
 namespace Logo {
 
 /**
- * Logo information structure
+ * Logo information structure (generic for both binary and PNG)
  */
-struct LogoBinaryInfo {
-    String processName;     // "chrome.exe"
-    String binaryFileName;  // "chrome_v1.bin"
-    String binaryPath;      // "S:/logos/binaries/chrome_v1.bin" (for LVGL)
-    size_t fileSize;        // Size in bytes
-
-    // Metadata flags
-    bool verified;       // User verified as correct
-    bool flagged;        // User flagged as incorrect
-    uint64_t timestamp;  // When received/saved
-
-    LogoBinaryInfo() : fileSize(0), verified(false), flagged(false), timestamp(0) {}
+struct LogoFileInfo {
+    String processName;
+    String fileName;  // Was binaryFileName
+    String filePath;  // Was binaryPath
+    size_t fileSize;
+    bool verified;
+    bool flagged;
+    uint64_t timestamp;
+    LogoStorage::FileType fileType;
 };
+
+// Keep old name for backward compatibility
+using LogoBinaryInfo = LogoFileInfo;
 
 /**
  * Main coordinator for LVGL logo management system
@@ -42,33 +42,36 @@ class LogoManager {
     void deinit();
     bool isInitialized() const { return initialized; }
 
-    // Primary logo operations
-    String saveLogo(const char* processName, const uint8_t* binaryData, size_t size);  // Returns path on success, empty string on failure
-    String getLogoPath(const char* processName);                                       // Returns "S:/logos/binaries/xxx.bin" for LVGL
+    // Core logo operations (supports both binary and PNG)
+    String saveLogo(const char* processName, const uint8_t* data, size_t size, LogoStorage::FileType type = LogoStorage::FileType::BINARY);
+    String saveLogoFromFile(const char* processName, const char* sourceFilePath);  // Auto-detect type from extension
+    String getLogoPath(const char* processName);
     bool deleteLogo(const char* processName);
     bool hasLogo(const char* processName);
 
-    // LVGL integration helpers
+    // LVGL integration
     bool loadLogoToImage(const char* processName, lv_obj_t* imgObj, bool useDefault = true);
     bool setDefaultLogo(lv_obj_t* imgObj);
 
     // Logo information and metadata
-    LogoBinaryInfo getLogoInfo(const char* processName);
+    LogoFileInfo getLogoInfo(const char* processName);
     size_t getLogoFileSize(const char* processName);
+    LogoStorage::FileType getLogoType(const char* processName);
 
-    // Flag and verification management
+    // Logo verification and flagging
     bool flagAsIncorrect(const char* processName, bool incorrect = true);
     bool markAsVerified(const char* processName, bool verified = true);
     bool isVerified(const char* processName);
     bool isFlagged(const char* processName);
 
-    // System operations
+    // Logo management
     std::vector<String> listAvailableLogos();
+    std::vector<String> listLogosByType(LogoStorage::FileType type);
     bool rebuildMappings();
     size_t getLogoCount();
-    String getSystemStatus();
 
-    // Cleanup and maintenance
+    // System management
+    String getSystemStatus();
     bool cleanupOrphanedFiles();
     size_t getTotalStorageUsed();
 
@@ -89,7 +92,7 @@ class LogoManager {
     // Helper methods
     bool ensureInitialized();
     void logOperation(const String& operation, const char* processName, bool success);
-    String generateBinaryName(const char* processName);
+    String generateFileName(const char* processName, LogoStorage::FileType type);
 };
 
 }  // namespace Logo

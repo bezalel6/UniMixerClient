@@ -4,7 +4,7 @@ namespace Messaging {
 namespace Serial {
 
 /**
- * Initialize the serial bridge
+ * Initialize the enhanced serial bridge with robust message framing
  */
 bool init();
 
@@ -14,9 +14,14 @@ bool init();
 void deinit();
 
 /**
- * Update the serial bridge (process incoming data)
+ * Update the serial bridge (process incoming data, check timeouts)
  */
 void update();
+
+/**
+ * Print detailed statistics about serial communication performance
+ */
+void printStatistics();
 
 }  // namespace Serial
 }  // namespace Messaging

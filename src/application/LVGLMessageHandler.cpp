@@ -88,7 +88,7 @@ const int *get_volume_ptr(const LVGLMessage_t *msg) {
 QueueHandle_t lvglMessageQueue = NULL;
 
 // Message queue size
-#define LVGL_MESSAGE_QUEUE_SIZE 32
+#define LVGL_MESSAGE_QUEUE_SIZE 128  // Emergency increase from 32 to handle message overflow
 
 bool init(void) {
     ESP_LOGI(TAG, "Initializing LVGL Message Handler");
@@ -162,12 +162,14 @@ void processMessageQueue(lv_timer_t *timer) {
 
     LVGLMessage_t message;
 
-    // Process maximum 20 messages per cycle to reduce latency
+    // Emergency fix: Reduce messages per cycle to prevent mutex monopolization
     int messagesProcessed = 0;
-    const int MAX_MESSAGES_PER_CYCLE = 20;
+    const int MAX_MESSAGES_PER_CYCLE = 5;  // Reduced from 20 to 5 for emergency fix
+    uint32_t processing_start = millis();
 
-    // Process available messages in the queue (limited per cycle)
+    // Process available messages in the queue (limited per cycle and time)
     while (messagesProcessed < MAX_MESSAGES_PER_CYCLE &&
+           (millis() - processing_start) < 30 &&  // Emergency timeout: max 30ms processing
            xQueueReceive(lvglMessageQueue, &message, 0) == pdTRUE) {
         messagesProcessed++;
 
@@ -934,6 +936,15 @@ void processMessageQueue(lv_timer_t *timer) {
                 ESP_LOGW(TAG, "Unknown message type: %d", message.type);
                 break;
         }
+    }
+
+    // Emergency monitoring: Log if we hit limits
+    uint32_t processing_duration = millis() - processing_start;
+    if (messagesProcessed >= MAX_MESSAGES_PER_CYCLE) {
+        ESP_LOGW(TAG, "[EMERGENCY] Hit message limit: processed %d messages in %ums", messagesProcessed, processing_duration);
+    }
+    if (processing_duration >= 25) {
+        ESP_LOGW(TAG, "[EMERGENCY] Long processing: %d messages took %ums", messagesProcessed, processing_duration);
     }
 }
 

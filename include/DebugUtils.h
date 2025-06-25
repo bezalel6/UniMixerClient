@@ -1,7 +1,12 @@
-#ifndef DEBUG_UTILS_H
-#define DEBUG_UTILS_H
+#pragma once
 
 #include "MessagingConfig.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+#include <esp_log.h>
+#include <esp_timer.h>
+#include <esp_system.h>
 
 // Debug mode toggle macros
 #if MESSAGING_DESERIALIZATION_DEBUG_MODE
@@ -45,4 +50,113 @@ inline bool IsDebugModeEnabled() {
     return DEBUG_MODE_ENABLED || runtime_debug_mode_enabled;
 }
 
-#endif  // DEBUG_UTILS_H
+#ifdef DEBUG_PERFORMANCE
+
+// Logic analyzer GPIO profiling control (set to 1 to enable GPIO signals)
+#define LOGIC_ANALYZER_ENABLED 0
+
+// Performance profiling macros (renamed to avoid LWIP conflicts)
+#define PERF_TIMER_START(name)              \
+    static uint64_t _perf_start_##name = 0; \
+    _perf_start_##name = esp_timer_get_time()
+
+#define PERF_TIMER_END(name, threshold_us)                                                                   \
+    do {                                                                                                     \
+        uint64_t _perf_duration_##name = esp_timer_get_time() - _perf_start_##name;                          \
+        if (_perf_duration_##name > threshold_us) {                                                          \
+            ESP_LOGW("PERF", #name " took %llu us (threshold: %d us)", _perf_duration_##name, threshold_us); \
+        }                                                                                                    \
+    } while (0)
+
+// Task monitoring utilities
+class TaskProfiler {
+   public:
+    static void printDetailedTaskStats();
+    static void printCPUUsageStats();
+    static void printMemoryStats();
+    static void printStackUsage();
+    static void startContinuousMonitoring();
+    static void stopContinuousMonitoring();
+
+    // Real-time task analysis
+    static void analyzeTaskSwitching();
+    static void detectTaskStarvation();
+    static void measureInterruptLatency();
+
+    // Performance bottleneck detection
+    static void detectMutexContention();
+    static void analyzeQueuePerformance();
+    static void measureLVGLPerformance();
+};
+
+// Memory debugging utilities
+class MemoryProfiler {
+   public:
+    static void printHeapFragmentation();
+    static void trackAllocation(void* ptr, size_t size, const char* location);
+    static void trackDeallocation(void* ptr, const char* location);
+    static void printAllocationReport();
+    static void detectMemoryLeaks();
+};
+
+// ESP-PROG specific debugging utilities
+class ESPProgDebugger {
+   public:
+    static void setupBreakpoints();
+    static void configureSampling();
+    static void startTracing();
+    static void stopTracing();
+    static void dumpTraceData();
+
+    // Real-time analysis
+    static void enableCoreProfilingPins();
+    static void setupTaskSwitchTracing();
+    static void configurePerformanceCounters();
+};
+
+// Timing utilities for precise measurements
+class PrecisionTimer {
+   private:
+    uint64_t startTime;
+    const char* name;
+    uint32_t threshold;
+
+   public:
+    PrecisionTimer(const char* timerName, uint32_t thresholdUs = 1000);
+    ~PrecisionTimer();
+
+    uint64_t getElapsedUs() const;
+    void checkpoint(const char* checkpointName);
+};
+
+// Thread-safe performance counters (TODO: Implementation needed)
+// class PerformanceCounters {
+//    private:
+//     static SemaphoreHandle_t counterMutex;
+//
+//    public:
+//     static void init();
+//     static void incrementCounter(const char* name);
+//     static void setGauge(const char* name, uint32_t value);
+//     static void printCounters();
+//     static void resetCounters();
+// };
+
+#else
+// No-op macros when debugging is disabled
+#define PERF_TIMER_START(name) \
+    do {                       \
+    } while (0)
+#define PERF_TIMER_END(name, threshold_us) \
+    do {                                   \
+    } while (0)
+#endif
+
+// Always available utilities
+namespace DebugUtils {
+void printSystemInfo();
+void printTaskList();
+void printFreeMemory();
+void enableWatchdog(uint32_t timeoutSeconds);
+void feedWatchdog();
+}  // namespace DebugUtils

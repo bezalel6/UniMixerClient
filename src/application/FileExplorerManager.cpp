@@ -3,7 +3,7 @@
 #include "../hardware/DeviceManager.h"
 #include "LVGLMessageHandler.h"
 #include "../logo/LogoManager.h"
-#include "../logo/LogoBinaryStorage.h"
+#include "../logo/LogoStorage.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 #include <algorithm>
@@ -216,6 +216,7 @@ bool FileExplorerManager::init() {
     btnLogoFlag = nullptr;
     btnLogoVerify = nullptr;
     btnLogoPatterns = nullptr;
+    btnLogoPreview = nullptr;
     btnNavigateLogos = nullptr;
 
     modalOverlay = nullptr;
@@ -226,6 +227,7 @@ bool FileExplorerManager::init() {
     logoPropertiesDialog = nullptr;
     logoAssignmentDialog = nullptr;
     patternManagementDialog = nullptr;
+    logoPreviewDialog = nullptr;
 
     initialized = true;
     return true;
@@ -438,6 +440,7 @@ void FileExplorerManager::updateUI() {
     updatePathDisplay();
     updateSDStatus();
     updateFileList();
+    updateLogoPanelVisibility();
 }
 
 void FileExplorerManager::updateSDStatus() {
@@ -588,11 +591,12 @@ void FileExplorerManager::createDynamicUI() {
         return;
     }
 
-    // Create main content panel (middle 60%)
+    // Create main content panel (adjusting for two potential action panels)
     contentPanel = lv_obj_create(ui_screenFileExplorer);
     lv_obj_set_width(contentPanel, lv_pct(100));
-    lv_obj_set_height(contentPanel, lv_pct(60));
-    lv_obj_set_align(contentPanel, LV_ALIGN_CENTER);
+    lv_obj_set_height(contentPanel, lv_pct(75));  // Reduced from 60% to make room for two action panels
+    lv_obj_set_align(contentPanel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(contentPanel, 0);
     lv_obj_remove_flag(contentPanel, LV_OBJ_FLAG_SCROLLABLE);
 
     // Create file list
@@ -600,11 +604,12 @@ void FileExplorerManager::createDynamicUI() {
     lv_obj_set_size(fileList, lv_pct(100), lv_pct(100));
     lv_obj_set_align(fileList, LV_ALIGN_CENTER);
 
-    // Create action panel (bottom 10%)
+    // Create main action panel (positioned above logo panel)
     actionPanel = lv_obj_create(ui_screenFileExplorer);
     lv_obj_set_width(actionPanel, lv_pct(100));
-    lv_obj_set_height(actionPanel, lv_pct(10));
+    lv_obj_set_height(actionPanel, 50);  // Fixed height instead of percentage
     lv_obj_set_align(actionPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(actionPanel, -60);  // Leave space for logo panel below
     lv_obj_set_flex_flow(actionPanel, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(actionPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(actionPanel, LV_OBJ_FLAG_SCROLLABLE);
@@ -652,19 +657,17 @@ void FileExplorerManager::createDynamicUI() {
     lv_obj_add_state(btnDelete, LV_STATE_DISABLED);
     lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
 
-    // Create logo-specific UI if in logos directory, otherwise add a "Logos" navigation button
-    if (isInLogosDirectory()) {
-        createLogoSpecificButtons();
-    } else {
-        // Add a quick "Logos" button to navigate to logos directory
-        btnNavigateLogos = lv_button_create(actionPanel);
-        lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
-        lv_label_set_text(lblNavigateLogos, "Logos");
-        lv_obj_add_event_cb(btnNavigateLogos, [](lv_event_t* e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                FileExplorerManager::getInstance().navigateToLogosRoot();
-            } }, LV_EVENT_CLICKED, nullptr);
-    }
+    // Always create the Logos navigation button in main action panel
+    btnNavigateLogos = lv_button_create(actionPanel);
+    lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
+    lv_label_set_text(lblNavigateLogos, "Logos");
+    lv_obj_add_event_cb(btnNavigateLogos, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().navigateToLogosRoot();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Always create logo-specific buttons - they will be shown/hidden dynamically
+    createLogoSpecificButtons();
 }
 
 void FileExplorerManager::destroyDynamicUI() {
@@ -694,6 +697,9 @@ void FileExplorerManager::destroyDynamicUI() {
     }
     if (btnLogoPatterns) {
         lv_obj_remove_event_cb(btnLogoPatterns, nullptr);
+    }
+    if (btnLogoPreview) {
+        lv_obj_remove_event_cb(btnLogoPreview, nullptr);
     }
     if (btnNavigateLogos) {
         lv_obj_remove_event_cb(btnNavigateLogos, nullptr);
@@ -733,6 +739,7 @@ void FileExplorerManager::destroyDynamicUI() {
     btnLogoFlag = nullptr;
     btnLogoVerify = nullptr;
     btnLogoPatterns = nullptr;
+    btnLogoPreview = nullptr;
     btnNavigateLogos = nullptr;
 
     inputDialog = nullptr;
@@ -742,6 +749,7 @@ void FileExplorerManager::destroyDynamicUI() {
     logoPropertiesDialog = nullptr;
     logoAssignmentDialog = nullptr;
     patternManagementDialog = nullptr;
+    logoPreviewDialog = nullptr;
 
     uiCreated = false;
 }
@@ -1269,7 +1277,7 @@ void FileExplorerManager::addItem(const FileItem& item) {
 // =============================================================================
 
 bool FileExplorerManager::navigateToLogosRoot() {
-    return navigateToPath("/logos/binaries");
+    return navigateToPath("/logos/files");
 }
 
 bool FileExplorerManager::isInLogosDirectory() const {
@@ -1277,25 +1285,30 @@ bool FileExplorerManager::isInLogosDirectory() const {
 }
 
 bool FileExplorerManager::isLogoDirectory(const String& path) const {
-    return path.startsWith("/logos");
+    return path.startsWith("/logos/files");
 }
 
 String FileExplorerManager::extractProcessNameFromLogoFile(const String& filename) const {
-    if (filename.endsWith(".bin")) {
+    if (filename.endsWith(".bin") || filename.endsWith(".png")) {
         // New system: try to find matching process mapping
-        Logo::LogoBinaryStorage& storage = Logo::LogoBinaryStorage::getInstance();
+        Logo::LogoStorage& storage = Logo::LogoStorage::getInstance();
 
-        // Check all mapped processes to find one that maps to this binary file
+        // Check all mapped processes to find one that maps to this file
         std::vector<String> processes = storage.listMappedProcesses();
         for (const String& processName : processes) {
-            String mappedBinary = storage.getProcessMapping(processName);
-            if (mappedBinary == filename) {
+            String mappedFile = storage.getProcessMapping(processName);
+            if (mappedFile == filename) {
                 return processName;
             }
         }
 
-        // Fallback: try to extract from filename (remove .bin and _vX suffixes)
-        String baseName = filename.substring(0, filename.length() - 4);  // Remove .bin
+        // Fallback: try to extract from filename (remove extension and _vX suffixes)
+        String baseName = filename;
+        if (baseName.endsWith(".bin")) {
+            baseName = baseName.substring(0, baseName.length() - 4);  // Remove .bin
+        } else if (baseName.endsWith(".png")) {
+            baseName = baseName.substring(0, baseName.length() - 4);  // Remove .png
+        }
 
         // Remove version suffixes (_v1, _v2, etc.)
         int versionPos = baseName.lastIndexOf("_v");
@@ -1324,8 +1337,8 @@ void FileExplorerManager::enhanceItemWithLogoInfo(FileItem& item) {
         return;
     }
 
-    // Check if it's a logo binary file (any .bin file in logos directory)
-    if (item.name.endsWith(".bin")) {
+    // Check if it's a logo file (any .bin or .png file in logos directory)
+    if (item.name.endsWith(".bin") || item.name.endsWith(".png")) {
         item.isLogoFile = true;
 
         // Extract process name from filename or mapping
@@ -1394,8 +1407,10 @@ const char* FileExplorerManager::getLogoIcon(const FileItem& item) {
             return LV_SYMBOL_OK;  // Verified logo
         } else if (item.logoFlagged) {
             return LV_SYMBOL_WARNING;  // Flagged as incorrect
+        } else if (item.name.endsWith(".png")) {
+            return LV_SYMBOL_IMAGE;  // PNG image file
         } else {
-            return LV_SYMBOL_IMAGE;  // Regular logo file
+            return LV_SYMBOL_FILE;  // Binary logo file
         }
     } else {
         return LV_SYMBOL_FILE;  // Regular file
@@ -1527,20 +1542,30 @@ void FileExplorerManager::onLogoPatternsClicked() {
     }
 }
 
+void FileExplorerManager::onLogoPreviewClicked() {
+    if (selectedItem && selectedItem->isLogoFile) {
+        showLogoPreview(selectedItem);
+    }
+}
+
 // Logo-specific UI creation
 void FileExplorerManager::createLogoSpecificButtons() {
     if (!ui_screenFileExplorer) {
         return;
     }
 
-    // Create logo action panel (additional row below main action panel)
+    // Create logo action panel (positioned at the very bottom)
     logoActionPanel = lv_obj_create(ui_screenFileExplorer);
     lv_obj_set_width(logoActionPanel, lv_pct(100));
-    lv_obj_set_height(logoActionPanel, lv_pct(8));
-    lv_obj_align_to(logoActionPanel, actionPanel, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+    lv_obj_set_height(logoActionPanel, 50);  // Fixed height to match main action panel
+    lv_obj_set_align(logoActionPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(logoActionPanel, 0);  // At the very bottom
     lv_obj_set_flex_flow(logoActionPanel, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(logoActionPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(logoActionPanel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Initially hide the logo action panel - it will be shown when in logos directory
+    lv_obj_add_flag(logoActionPanel, LV_OBJ_FLAG_HIDDEN);
 
     // Quick navigation to logos root
     btnNavigateLogos = lv_button_create(logoActionPanel);
@@ -1585,6 +1610,15 @@ void FileExplorerManager::createLogoSpecificButtons() {
     lv_obj_add_event_cb(btnLogoPatterns, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             FileExplorerManager::getInstance().onLogoPatternsClicked();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Preview button
+    btnLogoPreview = lv_button_create(logoActionPanel);
+    lv_obj_t* lblLogoPreview = lv_label_create(btnLogoPreview);
+    lv_label_set_text(lblLogoPreview, "Preview");
+    lv_obj_add_event_cb(btnLogoPreview, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().onLogoPreviewClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
     // Initially disable logo-specific buttons until logo item is selected
@@ -1645,6 +1679,50 @@ void FileExplorerManager::updateLogoButtonStates() {
             lv_obj_add_state(btnLogoPatterns, LV_STATE_DISABLED);
         }
     }
+
+    if (btnLogoPreview) {
+        if (logoItemSelected && selectedItem->isLogoFile) {
+            lv_obj_remove_state(btnLogoPreview, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(btnLogoPreview, LV_STATE_DISABLED);
+        }
+    }
+}
+
+void FileExplorerManager::updateLogoPanelVisibility() {
+    if (!logoActionPanel) {
+        ESP_LOGW(TAG, "Logo action panel not created yet");
+        return;
+    }
+
+    // Show/hide logo action panel based on current directory
+    if (isInLogosDirectory()) {
+        lv_obj_remove_flag(logoActionPanel, LV_OBJ_FLAG_HIDDEN);
+        ESP_LOGI(TAG, "Showing logo action panel for logos directory: %s", currentPath.c_str());
+
+        // Adjust main action panel position when logo panel is visible
+        if (actionPanel) {
+            lv_obj_set_y(actionPanel, -60);  // Move up to make room for logo panel
+        }
+
+        // Adjust content panel to account for two action panels
+        if (contentPanel) {
+            lv_obj_set_height(contentPanel, lv_pct(70));  // Smaller to accommodate both panels
+        }
+    } else {
+        lv_obj_add_flag(logoActionPanel, LV_OBJ_FLAG_HIDDEN);
+        ESP_LOGI(TAG, "Hiding logo action panel for non-logos directory: %s", currentPath.c_str());
+
+        // Reset main action panel position when logo panel is hidden
+        if (actionPanel) {
+            lv_obj_set_y(actionPanel, -10);  // Move closer to bottom edge
+        }
+
+        // Expand content panel when logo panel is hidden
+        if (contentPanel) {
+            lv_obj_set_height(contentPanel, lv_pct(80));  // Larger when only one action panel
+        }
+    }
 }
 
 // Logo-specific dialogs
@@ -1689,7 +1767,18 @@ void FileExplorerManager::showLogoProperties(const FileItem* item) {
     yPos += lineHeight;
 
     lv_obj_t* lblType = lv_label_create(content);
-    String typeText = "Type: " + String(item->isLogoFile ? "Logo Binary" : "Logo Metadata");
+    String typeText = "Type: ";
+    if (item->isLogoFile) {
+        if (item->name.endsWith(".png")) {
+            typeText += "Logo PNG";
+        } else if (item->name.endsWith(".bin")) {
+            typeText += "Logo Binary";
+        } else {
+            typeText += "Logo File";
+        }
+    } else {
+        typeText += "Logo Metadata";
+    }
     lv_label_set_text(lblType, typeText.c_str());
     lv_obj_set_align(lblType, LV_ALIGN_TOP_LEFT);
     lv_obj_set_y(lblType, yPos);
@@ -1736,9 +1825,17 @@ void FileExplorerManager::showLogoProperties(const FileItem* item) {
         lv_obj_set_y(lblFlags, yPos);
         yPos += lineHeight;
 
-        // Format info (assume LVGL binary)
+        // Format info (detect from file extension)
         lv_obj_t* lblFormat = lv_label_create(content);
-        lv_label_set_text(lblFormat, "Format: LVGL Binary");
+        String formatText = "Format: ";
+        if (item->name.endsWith(".png")) {
+            formatText += "PNG Image";
+        } else if (item->name.endsWith(".bin")) {
+            formatText += "LVGL Binary";
+        } else {
+            formatText += "Unknown";
+        }
+        lv_label_set_text(lblFormat, formatText.c_str());
         lv_obj_set_align(lblFormat, LV_ALIGN_TOP_LEFT);
         lv_obj_set_y(lblFormat, yPos);
         yPos += lineHeight;
@@ -1942,6 +2039,209 @@ void FileExplorerManager::showPatternManagementDialog(const FileItem* item) {
 
     // Focus the input
     lv_obj_add_state(newPatternInput, LV_STATE_FOCUSED);
+}
+
+void FileExplorerManager::showLogoPreview(const FileItem* item) {
+    if (!ui_screenFileExplorer || !item || !item->isLogoFile) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Opening logo preview for: %s", item->name.c_str());
+
+    // Get the logo path for LVGL
+    // stoopid
+    // String logoPath = Logo::LogoManager::getInstance().getLogoPath(item->processNameFromFile.c_str());
+
+    String logoPath = item->fullPath;
+    if (logoPath.isEmpty()) {
+        ESP_LOGW(TAG, "No logo path found for: %s", item->processNameFromFile.c_str());
+        return;
+    }
+
+    // Create modal overlay with darker background for better contrast
+    modalOverlay = lv_obj_create(ui_screenFileExplorer);
+    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modalOverlay, 200, LV_PART_MAIN);
+
+    // Create preview dialog
+    logoPreviewDialog = lv_obj_create(modalOverlay);
+    lv_obj_set_size(logoPreviewDialog, lv_pct(95), lv_pct(90));
+    lv_obj_set_align(logoPreviewDialog, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(logoPreviewDialog, lv_color_make(248, 249, 250), LV_PART_MAIN);
+    lv_obj_set_style_border_width(logoPreviewDialog, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(logoPreviewDialog, lv_color_make(200, 200, 200), LV_PART_MAIN);
+    lv_obj_set_style_radius(logoPreviewDialog, 8, LV_PART_MAIN);
+
+    // Title header
+    lv_obj_t* titlePanel = lv_obj_create(logoPreviewDialog);
+    lv_obj_set_size(titlePanel, lv_pct(100), 60);
+    lv_obj_set_align(titlePanel, LV_ALIGN_TOP_MID);
+    lv_obj_set_style_bg_color(titlePanel, lv_color_make(52, 73, 94), LV_PART_MAIN);
+    lv_obj_set_style_radius(titlePanel, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(titlePanel, 10, LV_PART_MAIN);
+
+    lv_obj_t* title = lv_label_create(titlePanel);
+    String titleText = "Logo Preview: " + item->processNameFromFile;
+    lv_label_set_text(title, titleText.c_str());
+    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_align(title, LV_ALIGN_LEFT_MID);
+
+    // File info in title
+    lv_obj_t* fileInfo = lv_label_create(titlePanel);
+    String infoText = item->name + " (" + item->sizeString + ")";
+    lv_label_set_text(fileInfo, infoText.c_str());
+    lv_obj_set_style_text_color(fileInfo, lv_color_make(189, 195, 199), LV_PART_MAIN);
+    lv_obj_set_style_text_font(fileInfo, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_align(fileInfo, LV_ALIGN_RIGHT_MID);
+
+    // Preview area with neutral backgrounds for testing
+    lv_obj_t* previewContainer = lv_obj_create(logoPreviewDialog);
+    lv_obj_set_size(previewContainer, lv_pct(95), lv_pct(75));
+    lv_obj_set_align(previewContainer, LV_ALIGN_CENTER);
+    lv_obj_set_y(previewContainer, 10);
+    lv_obj_set_style_bg_opa(previewContainer, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(previewContainer, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(previewContainer, 5, LV_PART_MAIN);
+
+    // Create multiple preview panels with different backgrounds for debugging
+    const int panelWidth = lv_pct(30);
+    const int panelHeight = lv_pct(45);
+
+    // Panel 1: White background (default)
+    lv_obj_t* whitePanel = lv_obj_create(previewContainer);
+    lv_obj_set_size(whitePanel, panelWidth, panelHeight);
+    lv_obj_set_align(whitePanel, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_style_bg_color(whitePanel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_border_width(whitePanel, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(whitePanel, lv_color_make(200, 200, 200), LV_PART_MAIN);
+    lv_obj_set_style_radius(whitePanel, 4, LV_PART_MAIN);
+
+    lv_obj_t* whiteLabel = lv_label_create(whitePanel);
+    lv_label_set_text(whiteLabel, "White BG");
+    lv_obj_set_align(whiteLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(whiteLabel, 5);
+    lv_obj_set_style_text_font(whiteLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+
+    lv_obj_t* whiteLogo = lv_image_create(whitePanel);
+    lv_obj_set_align(whiteLogo, LV_ALIGN_CENTER);
+    lv_image_set_src(whiteLogo, logoPath.c_str());
+
+    // Panel 2: Dark background
+    lv_obj_t* darkPanel = lv_obj_create(previewContainer);
+    lv_obj_set_size(darkPanel, panelWidth, panelHeight);
+    lv_obj_set_align(darkPanel, LV_ALIGN_TOP_MID);
+    lv_obj_set_style_bg_color(darkPanel, lv_color_make(44, 62, 80), LV_PART_MAIN);
+    lv_obj_set_style_border_width(darkPanel, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(darkPanel, lv_color_make(200, 200, 200), LV_PART_MAIN);
+    lv_obj_set_style_radius(darkPanel, 4, LV_PART_MAIN);
+
+    lv_obj_t* darkLabel = lv_label_create(darkPanel);
+    lv_label_set_text(darkLabel, "Dark BG");
+    lv_obj_set_align(darkLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(darkLabel, 5);
+    lv_obj_set_style_text_color(darkLabel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(darkLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+
+    lv_obj_t* darkLogo = lv_image_create(darkPanel);
+    lv_obj_set_align(darkLogo, LV_ALIGN_CENTER);
+    lv_image_set_src(darkLogo, logoPath.c_str());
+
+    // Panel 3: Gray background (neutral)
+    lv_obj_t* grayPanel = lv_obj_create(previewContainer);
+    lv_obj_set_size(grayPanel, panelWidth, panelHeight);
+    lv_obj_set_align(grayPanel, LV_ALIGN_TOP_RIGHT);
+    lv_obj_set_style_bg_color(grayPanel, lv_color_make(127, 140, 141), LV_PART_MAIN);
+    lv_obj_set_style_border_width(grayPanel, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(grayPanel, lv_color_make(200, 200, 200), LV_PART_MAIN);
+    lv_obj_set_style_radius(grayPanel, 4, LV_PART_MAIN);
+
+    lv_obj_t* grayLabel = lv_label_create(grayPanel);
+    lv_label_set_text(grayLabel, "Gray BG");
+    lv_obj_set_align(grayLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(grayLabel, 5);
+    lv_obj_set_style_text_color(grayLabel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(grayLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+
+    lv_obj_t* grayLogo = lv_image_create(grayPanel);
+    lv_obj_set_align(grayLogo, LV_ALIGN_CENTER);
+    lv_image_set_src(grayLogo, logoPath.c_str());
+
+    // Panel 4: Checkerboard pattern background
+    lv_obj_t* checkerPanel = lv_obj_create(previewContainer);
+    lv_obj_set_size(checkerPanel, panelWidth, panelHeight);
+    lv_obj_set_align(checkerPanel, LV_ALIGN_BOTTOM_LEFT);
+    lv_obj_set_style_bg_color(checkerPanel, lv_color_make(245, 245, 245), LV_PART_MAIN);
+    lv_obj_set_style_border_width(checkerPanel, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(checkerPanel, lv_color_make(200, 200, 200), LV_PART_MAIN);
+    lv_obj_set_style_radius(checkerPanel, 4, LV_PART_MAIN);
+
+    lv_obj_t* checkerLabel = lv_label_create(checkerPanel);
+    lv_label_set_text(checkerLabel, "Light Gray BG");
+    lv_obj_set_align(checkerLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(checkerLabel, 5);
+    lv_obj_set_style_text_font(checkerLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+
+    lv_obj_t* checkerLogo = lv_image_create(checkerPanel);
+    lv_obj_set_align(checkerLogo, LV_ALIGN_CENTER);
+    lv_image_set_src(checkerLogo, logoPath.c_str());
+
+    // Panel 5: Large preview panel
+    lv_obj_t* largePanel = lv_obj_create(previewContainer);
+    lv_obj_set_size(largePanel, lv_pct(65), panelHeight);
+    lv_obj_set_align(largePanel, LV_ALIGN_BOTTOM_RIGHT);
+    lv_obj_set_style_bg_color(largePanel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_border_width(largePanel, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(largePanel, lv_color_make(52, 152, 219), LV_PART_MAIN);
+    lv_obj_set_style_radius(largePanel, 4, LV_PART_MAIN);
+
+    lv_obj_t* largeLabel = lv_label_create(largePanel);
+    lv_label_set_text(largeLabel, "Large Preview");
+    lv_obj_set_align(largeLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(largeLabel, 5);
+    lv_obj_set_style_text_font(largeLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_color(largeLabel, lv_color_make(52, 152, 219), LV_PART_MAIN);
+
+    lv_obj_t* largeLogo = lv_image_create(largePanel);
+    lv_obj_set_align(largeLogo, LV_ALIGN_CENTER);
+    lv_image_set_src(largeLogo, logoPath.c_str());
+
+    // Button panel at bottom
+    lv_obj_t* buttonPanel = lv_obj_create(logoPreviewDialog);
+    lv_obj_set_size(buttonPanel, lv_pct(100), 50);
+    lv_obj_set_align(buttonPanel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_style_bg_opa(buttonPanel, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(buttonPanel, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_flex_flow(buttonPanel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(buttonPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    // Close button
+    lv_obj_t* btnClose = lv_button_create(buttonPanel);
+    lv_obj_t* lblClose = lv_label_create(btnClose);
+    lv_label_set_text(lblClose, "Close");
+    lv_obj_set_style_bg_color(btnClose, lv_color_make(149, 165, 166), LV_PART_MAIN);
+    lv_obj_add_event_cb(btnClose, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager::getInstance().closeDialog();
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    // Properties button for detailed info
+    lv_obj_t* btnInfo = lv_button_create(buttonPanel);
+    lv_obj_t* lblInfo = lv_label_create(btnInfo);
+    lv_label_set_text(lblInfo, "Properties");
+    lv_obj_set_style_bg_color(btnInfo, lv_color_make(52, 152, 219), LV_PART_MAIN);
+    lv_obj_add_event_cb(btnInfo, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            FileExplorerManager& manager = FileExplorerManager::getInstance();
+            const FileItem* selectedItem = manager.getSelectedItem();
+            if (selectedItem) {
+                manager.closeDialog();
+                manager.showLogoProperties(selectedItem);
+            }
+        } }, LV_EVENT_CLICKED, nullptr);
+
+    ESP_LOGI(TAG, "Logo preview opened successfully");
 }
 
 }  // namespace FileExplorer
