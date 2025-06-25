@@ -12,26 +12,21 @@ const char* DEVICE_ID = "ESP32S3-CONTROL-CENTER";
 const char* DEVICE_TYPE = "ESP32SmartDisplay";
 
 // =============================================================================
-// TOPIC CONFIGURATION
-// =============================================================================
-
-const char* TOPIC_AUDIO_STATUS_REQUEST = "audio/status/request";
-const char* TOPIC_AUDIO_STATUS_RESPONSE = "audio/status/response";
-const char* TOPIC_AUDIO_CONTROL = "audio/control";
-const char* TOPIC_WILDCARD = "*";
-
-// =============================================================================
 // MESSAGE TYPE CONFIGURATION
 // =============================================================================
 
 const char* MESSAGE_TYPE_GET_STATUS = "GetStatus";
-const char* MESSAGE_TYPE_STATUS_UPDATE = "StatusUpdate";
+const char* MESSAGE_TYPE_STATUS_UPDATE = "StatusMessage";
 const char* MESSAGE_TYPE_SET_VOLUME = "SetProcessVolume";
 const char* MESSAGE_TYPE_MUTE_PROCESS = "MuteProcess";
 const char* MESSAGE_TYPE_UNMUTE_PROCESS = "UnmuteProcess";
 const char* MESSAGE_TYPE_SET_MASTER_VOLUME = "SetMasterVolume";
 const char* MESSAGE_TYPE_MUTE_MASTER = "MuteMaster";
 const char* MESSAGE_TYPE_UNMUTE_MASTER = "UnmuteMaster";
+
+// Asset/Logo message types
+const char* MESSAGE_TYPE_GET_ASSETS = "GetAssets";
+const char* MESSAGE_TYPE_ASSET_RESPONSE = "AssetResponse";
 
 // =============================================================================
 // REASON CODES
@@ -46,14 +41,6 @@ const char* REASON_STATUS_REQUEST = "StatusRequest";
 
 const unsigned long ACTIVITY_TIMEOUT_MS = 30000;         // 30 seconds
 const unsigned long MESSAGE_LOG_TRUNCATE_LENGTH = 1000;  // Characters
-
-// =============================================================================
-// MESSAGE DETECTION KEYWORDS
-// =============================================================================
-
-const char* AUDIO_MESSAGE_KEYWORD_SESSIONS = "sessions";
-const char* AUDIO_MESSAGE_KEYWORD_DEFAULT_DEVICE = "defaultDevice";
-const char* STATUS_KEYWORD = "status";
 
 // =============================================================================
 // TRANSPORT NAMES

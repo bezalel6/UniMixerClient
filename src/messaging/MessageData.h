@@ -15,15 +15,18 @@ namespace Messaging {
 // =============================================================================
 
 /**
- * Simple message container - no complex inheritance or templates
+ * Core message container - messageType-based routing
  */
 struct Message {
-    String topic;
-    String type;
-    String payload;
+    String messageType;  // Primary routing field
+    String payload;      // Raw JSON string
     String requestId;
     String deviceId;
     unsigned long timestamp;
+
+    // Parsed content (populated on demand)
+    mutable JsonDocument parsedContent;
+    mutable bool contentParsed = false;
 
     Message() {
         timestamp = millis();
@@ -31,10 +34,26 @@ struct Message {
         requestId = Config::generateRequestId();
     }
 
-    Message(const String& t, const String& data) : topic(t), payload(data) {
+    Message(const String& type, const String& data) : messageType(type), payload(data) {
         timestamp = millis();
         deviceId = Config::getDeviceId();
         requestId = Config::generateRequestId();
+    }
+
+    // Get parsed JSON content (lazy parsing)
+    const JsonDocument& getParsedContent() const {
+        if (!contentParsed) {
+            deserializeJson(parsedContent, payload);
+            contentParsed = true;
+        }
+        return parsedContent;
+    }
+
+    // Helper to get JSON field
+    template <typename T>
+    T get(const String& field, T defaultValue = T{}) const {
+        const JsonDocument& doc = getParsedContent();
+        return doc[field] | defaultValue;
     }
 };
 
@@ -64,12 +83,55 @@ struct AudioStatusData {
 };
 
 // =============================================================================
+// MESSAGE PARSING UTILITIES
+// =============================================================================
+
+namespace MessageParser {
+
+/**
+ * Parse messageType from raw JSON string
+ */
+inline String parseMessageType(const String& jsonPayload) {
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
+        return "";
+    }
+    return doc["messageType"] | "";
+}
+
+/**
+ * Create Message object from raw JSON payload
+ */
+inline Message parseMessage(const String& jsonPayload) {
+    Message message;
+    message.payload = jsonPayload;
+
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonPayload.c_str()) == DeserializationError::Ok) {
+        message.messageType = doc["messageType"] | "";
+        message.requestId = doc["requestId"] | "";
+        message.deviceId = doc["deviceId"] | "";
+        message.timestamp = doc["timestamp"] | millis();
+    }
+
+    return message;
+}
+
+/**
+ * Check if message should be ignored (self-originated)
+ */
+inline bool shouldIgnoreMessage(const Message& message, const String& myDeviceId = Config::DEVICE_ID) {
+    String originatingDevice = message.get<String>("originatingDeviceId");
+    String reason = message.get<String>("reason");
+    return (reason == Config::REASON_UPDATE_RESPONSE && originatingDevice == myDeviceId);
+}
+
+}  // namespace MessageParser
+
+// =============================================================================
 // JSON UTILITIES (Simplified)
 // =============================================================================
 
-/**
- * Simple JSON helper functions - no complex template magic
- */
 namespace Json {
 
 /**
@@ -127,23 +189,22 @@ inline String createStatusResponse(const AudioStatusData& data) {
 }
 
 /**
- * Parse audio status response from JSON
+ * Parse audio status response from Message
  */
-inline AudioStatusData parseStatusResponse(const String& jsonString) {
+inline AudioStatusData parseStatusResponse(const Message& message) {
     AudioStatusData result;
 
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonString) != DeserializationError::Ok) {
+    const JsonDocument& doc = message.getParsedContent();
+    if (doc.isNull()) {
         return result;
     }
 
-    JsonObject root = doc.as<JsonObject>();
-    result.timestamp = root["timestamp"] | millis();
-    result.reason = root["reason"] | "";
-    result.originatingDeviceId = root["originatingDeviceId"] | "";
+    result.timestamp = doc["timestamp"] | millis();
+    result.reason = doc["reason"] | "";
+    result.originatingDeviceId = doc["originatingDeviceId"] | "";
 
     // Parse default device
-    JsonObject defaultDevice = root["defaultDevice"];
+    JsonObjectConst defaultDevice = doc["defaultDevice"];
     if (!defaultDevice.isNull()) {
         result.defaultDevice.friendlyName = defaultDevice["friendlyName"] | "";
         float rawVolume = defaultDevice["volume"] | 0.0f;
@@ -151,16 +212,12 @@ inline AudioStatusData parseStatusResponse(const String& jsonString) {
         result.defaultDevice.isMuted = defaultDevice["isMuted"] | false;
         result.defaultDevice.state = defaultDevice["dataFlow"] | "";
         result.hasDefaultDevice = !result.defaultDevice.friendlyName.isEmpty();
-
-        // DEBUG: Log volume conversion
-        ESP_LOGI("MessageData", "Parsed default device: %s, raw volume: %.3f, converted: %d",
-                 result.defaultDevice.friendlyName.c_str(), rawVolume, result.defaultDevice.volume);
     }
 
     // Parse audio sessions
-    JsonArray sessions = root["sessions"];
+    JsonArrayConst sessions = doc["sessions"];
     if (!sessions.isNull()) {
-        for (JsonObject session : sessions) {
+        for (JsonObjectConst session : sessions) {
             String processName = session["processName"] | "";
             if (!processName.isEmpty()) {
                 Application::Audio::AudioLevel level;
@@ -179,21 +236,6 @@ inline AudioStatusData parseStatusResponse(const String& jsonString) {
     return result;
 }
 
-/**
- * Check if message should be ignored (self-originated)
- */
-inline bool shouldIgnoreMessage(const String& jsonString, const String& myDeviceId = Config::DEVICE_ID) {
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonString) != DeserializationError::Ok) {
-        return false;
-    }
-
-    String originatingDevice = doc["originatingDeviceId"] | "";
-    String reason = doc["reason"] | "";
-
-    return (reason == Config::REASON_UPDATE_RESPONSE && originatingDevice == myDeviceId);
-}
-
 }  // namespace Json
 
 // =============================================================================
@@ -201,10 +243,10 @@ inline bool shouldIgnoreMessage(const String& jsonString, const String& myDevice
 // =============================================================================
 
 /**
- * Simple transport interface - no complex function pointers
+ * Simplified transport interface - only handles raw message strings
  */
 struct TransportInterface {
-    std::function<bool(const String& topic, const String& payload)> send;
+    std::function<bool(const String& payload)> send;  // Only payload, no topics
     std::function<bool()> isConnected;
     std::function<void()> update;
     std::function<String()> getStatus;
@@ -213,10 +255,10 @@ struct TransportInterface {
 };
 
 // =============================================================================
-// CALLBACK TYPES (Simplified)
+// CALLBACK TYPES (Type-Based)
 // =============================================================================
 
-using MessageCallback = std::function<void(const String& topic, const String& payload)>;
+using MessageCallback = std::function<void(const Message& message)>;
 using AudioStatusCallback = std::function<void(const AudioStatusData& data)>;
 
 }  // namespace Messaging

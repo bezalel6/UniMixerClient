@@ -482,8 +482,8 @@ void messagingTask(void *parameter) {
         // Update message system (high frequency for responsiveness)
         Messaging::MessageAPI::update();
 
-        // Update LogoSupplier system for async logo requests
-        Application::LogoAssets::LogoSupplierManager::getInstance().update();
+        // TODO: Re-enable logo system updates with new Logo system
+        // Temporarily disabled during logo system migration
 
         // Sleep until next update
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(MESSAGING_UPDATE_INTERVAL));

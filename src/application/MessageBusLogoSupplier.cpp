@@ -1,6 +1,7 @@
 #include "MessageBusLogoSupplier.h"
 #include "../messaging/MessageConfig.h"
 #include "../hardware/DeviceManager.h"
+#include "../logo/LogoManager.h"
 #include <esp_log.h>
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
@@ -14,10 +15,8 @@ namespace LogoAssets {
 // CONFIGURATION
 // =============================================================================
 
-const char* MessageBusLogoSupplier::TOPIC_ASSET_REQUEST = "asset/request";
-const char* MessageBusLogoSupplier::TOPIC_ASSET_RESPONSE = "asset/response";
-const char* MessageBusLogoSupplier::MESSAGE_TYPE_ASSET_REQUEST = "GetAssets";
-const char* MessageBusLogoSupplier::MESSAGE_TYPE_ASSET_RESPONSE = "AssetResponse";
+// Message types are now defined in Messaging::Config
+// No more topic-based constants needed in messageType-based system
 
 // =============================================================================
 // SINGLETON AND LIFECYCLE
@@ -49,11 +48,11 @@ bool MessageBusLogoSupplier::init() {
         return false;
     }
 
-    // Subscribe to asset responses
-    Messaging::MessageAPI::subscribe(TOPIC_ASSET_RESPONSE,
-                                     [this](const String& topic, const String& payload) {
-                                         this->onAssetResponse(topic, payload);
-                                     });
+    // Subscribe to asset responses (by messageType)
+    Messaging::MessageAPI::subscribeToType(Messaging::Config::MESSAGE_TYPE_ASSET_RESPONSE,
+                                           [this](const Messaging::Message& message) {
+                                               this->onAssetResponse(message);
+                                           });
 
     // Clear statistics
     requestsSubmitted = 0;
@@ -76,8 +75,8 @@ void MessageBusLogoSupplier::deinit() {
 
     ESP_LOGI(TAG, "Deinitializing MessageBusLogoSupplier");
 
-    // Unsubscribe from messages
-    Messaging::MessageAPI::unsubscribe(TOPIC_ASSET_RESPONSE);
+    // Unsubscribe from messages (messageType-based)
+    Messaging::MessageAPI::unsubscribeFromType(Messaging::Config::MESSAGE_TYPE_ASSET_RESPONSE);
 
     // Fail all pending requests
     if (requestMutex && xSemaphoreTake(requestMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
@@ -187,18 +186,23 @@ String MessageBusLogoSupplier::getStatus() const {
 // PRIVATE METHODS
 // =============================================================================
 
-void MessageBusLogoSupplier::onAssetResponse(const String& topic, const String& payload) {
+void MessageBusLogoSupplier::onAssetResponse(const Messaging::Message& message) {
     if (!initialized) {
         return;
     }
 
-    ESP_LOGD(TAG, "Received asset response: %d chars", payload.length());
+    ESP_LOGD(TAG, "Received asset response: %d chars", message.payload.length());
 
     // Parse response
-    AssetResponse response = parseAssetResponse(payload);
+    AssetResponse response = parseAssetResponse(message.payload);
     if (response.requestId.isEmpty()) {
         ESP_LOGW(TAG, "Invalid asset response - missing request ID");
         return;
+    }
+
+    // Save asset data if successful and data is present
+    if (response.success && response.hasAssetData && response.assetData && response.assetDataSize > 0) {
+        saveAssetToStorage(response);
     }
 
     completeRequest(response.requestId, response);
@@ -206,7 +210,7 @@ void MessageBusLogoSupplier::onAssetResponse(const String& topic, const String& 
 
 bool MessageBusLogoSupplier::sendAssetRequest(const AssetRequest& request) {
     String jsonPayload = createAssetRequestJson(request);
-    return Messaging::MessageAPI::publish(TOPIC_ASSET_REQUEST, jsonPayload);
+    return Messaging::MessageAPI::publish(jsonPayload);
 }
 
 void MessageBusLogoSupplier::timeoutExpiredRequests() {
@@ -274,28 +278,16 @@ AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPaylo
     response.errorMessage = doc["errorMessage"] | "";
     response.timestamp = Hardware::Device::getMillis();
 
-    // Parse metadata if present
+    // Parse simplified metadata if present
     if (doc["metadata"].is<JsonObject>() && !doc["metadata"].isNull()) {
         JsonObject metadataObj = doc["metadata"];
-        LogoMetadata metadata = {};
 
-        strncpy(metadata.processName, response.processName.c_str(), sizeof(metadata.processName) - 1);
-        metadata.fileSize = metadataObj["fileSize"] | 0;
-        metadata.width = metadataObj["width"] | 0;
-        metadata.height = metadataObj["height"] | 0;
+        // Extract simple width/height for the simplified response
+        response.width = metadataObj["width"] | 0;
+        response.height = metadataObj["height"] | 0;
 
-        String format = metadataObj["format"] | "";
-        strncpy(metadata.format, format.c_str(), sizeof(metadata.format) - 1);
-
-        String checksum = metadataObj["checksum"] | "";
-        strncpy(metadata.checksum, checksum.c_str(), sizeof(metadata.checksum) - 1);
-
-        metadata.createdTimestamp = metadataObj["createdTimestamp"] | 0;
-        metadata.modifiedTimestamp = metadataObj["modifiedTimestamp"] | 0;
-        metadata.version = metadataObj["version"] | METADATA_VERSION;
-
-        response.metadata = metadata;
-        response.hasMetadata = true;
+        String format = metadataObj["format"] | "bin";
+        response.format = format;
     }
 
     // Parse asset data if present (base64 encoded)
@@ -304,8 +296,8 @@ AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPaylo
         if (!base64Data.isEmpty()) {
             // Calculate decoded size
             size_t decodedSize = (base64Data.length() * 3) / 4;
-            if (decodedSize > 0 && decodedSize <= MAX_LOGO_SIZE) {
-                // Allocate memory for decoded data
+            if (decodedSize > 0 && decodedSize <= 100000) {  // 100KB max size
+                                                             // Allocate memory for decoded data
 #if CONFIG_SPIRAM_USE_MALLOC
                 response.assetData = (uint8_t*)ps_malloc(decodedSize);
 #else
@@ -353,6 +345,7 @@ void MessageBusLogoSupplier::completeRequest(const String& requestId, const Asse
     }
 
     auto it = pendingRequests.find(requestId);
+
     if (it != pendingRequests.end()) {
         if (it->second.callback) {
             it->second.callback(response);
@@ -428,6 +421,31 @@ void MessageBusLogoSupplier::processNextQueuedRequest() {
             nextRequest.callback(response);
         }
     }
+}
+
+bool MessageBusLogoSupplier::saveAssetToStorage(const AssetResponse& response) {
+    if (!response.hasAssetData || !response.assetData || response.assetDataSize == 0) {
+        ESP_LOGW(TAG, "No asset data to save for process: %s", response.processName.c_str());
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Saving LVGL logo binary for process: %s (%zu bytes)",
+             response.processName.c_str(), response.assetDataSize);
+
+    // Use the new LogoManager to save the LVGL binary data
+    // The response.assetData is already in LVGL binary format from the server
+    bool success = Logo::LogoManager::getInstance().saveLogo(
+        response.processName.c_str(),
+        response.assetData,
+        response.assetDataSize);
+
+    if (success) {
+        ESP_LOGI(TAG, "Successfully saved LVGL logo for: %s", response.processName.c_str());
+    } else {
+        ESP_LOGE(TAG, "Failed to save LVGL logo for: %s", response.processName.c_str());
+    }
+
+    return success;
 }
 
 }  // namespace LogoAssets

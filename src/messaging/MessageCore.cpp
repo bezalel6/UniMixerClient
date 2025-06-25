@@ -1,8 +1,8 @@
 #include "MessageCore.h"
 #include "MessageConfig.h"
-#include "../application/LogoManager.h"
 #include <esp_log.h>
-
+#include "ui/ui.h"
+#include "DebugUtils.h"
 static const char* TAG = "MessageCore";
 
 namespace Messaging {
@@ -25,11 +25,11 @@ bool MessageCore::init() {
         return true;
     }
 
-    ESP_LOGI(TAG, "Initializing...");
+    ESP_LOGI(TAG, "Initializing MessageCore with type-based routing...");
 
     // Clear any existing state
-    topicSubscriptions.clear();
-    audioStatusSubscribers.clear();
+    typeSubscriptions.clear();
+    wildcardSubscribers.clear();
     transports.clear();
 
     // Reset statistics
@@ -39,7 +39,7 @@ bool MessageCore::init() {
 
     initialized = true;
 
-    ESP_LOGI(TAG, "Initialized successfully");
+    ESP_LOGI(TAG, "MessageCore initialized successfully");
     return true;
 }
 
@@ -48,7 +48,7 @@ void MessageCore::deinit() {
         return;
     }
 
-    ESP_LOGI(TAG, "Shutting down...");
+    ESP_LOGI(TAG, "Shutting down MessageCore...");
 
     // Shutdown all transports
     for (auto& [name, transport] : transports) {
@@ -58,14 +58,13 @@ void MessageCore::deinit() {
     }
 
     // Clear all state
-    topicSubscriptions.clear();
-    audioStatusSubscribers.clear();
+    typeSubscriptions.clear();
+    wildcardSubscribers.clear();
     transports.clear();
-    lastLogoCheckTime.clear();
 
     initialized = false;
 
-    ESP_LOGI(TAG, "Shutdown complete");
+    ESP_LOGI(TAG, "MessageCore shutdown complete");
 }
 
 void MessageCore::update() {
@@ -135,38 +134,38 @@ String MessageCore::getTransportStatus() const {
 }
 
 // =============================================================================
-// MESSAGE HANDLING
+// MESSAGE HANDLING (Type-Based)
 // =============================================================================
 
-void MessageCore::subscribe(const String& topic, MessageCallback callback) {
+void MessageCore::subscribeToType(const String& messageType, MessageCallback callback) {
     if (!initialized) {
         ESP_LOGW(TAG, "Cannot subscribe - not initialized");
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to topic: %s", topic.c_str());
-    topicSubscriptions[topic].push_back(callback);
+    ESP_LOGI(TAG, "Subscribing to messageType: %s", messageType.c_str());
+    typeSubscriptions[messageType].push_back(callback);
 }
 
-void MessageCore::subscribeToAudioStatus(AudioStatusCallback callback) {
+void MessageCore::subscribeToAll(MessageCallback callback) {
     if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe to audio status - not initialized");
+        ESP_LOGW(TAG, "Cannot subscribe to all - not initialized");
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to audio status updates");
-    audioStatusSubscribers.push_back(callback);
+    ESP_LOGI(TAG, "Subscribing to all message types (wildcard)");
+    wildcardSubscribers.push_back(callback);
 }
 
-void MessageCore::unsubscribe(const String& topic) {
-    auto it = topicSubscriptions.find(topic);
-    if (it != topicSubscriptions.end()) {
-        ESP_LOGI(TAG, "Unsubscribing from topic: %s", topic.c_str());
-        topicSubscriptions.erase(it);
+void MessageCore::unsubscribeFromType(const String& messageType) {
+    auto it = typeSubscriptions.find(messageType);
+    if (it != typeSubscriptions.end()) {
+        ESP_LOGI(TAG, "Unsubscribing from messageType: %s", messageType.c_str());
+        typeSubscriptions.erase(it);
     }
 }
 
-bool MessageCore::publish(const String& topic, const String& payload) {
+bool MessageCore::publish(const Message& message) {
     if (!initialized) {
         ESP_LOGW(TAG, "Cannot publish - not initialized");
         return false;
@@ -175,37 +174,64 @@ bool MessageCore::publish(const String& topic, const String& payload) {
     updateActivity();
     messagesPublished++;
 
-    logMessage("OUT", topic, payload);
+    logMessage("OUT", message);
 
     bool success = true;
 
     // Send to all transports
     for (auto& [name, transport] : transports) {
         if (transport.send) {
-            if (!transport.send(topic, payload)) {
+            if (!transport.send(message.payload)) {
                 ESP_LOGW(TAG, "Failed to send via transport: %s", name.c_str());
                 success = false;
             }
         }
     }
 
-    // Notify local subscribers
-    auto it = topicSubscriptions.find(topic);
-    if (it != topicSubscriptions.end()) {
+    // Notify type-specific subscribers
+    auto it = typeSubscriptions.find(message.messageType);
+    if (it != typeSubscriptions.end()) {
         for (auto& callback : it->second) {
             try {
-                callback(topic, payload);
+                callback(message);
             } catch (...) {
-                ESP_LOGE(TAG, "Callback exception for topic: %s", topic.c_str());
+                ESP_LOGE(TAG, "Callback exception for messageType: %s", message.messageType.c_str());
             }
+        }
+    }
+
+    // Notify wildcard subscribers
+    for (auto& callback : wildcardSubscribers) {
+        try {
+            callback(message);
+        } catch (...) {
+            ESP_LOGE(TAG, "Wildcard callback exception");
         }
     }
 
     return success;
 }
 
-bool MessageCore::publish(const Message& message) {
-    return publish(message.topic, message.payload);
+bool MessageCore::publish(const String& jsonPayload) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "Cannot publish - not initialized");
+        return false;
+    }
+
+    // Parse the payload to create a Message object
+    Message message = MessageParser::parseMessage(jsonPayload);
+
+    if (message.messageType.isEmpty()) {
+        ESP_LOGW(TAG, "Cannot publish - no messageType found in payload");
+        return false;
+    }
+
+    return publish(message);
+}
+
+bool MessageCore::publishMessage(const String& messageType, const String& jsonPayload) {
+    Message message(messageType, jsonPayload);
+    return publish(message);
 }
 
 bool MessageCore::requestAudioStatus() {
@@ -214,10 +240,10 @@ bool MessageCore::requestAudioStatus() {
     }
 
     String request = Json::createStatusRequest();
-    return publish(Config::TOPIC_AUDIO_STATUS_REQUEST, request);
+    return publish(request);
 }
 
-void MessageCore::handleIncomingMessage(const String& topic, const String& payload) {
+void MessageCore::handleIncomingMessage(const String& jsonPayload) {
     if (!initialized) {
         return;
     }
@@ -225,40 +251,45 @@ void MessageCore::handleIncomingMessage(const String& topic, const String& paylo
     updateActivity();
     messagesReceived++;
 
-    logMessage("IN", topic, payload);
+    // Parse the incoming JSON to create a Message object
+    Message message = MessageParser::parseMessage(jsonPayload);
 
-    // // Check if we should ignore self-originated messages
-    // if (Json::shouldIgnoreMessage(payload)) {
-    //     ESP_LOGD(TAG, "Ignoring self-originated message");
-    //     return;
-    // }
-
-    // Handle audio status messages specially
-    if (topic == Config::TOPIC_AUDIO_STATUS_RESPONSE || topic.indexOf(Config::STATUS_KEYWORD) >= 0) {
-        processAudioStatusMessage(payload);
+    if (message.messageType.isEmpty()) {
+        String prettyJson;
+        JsonDocument doc;
+        deserializeJson(doc, jsonPayload.c_str());
+        serializeJsonPretty(doc, prettyJson);
+        ESP_LOGD(TAG, "Raw JSON payload:\n%s", prettyJson.c_str());
+        ESP_LOGW(TAG, "Ignoring message without messageType");
+        return;
     }
 
-    // Notify topic subscribers
-    auto it = topicSubscriptions.find(topic);
-    if (it != topicSubscriptions.end()) {
+    logMessage("IN", message);
+
+    // Check if we should ignore self-originated messages
+    if (MessageParser::shouldIgnoreMessage(message)) {
+        ESP_LOGD(TAG, "Ignoring self-originated message with messageType: %s", message.messageType.c_str());
+        return;
+    }
+
+    // Notify type-specific subscribers
+    auto it = typeSubscriptions.find(message.messageType);
+    if (it != typeSubscriptions.end()) {
         for (auto& callback : it->second) {
             try {
-                callback(topic, payload);
+                callback(message);
             } catch (...) {
-                ESP_LOGE(TAG, "Callback exception for topic: %s", topic.c_str());
+                ESP_LOGE(TAG, "Callback exception for messageType: %s", message.messageType.c_str());
             }
         }
     }
 
     // Notify wildcard subscribers
-    auto wildcardIt = topicSubscriptions.find(Config::TOPIC_WILDCARD);
-    if (wildcardIt != topicSubscriptions.end()) {
-        for (auto& callback : wildcardIt->second) {
-            try {
-                callback(topic, payload);
-            } catch (...) {
-                ESP_LOGE(TAG, "Wildcard callback exception");
-            }
+    for (auto& callback : wildcardSubscribers) {
+        try {
+            callback(message);
+        } catch (...) {
+            ESP_LOGE(TAG, "Wildcard callback exception");
         }
     }
 }
@@ -268,8 +299,8 @@ void MessageCore::handleIncomingMessage(const String& topic, const String& paylo
 // =============================================================================
 
 size_t MessageCore::getSubscriptionCount() const {
-    size_t count = audioStatusSubscribers.size();
-    for (const auto& [topic, callbacks] : topicSubscriptions) {
+    size_t count = wildcardSubscribers.size();
+    for (const auto& [messageType, callbacks] : typeSubscriptions) {
         count += callbacks.size();
     }
     return count;
@@ -303,8 +334,9 @@ bool MessageCore::isHealthy() const {
 String MessageCore::getStatusInfo() const {
     String info = "MessageCore Status:\n";
     info += "- Initialized: " + String(initialized ? "Yes" : "No") + "\n";
-    info += "- Subscriptions: " + String(getSubscriptionCount()) + "\n";
-    info += "- Audio subscribers: " + String(audioStatusSubscribers.size()) + "\n";
+    info += "- Total subscriptions: " + String(getSubscriptionCount()) + "\n";
+    info += "- Type subscriptions: " + String(typeSubscriptions.size()) + "\n";
+    info += "- Wildcard subscribers: " + String(wildcardSubscribers.size()) + "\n";
     info += "- Messages published: " + String(messagesPublished) + "\n";
     info += "- Messages received: " + String(messagesReceived) + "\n";
     info += "- Last activity: " + String((millis() - lastActivityTime) / 1000) + "s ago\n";
@@ -317,93 +349,13 @@ String MessageCore::getStatusInfo() const {
 // INTERNAL HELPERS
 // =============================================================================
 
-void MessageCore::processAudioStatusMessage(const String& payload) {
-    if (audioStatusSubscribers.empty()) {
-        return;
-    }
-
-    AudioStatusData statusData = Json::parseStatusResponse(payload);
-
-    if (!statusData.isEmpty()) {
-        // Check for logos for all detected audio processes
-        checkAndRequestLogosForAudioProcesses(statusData);
-
-        for (auto& callback : audioStatusSubscribers) {
-            try {
-                callback(statusData);
-            } catch (...) {
-                ESP_LOGE(TAG, "Audio status callback exception");
-            }
-        }
-    }
-}
-
 void MessageCore::updateActivity() {
     lastActivityTime = millis();
 }
 
-void MessageCore::logMessage(const String& direction, const String& topic, const String& payload) {
-    ESP_LOGD(TAG, "[%s] %s: %s", direction.c_str(), topic.c_str(),
-             (payload.length() > Config::MESSAGE_LOG_TRUNCATE_LENGTH ? payload.substring(0, Config::MESSAGE_LOG_TRUNCATE_LENGTH) + "..." : payload).c_str());
-}
-
-void MessageCore::checkAndRequestLogosForAudioProcesses(const AudioStatusData& statusData) {
-    // Skip if LogoManager is not initialized
-    if (!Application::LogoAssets::LogoManager::getInstance().isInitialized() ||
-        !Application::LogoAssets::LogoManager::getInstance().isAutoRequestEnabled()) {
-        return;
-    }
-
-    // Check logos for all audio level processes
-    for (const auto& audioLevel : statusData.audioLevels) {
-        if (!audioLevel.processName.isEmpty()) {
-            checkSingleProcessLogo(audioLevel.processName.c_str());
-        }
-    }
-
-    // Check logo for default device if it has a process-like name
-    if (statusData.hasDefaultDevice && !statusData.defaultDevice.friendlyName.isEmpty()) {
-        // Only check if the friendly name looks like a process name (contains .exe, etc.)
-        String friendlyName = statusData.defaultDevice.friendlyName;
-        if (friendlyName.indexOf(".exe") >= 0 || friendlyName.indexOf(".app") >= 0 ||
-            friendlyName.indexOf("-bin") >= 0) {
-            checkSingleProcessLogo(friendlyName.c_str());
-        }
-    }
-}
-
-void MessageCore::checkSingleProcessLogo(const char* processName) {
-    if (!processName || strlen(processName) == 0) {
-        return;
-    }
-
-    // Debounce: Don't check the same process too frequently
-    String processKey(processName);
-    unsigned long currentTime = millis();
-
-    auto it = lastLogoCheckTime.find(processKey);
-    if (it != lastLogoCheckTime.end()) {
-        if (currentTime - it->second < LOGO_CHECK_DEBOUNCE_MS) {
-            // Recently checked this process, skip
-            return;
-        }
-    }
-
-    // Update last check time
-    lastLogoCheckTime[processKey] = currentTime;
-
-    Application::LogoAssets::LogoManager& logoManager =
-        Application::LogoAssets::LogoManager::getInstance();
-
-    // Use async loading to avoid blocking the messaging task
-    // This will check existence and request if needed without blocking
-    logoManager.loadLogoAsync(processName, [processName](const Application::LogoAssets::LogoLoadResult& result) {
-        if (result.success) {
-            ESP_LOGD("MessageCore", "Logo loaded successfully for: %s", processName);
-        } else {
-            ESP_LOGD("MessageCore", "Logo request initiated for: %s", processName);
-        }
-    });
+void MessageCore::logMessage(const String& direction, const Message& message) {
+    ESP_LOGD(TAG, "[%s] %s: %s", direction.c_str(), message.messageType.c_str(),
+             (message.payload.length() > Config::MESSAGE_LOG_TRUNCATE_LENGTH ? message.payload.substring(0, Config::MESSAGE_LOG_TRUNCATE_LENGTH) + "..." : message.payload).c_str());
 }
 
 }  // namespace Messaging

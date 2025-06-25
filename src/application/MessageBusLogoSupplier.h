@@ -38,11 +38,7 @@ class MessageBusLogoSupplier : public LogoSupplier {
     MessageBusLogoSupplier(const MessageBusLogoSupplier&) = delete;
     MessageBusLogoSupplier& operator=(const MessageBusLogoSupplier&) = delete;
 
-    // Configuration
-    static const char* TOPIC_ASSET_REQUEST;
-    static const char* TOPIC_ASSET_RESPONSE;
-    static const char* MESSAGE_TYPE_ASSET_REQUEST;
-    static const char* MESSAGE_TYPE_ASSET_RESPONSE;
+    // Configuration - message types now defined in Messaging::Config
 
     // Internal state
     bool initialized = false;
@@ -69,7 +65,7 @@ class MessageBusLogoSupplier : public LogoSupplier {
     unsigned long requestsFailed = 0;
 
     // Internal methods
-    void onAssetResponse(const String& topic, const String& payload);
+    void onAssetResponse(const Messaging::Message& message);
     bool sendAssetRequest(const AssetRequest& request);
     void timeoutExpiredRequests();
     AssetResponse parseAssetResponse(const String& jsonPayload);
@@ -78,6 +74,7 @@ class MessageBusLogoSupplier : public LogoSupplier {
     void failRequest(const String& requestId, const char* errorMessage);
     void processQueuedRequests();
     void processNextQueuedRequest();
+    bool saveAssetToStorage(const AssetResponse& response);
 };
 
 }  // namespace LogoAssets

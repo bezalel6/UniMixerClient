@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <functional>
-#include "LogoManager.h"
 
 namespace Application {
 namespace LogoAssets {
@@ -22,20 +21,23 @@ typedef struct {
     uint64_t timestamp;
 } AssetRequest;
 
-// Asset response structure (matches C# AssetResponse class)
+// Asset response structure (simplified for LVGL binary system)
 typedef struct {
     String messageType;
     String requestId;
     String deviceId;
     String processName;
-    LogoMetadata metadata;
-    uint8_t* assetData;
-    size_t assetDataSize;
+    uint8_t* assetData;    // LVGL binary data
+    size_t assetDataSize;  // Size of binary data
     bool success;
     String errorMessage;
     uint64_t timestamp;
-    bool hasMetadata;
     bool hasAssetData;
+
+    // Simplified metadata fields (no complex structure needed)
+    uint16_t width = 0;
+    uint16_t height = 0;
+    String format = "bin";  // Always LVGL binary
 } AssetResponse;
 
 // Request completion callback type

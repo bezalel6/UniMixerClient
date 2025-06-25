@@ -11,10 +11,10 @@ namespace Messaging {
 static const char* TAG = "SerialBridge";
 
 /**
- * Simple Serial Bridge for MessageAPI
+ * Clean Serial Bridge for MessageAPI
  *
- * This replaces the complex SerialTransport with a minimal bridge
- * that integrates serial communication with the new MessageAPI.
+ * This provides a minimal bridge that integrates serial communication
+ * with the messageType-based MessageAPI system. No topic inference needed.
  */
 class SerialBridge {
    public:
@@ -30,11 +30,11 @@ class SerialBridge {
 
         ESP_LOGI(TAG, "Initializing Serial Bridge");
 
-        // Register serial transport with MessageAPI
+        // Register serial transport with MessageAPI (simplified interface)
         MessageAPI::registerSerialTransport(
-            // Send function
-            [](const String& topic, const String& payload) -> bool {
-                return SerialBridge::getInstance().sendMessage(topic, payload);
+            // Send function (no topics, just payload)
+            [](const String& payload) -> bool {
+                return SerialBridge::getInstance().sendMessage(payload);
             },
             // IsConnected function
             []() -> bool {
@@ -91,7 +91,7 @@ class SerialBridge {
     String receiveBuffer = "";
     volatile bool newDataAvailable = false;
 
-    bool sendMessage(const String& topic, const String& payload) {
+    bool sendMessage(const String& payload) {
         if (!Hardware::Device::isDataSerialAvailable()) {
             ESP_LOGW(TAG, "Serial not available for sending");
             return false;
@@ -141,20 +141,12 @@ class SerialBridge {
         }
     }
 
-    void processReceivedMessage(const String& message) {
-        ESP_LOGI(TAG, "Serial RX: %d chars", message.length());
+    void processReceivedMessage(const String& jsonPayload) {
+        ESP_LOGI(TAG, "Serial RX: %d chars", jsonPayload.length());
 
-        // Determine topic based on message content
-        String topic = Config::TOPIC_AUDIO_STATUS_RESPONSE;  // Default topic
-
-        // Check if it looks like an audio status message
-        if (message.indexOf(Config::AUDIO_MESSAGE_KEYWORD_SESSIONS) >= 0 ||
-            message.indexOf(Config::AUDIO_MESSAGE_KEYWORD_DEFAULT_DEVICE) >= 0) {
-            topic = Config::TOPIC_AUDIO_STATUS_RESPONSE;
-        }
-
-        // Forward to MessageAPI
-        MessageAPI::handleIncomingMessage(topic, message);
+        // Simply forward the raw JSON to MessageAPI - no topic inference needed!
+        // MessageAPI will parse the messageType from the JSON and route accordingly
+        MessageAPI::handleIncomingMessage(jsonPayload);
     }
 };
 

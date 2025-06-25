@@ -7,7 +7,7 @@
 namespace Messaging {
 
 /**
- * Clean API interface for the messaging system
+ * Clean API interface for the messageType-based messaging system
  *
  * This is the ONLY header that application components should include.
  * It provides a simple, stable interface while hiding implementation details.
@@ -17,7 +17,12 @@ namespace Messaging {
  *   // Initialize
  *   MessageAPI::init();
  *
- *   // Subscribe to audio updates
+ *   // Subscribe to specific message types
+ *   MessageAPI::subscribeToType("StatusUpdate", [](const Message& msg) {
+ *       // Handle status update
+ *   });
+ *
+ *   // Subscribe to audio updates (specialized)
  *   MessageAPI::onAudioStatus([](const AudioStatusData& data) {
  *       // Handle audio data
  *   });
@@ -74,10 +79,10 @@ class MessageAPI {
     // =============================================================================
 
     /**
-     * Register MQTT transport
+     * Register MQTT transport (simplified - no topics)
      */
     static void registerMqttTransport(
-        std::function<bool(const String& topic, const String& payload)> sendFunction,
+        std::function<bool(const String& payload)> sendFunction,
         std::function<bool()> isConnectedFunction,
         std::function<void()> updateFunction = nullptr,
         std::function<String()> getStatusFunction = nullptr) {
@@ -91,10 +96,10 @@ class MessageAPI {
     }
 
     /**
-     * Register Serial transport
+     * Register Serial transport (simplified - no topics)
      */
     static void registerSerialTransport(
-        std::function<bool(const String& topic, const String& payload)> sendFunction,
+        std::function<bool(const String& payload)> sendFunction,
         std::function<bool()> isConnectedFunction,
         std::function<void()> updateFunction = nullptr) {
         TransportInterface transport;
@@ -120,15 +125,61 @@ class MessageAPI {
     }
 
     // =============================================================================
-    // AUDIO MESSAGING (Simplified)
+    // MESSAGE HANDLING (Type-Based)
     // =============================================================================
 
     /**
-     * Subscribe to audio status updates
+     * Subscribe to messages by messageType
      */
-    static void onAudioStatus(AudioStatusCallback callback) {
-        MessageCore::getInstance().subscribeToAudioStatus(callback);
+    static void subscribeToType(const String& messageType, MessageCallback callback) {
+        MessageCore::getInstance().subscribeToType(messageType, callback);
     }
+
+    /**
+     * Subscribe to all messages (wildcard)
+     */
+    static void subscribeToAll(MessageCallback callback) {
+        MessageCore::getInstance().subscribeToAll(callback);
+    }
+
+    /**
+     * Unsubscribe from a messageType
+     */
+    static void unsubscribeFromType(const String& messageType) {
+        MessageCore::getInstance().unsubscribeFromType(messageType);
+    }
+
+    /**
+     * Publish a message object
+     */
+    static bool publish(const Message& message) {
+        return MessageCore::getInstance().publish(message);
+    }
+
+    /**
+     * Publish raw JSON payload (messageType will be extracted)
+     */
+    static bool publish(const String& jsonPayload) {
+        return MessageCore::getInstance().publish(jsonPayload);
+    }
+
+    /**
+     * Create and publish a message
+     */
+    static bool publishMessage(const String& messageType, const String& jsonPayload) {
+        return MessageCore::getInstance().publishMessage(messageType, jsonPayload);
+    }
+
+    /**
+     * Handle incoming message from external source (e.g., MQTT callback, Serial)
+     */
+    static void handleIncomingMessage(const String& jsonPayload) {
+        MessageCore::getInstance().handleIncomingMessage(jsonPayload);
+    }
+
+    // =============================================================================
+    // AUDIO MESSAGING (Specialized)
+    // =============================================================================
 
     /**
      * Request current audio status from the PC
@@ -157,7 +208,7 @@ class MessageAPI {
         String payload;
         serializeJson(doc, payload);
 
-        return MessageCore::getInstance().publish(Config::TOPIC_AUDIO_CONTROL, payload);
+        return MessageCore::getInstance().publish(payload);
     }
 
     /**
@@ -189,45 +240,6 @@ class MessageAPI {
     }
 
     // =============================================================================
-    // GENERIC MESSAGING
-    // =============================================================================
-
-    /**
-     * Subscribe to messages on a topic
-     */
-    static void subscribe(const String& topic, MessageCallback callback) {
-        MessageCore::getInstance().subscribe(topic, callback);
-    }
-
-    /**
-     * Subscribe to all messages (wildcard)
-     */
-    static void subscribeToAll(MessageCallback callback) {
-        MessageCore::getInstance().subscribe(Config::TOPIC_WILDCARD, callback);
-    }
-
-    /**
-     * Unsubscribe from a topic
-     */
-    static void unsubscribe(const String& topic) {
-        MessageCore::getInstance().unsubscribe(topic);
-    }
-
-    /**
-     * Publish a message
-     */
-    static bool publish(const String& topic, const String& payload) {
-        return MessageCore::getInstance().publish(topic, payload);
-    }
-
-    /**
-     * Handle incoming message from external source (e.g., MQTT callback)
-     */
-    static void handleIncomingMessage(const String& topic, const String& payload) {
-        MessageCore::getInstance().handleIncomingMessage(topic, payload);
-    }
-
-    // =============================================================================
     // UTILITIES
     // =============================================================================
 
@@ -246,24 +258,31 @@ class MessageAPI {
     }
 
     /**
-     * Create simple message
+     * Create message object
      */
-    static Message createMessage(const String& topic, const String& payload) {
-        return Message(topic, payload);
+    static Message createMessage(const String& messageType, const String& jsonPayload) {
+        return Message(messageType, jsonPayload);
     }
 
     /**
-     * Parse JSON safely
+     * Parse JSON safely to Message object
      */
-    static AudioStatusData parseAudioStatus(const String& jsonString) {
-        return Json::parseStatusResponse(jsonString);
+    static Message parseMessage(const String& jsonPayload) {
+        return MessageParser::parseMessage(jsonPayload);
+    }
+
+    /**
+     * Parse audio status from Message
+     */
+    static AudioStatusData parseAudioStatus(const Message& message) {
+        return Json::parseStatusResponse(message);
     }
 
     /**
      * Check if message should be ignored
      */
-    static bool shouldIgnoreMessage(const String& jsonString) {
-        return Json::shouldIgnoreMessage(jsonString);
+    static bool shouldIgnoreMessage(const Message& message) {
+        return MessageParser::shouldIgnoreMessage(message);
     }
 
    private:

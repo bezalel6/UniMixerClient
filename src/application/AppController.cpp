@@ -11,8 +11,7 @@
 #include "../messaging/SerialBridge.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
-#include "LogoManager.h"
-#include "LogoSupplier.h"
+#include "../logo/LogoManager.h"
 #include "MessageBusLogoSupplier.h"
 #include "LVGLMessageHandler.h"
 #include "TaskManager.h"
@@ -55,11 +54,11 @@ bool init(void) {
 
     // Initialize Logo Manager (depends on SD Manager)
     ESP_LOGI(TAG, "WDT Reset: Initializing Logo Manager...");
-    if (!Application::LogoAssets::LogoManager::getInstance().init()) {
+    if (!Logo::LogoManager::getInstance().init()) {
         ESP_LOGW(TAG, "Logo Manager initialization failed - logo functionality will be limited");
         // Note: Logo Manager failure is not fatal for the application
     } else {
-        ESP_LOGI(TAG, "Logo Manager initialized successfully with fuzzy matching support");
+        ESP_LOGI(TAG, "Logo Manager initialized successfully");
     }
     esp_task_wdt_reset();
 
@@ -155,38 +154,19 @@ bool init(void) {
     ESP_LOGI(TAG, "WDT Reset: Message handlers will be registered by components...");
     esp_task_wdt_reset();
 
-    // Initialize LogoSupplier system (requires Messaging to be initialized)
-    ESP_LOGI(TAG, "WDT Reset: Initializing LogoSupplier System...");
-    if (!Application::LogoAssets::LogoSupplierManager::getInstance().init()) {
-        ESP_LOGW(TAG, "LogoSupplierManager initialization failed - automatic logo requests will be disabled");
+    // Initialize MessageBusLogoSupplier (requires Messaging to be initialized)
+    ESP_LOGI(TAG, "WDT Reset: Initializing MessageBusLogoSupplier...");
+    Application::LogoAssets::MessageBusLogoSupplier &messageBusSupplier =
+        Application::LogoAssets::MessageBusLogoSupplier::getInstance();
+
+    // Configure supplier settings
+    messageBusSupplier.setRequestTimeout(30000);     // 30 second timeout
+    messageBusSupplier.setMaxConcurrentRequests(1);  // Serial port can only handle 1 request at a time
+
+    if (messageBusSupplier.init()) {
+        ESP_LOGI(TAG, "MessageBusLogoSupplier initialized successfully");
     } else {
-        // Register MessageBusLogoSupplier
-        Application::LogoAssets::MessageBusLogoSupplier &messageBusSupplier =
-            Application::LogoAssets::MessageBusLogoSupplier::getInstance();
-
-        // Configure supplier settings
-        messageBusSupplier.setRequestTimeout(30000);     // 30 second timeout
-        messageBusSupplier.setMaxConcurrentRequests(1);  // Serial port can only handle 1 request at a time
-
-        if (Application::LogoAssets::LogoSupplierManager::getInstance().registerSupplier(&messageBusSupplier, 100)) {
-            ESP_LOGI(TAG, "MessageBusLogoSupplier registered successfully");
-
-            // Enable automatic requests in LogoManager
-            Application::LogoAssets::LogoManager::getInstance().enableAutoRequests(true);
-
-            // Set up notification callback
-            Application::LogoAssets::LogoManager::getInstance().setLogoRequestCallback(
-                [](const char *processName, bool success, const char *error) {
-                    if (success) {
-                        ESP_LOGI(TAG, "Logo request succeeded for: %s", processName);
-                    } else {
-                        ESP_LOGW(TAG, "Logo request failed for: %s (error: %s)",
-                                 processName, error ? error : "unknown");
-                    }
-                });
-        } else {
-            ESP_LOGW(TAG, "Failed to register MessageBusLogoSupplier");
-        }
+        ESP_LOGW(TAG, "MessageBusLogoSupplier initialization failed - automatic logo requests will be disabled");
     }
     esp_task_wdt_reset();
 
@@ -253,11 +233,11 @@ void deinit(void) {
     Application::Audio::AudioUI::getInstance().deinit();
     Application::Audio::AudioManager::getInstance().deinit();
 
-    // Deinitialize LogoSupplier system
-    Application::LogoAssets::LogoSupplierManager::getInstance().deinit();
+    // Deinitialize MessageBusLogoSupplier
+    Application::LogoAssets::MessageBusLogoSupplier::getInstance().deinit();
 
     // Deinitialize Logo Manager
-    Application::LogoAssets::LogoManager::getInstance().deinit();
+    Logo::LogoManager::getInstance().deinit();
 
 #if OTA_ENABLE_UPDATES
     Hardware::OTA::deinit();

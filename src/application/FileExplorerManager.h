@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <vector>
-#include "LogoManager.h"
+#include "../logo/LogoManager.h"
 
 namespace Application {
 namespace FileExplorer {
@@ -18,11 +18,12 @@ typedef struct {
     String sizeString;
 
     // Logo-specific properties
-    bool isLogoFile;                    // True if this is a logo binary file
-    bool isLogoMetadata;                // True if this is a logo metadata file
-    bool hasLogoMetadata;               // True if corresponding metadata exists
-    LogoAssets::LogoMetadata logoMeta;  // Logo metadata (if available)
-    String processNameFromFile;         // Process name extracted from filename
+    bool isLogoFile;             // True if this is a logo binary file
+    bool isLogoMetadata;         // True if this is a logo metadata file (deprecated)
+    bool hasLogoMetadata;        // True if corresponding metadata exists
+    bool logoVerified;           // True if logo is verified
+    bool logoFlagged;            // True if logo is flagged as incorrect
+    String processNameFromFile;  // Process name extracted from filename
 } FileItem;
 
 // Enhanced file explorer state with logo states

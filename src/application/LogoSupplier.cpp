@@ -15,7 +15,7 @@ namespace LogoAssets {
 
 AssetRequest LogoSupplier::createAssetRequest(const char* processName) {
     AssetRequest request;
-    request.messageType = "GetAssets";
+    request.messageType = Messaging::Config::MESSAGE_TYPE_GET_ASSETS;
     request.requestId = Messaging::Config::generateRequestId();
     request.deviceId = Messaging::Config::getDeviceId();
     request.processName = String(processName ? processName : "");
@@ -26,7 +26,7 @@ AssetRequest LogoSupplier::createAssetRequest(const char* processName) {
 AssetResponse LogoSupplier::createAssetResponse(bool success, const char* processName,
                                                 const char* requestId, const char* errorMessage) {
     AssetResponse response;
-    response.messageType = "AssetResponse";
+    response.messageType = Messaging::Config::MESSAGE_TYPE_ASSET_RESPONSE;
     response.requestId = String(requestId ? requestId : "");
     response.deviceId = Messaging::Config::getDeviceId();
     response.processName = String(processName ? processName : "");
@@ -35,7 +35,6 @@ AssetResponse LogoSupplier::createAssetResponse(bool success, const char* proces
     response.timestamp = Hardware::Device::getMillis();
     response.assetData = nullptr;
     response.assetDataSize = 0;
-    response.hasMetadata = false;
     response.hasAssetData = false;
     return response;
 }

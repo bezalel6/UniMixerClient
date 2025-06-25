@@ -7,13 +7,13 @@
 namespace Messaging {
 
 /**
- * Core messaging system - simplified replacement for MessageBus + MessageHandlerRegistry
+ * Core messaging system - messageType-based routing
  *
  * Design principles:
- * - Single responsibility: route messages between components
- * - Simple interface: subscribe/publish pattern
- * - No complex templates or inheritance
- * - Clear error handling
+ * - Route messages based on messageType field in JSON
+ * - Work with Message objects, not raw strings
+ * - Simple subscribe/publish pattern by message type
+ * - Transport-agnostic (transports just send/receive strings)
  */
 class MessageCore {
    public:
@@ -58,33 +58,38 @@ class MessageCore {
     String getTransportStatus() const;
 
     // =============================================================================
-    // MESSAGE HANDLING
+    // MESSAGE HANDLING (Type-Based)
     // =============================================================================
 
     /**
-     * Subscribe to messages on a topic
+     * Subscribe to messages by messageType
      */
-    void subscribe(const String& topic, MessageCallback callback);
+    void subscribeToType(const String& messageType, MessageCallback callback);
 
     /**
-     * Subscribe specifically to audio status updates
+     * Subscribe to all messages (wildcard)
      */
-    void subscribeToAudioStatus(AudioStatusCallback callback);
+    void subscribeToAll(MessageCallback callback);
 
     /**
-     * Unsubscribe from a topic
+     * Unsubscribe from a messageType
      */
-    void unsubscribe(const String& topic);
+    void unsubscribeFromType(const String& messageType);
 
     /**
-     * Publish a message to all subscribers and transports
-     */
-    bool publish(const String& topic, const String& payload);
-
-    /**
-     * Publish a message object
+     * Publish a message object to all subscribers and transports
      */
     bool publish(const Message& message);
+
+    /**
+     * Publish raw JSON payload (will be parsed to extract messageType)
+     */
+    bool publish(const String& jsonPayload);
+
+    /**
+     * Create and publish a message
+     */
+    bool publishMessage(const String& messageType, const String& jsonPayload);
 
     /**
      * Publish audio status request
@@ -92,9 +97,9 @@ class MessageCore {
     bool requestAudioStatus();
 
     /**
-     * Handle incoming message from transport
+     * Handle incoming raw JSON message from transport
      */
-    void handleIncomingMessage(const String& topic, const String& payload);
+    void handleIncomingMessage(const String& jsonPayload);
 
     // =============================================================================
     // STATUS & DIAGNOSTICS
@@ -132,11 +137,9 @@ class MessageCore {
 
     bool initialized = false;
 
-    // Topic subscriptions
-    std::map<String, std::vector<MessageCallback>> topicSubscriptions;
-
-    // Audio status subscribers
-    std::vector<AudioStatusCallback> audioStatusSubscribers;
+    // Type-based subscriptions
+    std::map<String, std::vector<MessageCallback>> typeSubscriptions;
+    std::vector<MessageCallback> wildcardSubscribers;
 
     // Transport management
     std::map<String, TransportInterface> transports;
@@ -146,38 +149,19 @@ class MessageCore {
     unsigned long messagesReceived = 0;
     unsigned long lastActivityTime = 0;
 
-    // Logo request debouncing
-    std::map<String, unsigned long> lastLogoCheckTime;
-    static const unsigned long LOGO_CHECK_DEBOUNCE_MS = 30000;  // 30 seconds between checks for same process
-
     // =============================================================================
     // INTERNAL HELPERS
     // =============================================================================
 
     /**
-     * Process audio status message
-     */
-    void processAudioStatusMessage(const String& payload);
-
-    /**
-     * Check and request logos for audio processes
-     */
-    void checkAndRequestLogosForAudioProcesses(const AudioStatusData& statusData);
-
-    /**
-     * Check logo for a single process and request if needed
-     */
-    void checkSingleProcessLogo(const char* processName);
-
-    /**
-     * Update activity timestamp
+     * Update last activity timestamp
      */
     void updateActivity();
 
     /**
-     * Log message activity
+     * Log message for debugging
      */
-    void logMessage(const String& direction, const String& topic, const String& payload);
+    void logMessage(const String& direction, const Message& message);
 };
 
 }  // namespace Messaging

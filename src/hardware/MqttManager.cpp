@@ -181,9 +181,10 @@ bool connect(void) {
 
         // Register with new messaging system as MQTT transport
         Messaging::MessageAPI::registerMqttTransport(
-            // Send function
-            [](const String& topic, const String& payload) -> bool {
-                return Hardware::Mqtt::publish(topic.c_str(), payload.c_str());
+            // Send function (simplified - no topics)
+            [](const String& payload) -> bool {
+                // Use a generic topic for MQTT transport - routing is done by messageType
+                return Hardware::Mqtt::publish("unimixer/messages", payload.c_str());
             },
             // IsConnected function
             []() -> bool {
@@ -438,8 +439,8 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
     ESP_LOGI(TAG, "Received message - Topic: %s, Payload: %s", topic, payloadStr);
 
-    // Forward to new messaging system
-    Messaging::MessageAPI::handleIncomingMessage(String(topic), String(payloadStr));
+    // Forward to new messaging system (no topic needed - messageType is in JSON)
+    Messaging::MessageAPI::handleIncomingMessage(String(payloadStr));
 
     // Also handle through legacy system for backwards compatibility
     Handler* handler = findHandlerByTopic(topic);

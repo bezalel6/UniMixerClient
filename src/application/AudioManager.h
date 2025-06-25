@@ -1,8 +1,10 @@
 #pragma once
 
 #include "AudioData.h"
+#include "../messaging/MessageData.h"
 #include <functional>
 #include <vector>
+#include <map>
 
 namespace Application {
 namespace Audio {
@@ -102,6 +104,14 @@ class AudioManager {
     void ensureValidSelections();
     void refreshDevicePointers(const String& primaryDeviceName, const String& singleDeviceName, const String& device1Name, const String& device2Name);
     void refreshDevicePointersIfNeeded(const String& deviceName);
+
+    // Logo checking helpers (moved from MessageCore)
+    void checkAndRequestLogosForAudioProcesses(const Messaging::AudioStatusData& statusData);
+    void checkSingleProcessLogo(const char* processName);
+
+    // Logo request debouncing
+    std::map<String, unsigned long> lastLogoCheckTime;
+    static const unsigned long LOGO_CHECK_DEBOUNCE_MS = 30000;  // 30 seconds
 };
 
 }  // namespace Audio

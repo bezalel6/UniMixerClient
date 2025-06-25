@@ -2,6 +2,8 @@
 #include "../hardware/DeviceManager.h"
 #include "../messaging/MessageAPI.h"
 #include "../messaging/MessageConfig.h"
+#include "../logo/LogoManager.h"
+#include "MessageBusLogoSupplier.h"
 #include <esp_log.h>
 #include <algorithm>
 
@@ -27,26 +29,33 @@ bool AudioManager::init() {
     state.clear();
     callbacks.clear();
 
-    // Subscribe to audio status updates from the messaging system
-    Messaging::MessageAPI::onAudioStatus([this](const Messaging::AudioStatusData& data) {
-        // Convert AudioStatusData back to AudioStatus for compatibility
-        ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
+    // Subscribe to audio status updates using messageType-based routing
+    Messaging::MessageAPI::subscribeToType(Messaging::Config::MESSAGE_TYPE_STATUS_UPDATE,
+                                           [this](const Messaging::Message& message) {
+                                               // Parse the audio status data from the message
+                                               Messaging::AudioStatusData data = Messaging::Json::parseStatusResponse(message);
 
-        // DEBUG: Log default device volume conversion
-        if (data.hasDefaultDevice) {
-            ESP_LOGI(TAG, "Received default device: %s, volume: %d",
-                     data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
-        }
+                                               ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
 
-        AudioStatus status;
-        status.setAudioLevels(data.audioLevels);
-        status.defaultDevice = data.defaultDevice;
-        status.hasDefaultDevice = data.hasDefaultDevice;
-        status.timestamp = data.timestamp;
+                                               // DEBUG: Log default device volume conversion
+                                               if (data.hasDefaultDevice) {
+                                                   ESP_LOGI(TAG, "Received default device: %s, volume: %d",
+                                                            data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
+                                               }
 
-        // Process the audio status
-        this->onAudioStatusReceived(status);
-    });
+                                               // Check and request logos for all detected audio processes
+                                               this->checkAndRequestLogosForAudioProcesses(data);
+
+                                               // Convert AudioStatusData back to AudioStatus for compatibility
+                                               AudioStatus status;
+                                               status.setAudioLevels(data.audioLevels);
+                                               status.defaultDevice = data.defaultDevice;
+                                               status.hasDefaultDevice = data.hasDefaultDevice;
+                                               status.timestamp = data.timestamp;
+
+                                               // Process the audio status
+                                               this->onAudioStatusReceived(status);
+                                           });
 
     initialized = true;
     ESP_LOGI(TAG, "AudioManager initialized successfully");
@@ -417,7 +426,7 @@ void AudioManager::publishStatusUpdate() {
     statusData.originatingDeviceId = Messaging::Config::DEVICE_ID;
 
     String statusJson = Messaging::Json::createStatusResponse(statusData);
-    bool published = Messaging::MessageAPI::publish(Messaging::Config::TOPIC_AUDIO_STATUS_RESPONSE, statusJson);
+    bool published = Messaging::MessageAPI::publish(statusJson);
 
     if (published) {
         ESP_LOGI(TAG, "Published status update with %d sessions", state.currentStatus.getDeviceCount());
@@ -734,6 +743,75 @@ void AudioManager::refreshDevicePointers(const String& primaryDeviceName, const 
         }
     } else {
         state.selectedDevice2 = nullptr;
+    }
+}
+
+void AudioManager::checkAndRequestLogosForAudioProcesses(const Messaging::AudioStatusData& statusData) {
+    if (!Logo::LogoManager::getInstance().isInitialized()) {
+        ESP_LOGD(TAG, "Logo system not initialized, skipping logo checks");
+        return;
+    }
+
+    // Check if MessageBusLogoSupplier is available for requesting logos
+    auto& logoSupplier = Application::LogoAssets::MessageBusLogoSupplier::getInstance();
+    if (!logoSupplier.isReady()) {
+        ESP_LOGD(TAG, "Logo supplier not ready, skipping logo requests");
+        return;
+    }
+
+    ESP_LOGD(TAG, "Checking logos for %d audio processes", statusData.audioLevels.size());
+
+    // Check each audio session process
+    for (const auto& audioLevel : statusData.audioLevels) {
+        if (!audioLevel.processName.isEmpty()) {
+            checkSingleProcessLogo(audioLevel.processName.c_str());
+        }
+    }
+
+    // Check default device if present
+    if (statusData.hasDefaultDevice && !statusData.defaultDevice.processName.isEmpty()) {
+        checkSingleProcessLogo(statusData.defaultDevice.processName.c_str());
+    }
+}
+
+void AudioManager::checkSingleProcessLogo(const char* processName) {
+    if (!processName || strlen(processName) == 0) {
+        return;
+    }
+
+    if (!Logo::LogoManager::getInstance().isInitialized()) {
+        ESP_LOGD(TAG, "Logo system not initialized, skipping logo check for: %s", processName);
+        return;
+    }
+
+    // Check if logo already exists locally
+    if (Logo::LogoManager::getInstance().hasLogo(processName)) {
+        ESP_LOGD(TAG, "Logo already exists for process: %s", processName);
+        return;
+    }
+
+    // Request logo from server via MessageBusLogoSupplier
+    auto& logoSupplier = Application::LogoAssets::MessageBusLogoSupplier::getInstance();
+    if (!logoSupplier.isReady()) {
+        ESP_LOGD(TAG, "Logo supplier not ready, cannot request logo for: %s", processName);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Requesting logo for process: %s", processName);
+
+    // Request logo asynchronously
+    bool requested = logoSupplier.requestLogo(processName, [processName](const Application::LogoAssets::AssetResponse& response) {
+        if (response.success) {
+            ESP_LOGI(TAG, "Successfully received logo for process: %s", processName);
+        } else {
+            ESP_LOGW(TAG, "Failed to receive logo for process: %s - %s", processName, response.errorMessage.c_str());
+        }
+    });
+
+    if (requested) {
+        ESP_LOGD(TAG, "Logo request submitted for process: %s", processName);
+    } else {
+        ESP_LOGW(TAG, "Failed to submit logo request for process: %s", processName);
     }
 }
 

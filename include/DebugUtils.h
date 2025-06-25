@@ -16,7 +16,7 @@
 
 // UI Debug logging macro
 #define LOG_TO_UI(ui_element, message)                                    \
-    if (ui_element != nullptr) {                                          \
+    if (ui_element != nullptr && message != nullptr) {                    \
         String timestamp = String("[") + String(millis()) + String("] "); \
         String logEntry = timestamp + message + "\n";                     \
         lv_textarea_add_text(ui_element, logEntry.c_str());               \
