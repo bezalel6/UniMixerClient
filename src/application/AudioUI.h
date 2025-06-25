@@ -72,6 +72,9 @@ class AudioUI {
     void setDropdownSelection(lv_obj_t* dropdown, const String& deviceName);
     int findDeviceIndexInDropdown(lv_obj_t* dropdown, const String& deviceName) const;
 
+    // Logo display for debugging
+    void updateSingleTabLogo();
+
     // Utility methods
     String getCurrentTabName() const;
 };

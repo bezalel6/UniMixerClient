@@ -1,5 +1,7 @@
 #include "AudioUI.h"
 #include "ui/screens/ui_screenMain.h"
+#include "../logo/LogoManager.h"
+#include "../events/UiEventHandlers.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 
@@ -98,6 +100,11 @@ void AudioUI::onDeviceDropdownChanged(lv_obj_t* dropdown, const String& deviceNa
     } else {
         // For single/master tabs
         AudioManager::getInstance().selectDevice(deviceName);
+
+        // Update logo if we're on the Single tab
+        if (state.isInSingleTab()) {
+            updateSingleTabLogo();
+        }
     }
 }
 
@@ -119,6 +126,9 @@ void AudioUI::onTabChanged(Events::UI::TabState newTab) {
 
     // Force a comprehensive UI refresh for the new tab context
     refreshAllUI();
+
+    // Update logo display for debugging
+    updateSingleTabLogo();
 }
 
 void AudioUI::onMuteButtonPressed() {
@@ -284,6 +294,7 @@ void AudioUI::onAudioStateChanged(const AudioStateChangeEvent& event) {
             ESP_LOGI(TAG, "Device selection changed - updating UI");
             updateDropdownSelections();
             updateVolumeDisplay();
+            updateSingleTabLogo();  // Update logo for debugging
             break;
 
         case AudioStateChangeEvent::VOLUME_CHANGED:
@@ -438,6 +449,48 @@ int AudioUI::findDeviceIndexInDropdown(lv_obj_t* dropdown, const String& deviceN
 String AudioUI::getCurrentTabName() const {
     const auto& state = AudioManager::getInstance().getState();
     return AudioManager::getInstance().getTabName(state.currentTab);
+}
+
+void AudioUI::updateSingleTabLogo() {
+    if (!initialized || !ui_img) {
+        return;
+    }
+
+    const auto& state = AudioManager::getInstance().getState();
+
+    // Only update if we're on the Single tab
+    if (!state.isInSingleTab()) {
+        lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    // Get currently selected device on Single tab
+    if (!state.selectedSingleDevice) {
+        ESP_LOGD(TAG, "No device selected on Single tab - hiding logo");
+        lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    String processName = state.selectedSingleDevice->processName;
+    ESP_LOGI(TAG, "Updating Single tab logo for process: %s", processName.c_str());
+
+    // Get logo path from LogoManager
+    String logoPath = Logo::LogoManager::getInstance().getLogoPath(processName.c_str());
+
+    if (!logoPath.isEmpty()) {
+        ESP_LOGI(TAG, "Found logo for %s at: %s", processName.c_str(), logoPath.c_str());
+
+        // Set the logo image source
+        lv_img_set_src(ui_img, logoPath.c_str());
+
+        // Show the image
+        lv_obj_remove_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+
+        ESP_LOGI(TAG, "Logo displayed for %s", processName.c_str());
+    } else {
+        ESP_LOGD(TAG, "No logo found for %s - hiding image", processName.c_str());
+        lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 }  // namespace Audio

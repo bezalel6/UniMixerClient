@@ -6,7 +6,8 @@
 #include "MessageBusLogoSupplier.h"
 #include <esp_log.h>
 #include <algorithm>
-
+#include "ui/ui.h"
+#include "logo/LogoManager.h"
 static const char* TAG = "AudioManager";
 
 namespace Application {

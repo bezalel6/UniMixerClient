@@ -2,6 +2,7 @@
 #include "../../include/MessagingConfig.h"
 #include "../../include/OTAConfig.h"
 #include "../display/DisplayManager.h"
+#include "../display/LVGLSDFilesystem.h"
 #include "../events/UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
@@ -169,6 +170,10 @@ void deinit(void) {
         vTaskDelete(audioTaskHandle);
         audioTaskHandle = NULL;
     }
+
+    // Clean up LVGL SD filesystem driver
+    ESP_LOGI(TAG, "[DEINIT] Deinitializing LVGL SD filesystem driver");
+    Display::LVGLSDFilesystem::deinit();
 
     // Clean up synchronization objects
     if (lvglMutex) {
@@ -370,6 +375,14 @@ void lvglTask(void *parameter) {
     ESP_LOGI(TAG, "[LVGL_TASK] Applying final stability delay...");
     vTaskDelay(pdMS_TO_TICKS(50));  // Reduced from 300ms
 
+    // Initialize LVGL SD filesystem driver after LVGL is stable
+    ESP_LOGI(TAG, "[LVGL_TASK] Initializing LVGL SD filesystem driver...");
+    if (Display::LVGLSDFilesystem::init()) {
+        ESP_LOGI(TAG, "[LVGL_TASK] LVGL SD filesystem driver initialized successfully");
+    } else {
+        ESP_LOGW(TAG, "[LVGL_TASK] LVGL SD filesystem driver initialization failed - SD functionality may be limited");
+    }
+
     ESP_LOGI(TAG, "[LVGL_TASK] Starting main LVGL operations loop");
 
     TickType_t lastWakeTime = xTaskGetTickCount();
@@ -458,6 +471,16 @@ void networkTask(void *parameter) {
                 totalMB = cardInfo.totalBytes / (1024 * 1024);
                 usedMB = cardInfo.usedBytes / (1024 * 1024);
                 cardType = cardInfo.cardType;
+
+                // Check if LVGL SD filesystem needs to be reinitialized
+                if (!Display::LVGLSDFilesystem::isReady()) {
+                    ESP_LOGI(TAG, "[NETWORK_TASK] SD card mounted but LVGL filesystem not ready - reinitializing");
+                    if (Display::LVGLSDFilesystem::init()) {
+                        ESP_LOGI(TAG, "[NETWORK_TASK] LVGL SD filesystem reinitialized successfully");
+                    } else {
+                        ESP_LOGW(TAG, "[NETWORK_TASK] Failed to reinitialize LVGL SD filesystem");
+                    }
+                }
             }
 
             // Send UI update
