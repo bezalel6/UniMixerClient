@@ -34,6 +34,7 @@
 #include <esp_log.h>
 #include <ui/ui.h>
 #include <functional>
+#include <unordered_map>
 
 // BULLETPROOF: External UI screen declarations
 extern lv_obj_t *ui_screenMain;
@@ -67,36 +68,383 @@ static lv_obj_t *format_dialog_panel = NULL;
 static lv_obj_t *format_progress_bar = NULL;
 static lv_obj_t *format_status_label = NULL;
 
-static const char *TAG = "LVGLMessageHandler";
-
 namespace Application {
 namespace LVGLMessageHandler {
+static const char *TAG = "LVGLMessageHandler";
 
-#define VOLUME_CASE(enum_name, field_name) \
-    case MSG_UPDATE_##enum_name:           \
-        return &msg->data.field_name.volume;
+// PERFORMANCE: Message handler callback type
+using MessageHandler = std::function<void(const LVGLMessage_t *)>;
 
-const int *get_volume_ptr(const LVGLMessage_t *msg) {
-    switch (msg->type) {
-        VOLUME_CASE(MASTER_VOLUME, master_volume)
-        VOLUME_CASE(SINGLE_VOLUME, single_volume)
-        VOLUME_CASE(BALANCE_VOLUME, balance_volume)
-        default:
-            return nullptr;
+// PERFORMANCE: Single message type to handler mapping for O(1) lookup
+static std::unordered_map<int, MessageHandler> messageHandlers;
+
+// PERFORMANCE: Message type names for debugging - static array for O(1) lookup
+static const char *messageTypeNames[] = {
+    [MSG_UPDATE_WIFI_STATUS] = "WIFI_STATUS",
+    [MSG_UPDATE_NETWORK_INFO] = "NETWORK_INFO",
+    [MSG_UPDATE_OTA_PROGRESS] = "OTA_PROGRESS",
+    [MSG_UPDATE_FPS_DISPLAY] = "FPS_DISPLAY",
+    [MSG_SCREEN_CHANGE] = "SCREEN_CHANGE",
+    [MSG_REQUEST_DATA] = "REQUEST_DATA",
+    [MSG_UPDATE_MASTER_VOLUME] = "MASTER_VOLUME",
+    [MSG_UPDATE_SINGLE_VOLUME] = "SINGLE_VOLUME",
+    [MSG_UPDATE_BALANCE_VOLUME] = "BALANCE_VOLUME",
+    [MSG_UPDATE_MASTER_DEVICE] = "MASTER_DEVICE",
+    [MSG_UPDATE_SINGLE_DEVICE] = "SINGLE_DEVICE",
+    [MSG_UPDATE_BALANCE_DEVICES] = "BALANCE_DEVICES",
+    [MSG_SHOW_OTA_SCREEN] = "SHOW_OTA_SCREEN",
+    [MSG_UPDATE_OTA_SCREEN_PROGRESS] = "OTA_SCREEN_PROGRESS",
+    [MSG_HIDE_OTA_SCREEN] = "HIDE_OTA_SCREEN",
+    [MSG_SHOW_STATE_OVERVIEW] = "SHOW_STATE_OVERVIEW",
+    [MSG_UPDATE_STATE_OVERVIEW] = "UPDATE_STATE_OVERVIEW",
+    [MSG_HIDE_STATE_OVERVIEW] = "HIDE_STATE_OVERVIEW",
+    [MSG_UPDATE_SD_STATUS] = "SD_STATUS",
+    [MSG_FORMAT_SD_REQUEST] = "FORMAT_SD_REQUEST",
+    [MSG_FORMAT_SD_CONFIRM] = "FORMAT_SD_CONFIRM",
+    [MSG_FORMAT_SD_PROGRESS] = "FORMAT_SD_PROGRESS",
+    [MSG_FORMAT_SD_COMPLETE] = "FORMAT_SD_COMPLETE",
+    [MSG_SHOW_OTA_STATUS_INDICATOR] = "SHOW_OTA_STATUS_INDICATOR",
+    [MSG_UPDATE_OTA_STATUS_INDICATOR] = "UPDATE_OTA_STATUS_INDICATOR",
+    [MSG_HIDE_OTA_STATUS_INDICATOR] = "HIDE_OTA_STATUS_INDICATOR"};
+
+// PERFORMANCE: O(1) message type name lookup
+static const char *getMessageTypeName(int messageType) {
+    if (messageType >= 0 && messageType < (sizeof(messageTypeNames) / sizeof(messageTypeNames[0])) && messageTypeNames[messageType]) {
+        return messageTypeNames[messageType];
+    }
+    return "UNKNOWN";
+}
+
+// PERFORMANCE: Fast volume extraction using function pointers
+using VolumeExtractor = int (*)(const LVGLMessage_t *);
+
+static int extractMasterVolume(const LVGLMessage_t *msg) { return msg->data.master_volume.volume; }
+static int extractSingleVolume(const LVGLMessage_t *msg) { return msg->data.single_volume.volume; }
+static int extractBalanceVolume(const LVGLMessage_t *msg) { return msg->data.balance_volume.volume; }
+
+static std::unordered_map<int, VolumeExtractor> volumeExtractors = {
+    {MSG_UPDATE_MASTER_VOLUME, extractMasterVolume},
+    {MSG_UPDATE_SINGLE_VOLUME, extractSingleVolume},
+    {MSG_UPDATE_BALANCE_VOLUME, extractBalanceVolume}};
+
+// PERFORMANCE: Fast volume update function
+static inline void updateVolumeSlider(lv_obj_t *slider, const LVGLMessage_t *msg) {
+    if (!slider) return;
+
+    auto extractor = volumeExtractors.find(msg->type);
+    if (extractor != volumeExtractors.end()) {
+        int volume = extractor->second(msg);
+        lv_arc_set_value(slider, volume);
+        lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, NULL);
     }
 }
-#define PARSE_VOLUME(msg) ([&]() -> int { \
-    const int *_v = get_volume_ptr(msg);  \
-    return _v ? *_v : -1;                 \
-}())
 
-#define ARC_VOLUME_UPDATE_MSG(tab, slider)                           \
-    case MSG_UPDATE_##tab##_VOLUME:                                  \
-        if (slider) {                                                \
-            lv_arc_set_value(slider, PARSE_VOLUME(&message));        \
-            lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, NULL); \
-        }                                                            \
-        break;
+// PERFORMANCE: Message handler implementations - optimized for minimal branching
+static void handleWifiStatus(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.wifi_status;
+
+    // PERFORMANCE: Batch UI updates to reduce render calls
+    if (ui_lblWifiStatus) {
+        lv_label_set_text(ui_lblWifiStatus, data.status);
+    }
+    if (ui_objWifiIndicator) {
+        // PERFORMANCE: Pre-calculated colors to avoid hex conversion
+        static const lv_color_t COLOR_CONNECTED = lv_color_hex(0x00FF00);
+        static const lv_color_t COLOR_DISCONNECTED = lv_color_hex(0xFF0000);
+        lv_obj_set_style_bg_color(ui_objWifiIndicator,
+                                  data.connected ? COLOR_CONNECTED : COLOR_DISCONNECTED,
+                                  LV_PART_MAIN);
+    }
+}
+
+static void handleNetworkInfo(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.network_info;
+    if (ui_lblSSIDValue) {
+        lv_label_set_text(ui_lblSSIDValue, data.ssid);
+    }
+    if (ui_lblIPValue) {
+        lv_label_set_text(ui_lblIPValue, data.ip);
+    }
+}
+
+static void handleFpsDisplay(const LVGLMessage_t *msg) {
+    if (ui_lblFPS) {
+        // PERFORMANCE: Use static buffer to avoid stack allocation overhead
+        static char fpsText[64];
+        float actualFps = Display::getActualRenderFPS();
+        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
+                 actualFps, msg->data.fps_display.fps);
+        lv_label_set_text(ui_lblFPS, fpsText);
+    }
+}
+
+static void handleMasterVolume(const LVGLMessage_t *msg) {
+    updateVolumeSlider(ui_primaryVolumeSlider, msg);
+}
+
+static void handleSingleVolume(const LVGLMessage_t *msg) {
+    updateVolumeSlider(ui_singleVolumeSlider, msg);
+}
+
+static void handleBalanceVolume(const LVGLMessage_t *msg) {
+    updateVolumeSlider(ui_balanceVolumeSlider, msg);
+}
+
+static void handleMasterDevice(const LVGLMessage_t *msg) {
+    if (ui_lblPrimaryAudioDeviceValue) {
+        lv_label_set_text(ui_lblPrimaryAudioDeviceValue, msg->data.master_device.device_name);
+    }
+}
+
+// PERFORMANCE: Complex message handlers
+static void handleOtaProgress(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.ota_progress;
+    if (data.in_progress) {
+        // Switch to OTA screen if not already there
+        if (lv_scr_act() != ui_screenOTA) {
+            _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_NONE, 0, 0,
+                              ui_screenOTA_screen_init);
+        }
+
+        // Update progress bar
+        if (ui_barOTAUpdateProgress) {
+            lv_bar_set_value(ui_barOTAUpdateProgress, data.progress, LV_ANIM_OFF);
+        }
+
+        // Update status label
+        if (ui_lblOTAUpdateProgress) {
+            lv_label_set_text(ui_lblOTAUpdateProgress, data.message);
+        }
+
+        ESP_LOGI(TAG, "OTA Progress: %d%% - %s", data.progress, data.message);
+    } else {
+        // OTA finished - update final status
+        if (ui_lblOTAUpdateProgress) {
+            lv_label_set_text(ui_lblOTAUpdateProgress, data.message);
+        }
+        if (ui_barOTAUpdateProgress) {
+            lv_bar_set_value(ui_barOTAUpdateProgress, data.success ? 100 : 0, LV_ANIM_OFF);
+        }
+    }
+}
+
+static void handleSingleDevice(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "Single device update requested: %s", msg->data.single_device.device_name);
+}
+
+static void handleBalanceDevices(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.balance_devices;
+    ESP_LOGI(TAG, "Balance devices update requested: %s, %s", data.device1_name, data.device2_name);
+}
+
+static void handleScreenChange(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.screen_change;
+    if (data.screen) {
+        lv_screen_load_anim_t anim = static_cast<lv_screen_load_anim_t>(data.anim_type);
+        _ui_screen_change((lv_obj_t **)&data.screen, anim, data.time, data.delay, NULL);
+    }
+}
+
+static void handleRequestData(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "Data request triggered from UI");
+}
+
+static void handleShowOtaScreen(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "OTA: Showing OTA screen");
+
+    // Save current screen for restoration later
+    static lv_obj_t *previousScreen = nullptr;
+    previousScreen = lv_scr_act();
+
+    // Switch to OTA screen with smooth animation
+    if (lv_scr_act() != ui_screenOTA) {
+        _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, ui_screenOTA_screen_init);
+    }
+
+    // Initialize OTA screen with default values
+    if (ui_barOTAUpdateProgress) {
+        lv_bar_set_value(ui_barOTAUpdateProgress, 0, LV_ANIM_OFF);
+    }
+    if (ui_lblOTAUpdateProgress) {
+        lv_label_set_text(ui_lblOTAUpdateProgress, "Starting OTA update...");
+    }
+
+    ESP_LOGI(TAG, "OTA: Screen transition completed");
+}
+
+static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.ota_screen_progress;
+    ESP_LOGI(TAG, "OTA: Updating progress to %d%% - %s", data.progress, data.message);
+
+    // Ensure we're on the OTA screen
+    if (lv_scr_act() != ui_screenOTA) {
+        ESP_LOGW(TAG, "OTA: Progress update but not on OTA screen, switching");
+        _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_NONE, 0, 0, ui_screenOTA_screen_init);
+    }
+
+    // Update progress bar with smooth animation for visual feedback
+    if (ui_barOTAUpdateProgress) {
+        lv_bar_set_value(ui_barOTAUpdateProgress, data.progress, LV_ANIM_ON);
+    }
+
+    // Update status message
+    if (ui_lblOTAUpdateProgress) {
+        lv_label_set_text(ui_lblOTAUpdateProgress, data.message);
+    }
+
+    // Add visual feedback for completion
+    if (data.progress >= 100) {
+        ESP_LOGI(TAG, "OTA: Update appears complete, preparing for reboot");
+        if (ui_Label2) {
+            lv_label_set_text(ui_Label2, "COMPLETE");
+            lv_obj_set_style_text_color(ui_Label2, lv_color_hex(0x00FF00), LV_PART_MAIN);
+        }
+    }
+
+    // Force immediate UI refresh for OTA critical operations
+    lv_refr_now(lv_disp_get_default());
+}
+
+static void handleHideOtaScreen(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "OTA: Hiding OTA screen and restoring previous screen");
+
+    // Get the previous screen that was saved
+    static lv_obj_t *previousScreen = nullptr;
+
+    // If we have a previous screen, return to it
+    if (previousScreen && previousScreen != ui_screenOTA) {
+        ESP_LOGI(TAG, "OTA: Returning to previous screen");
+        lv_scr_load_anim(previousScreen, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
+    }
+
+    // Reset OTA screen visual state
+    if (ui_Label2) {
+        lv_label_set_text(ui_Label2, "UPDATING");
+        lv_obj_set_style_text_color(ui_Label2, lv_color_white(), LV_PART_MAIN);
+    }
+
+    previousScreen = nullptr;  // Clear saved screen
+}
+
+static void handleShowOtaStatusIndicator(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.ota_status_indicator;
+    ESP_LOGI(TAG, "OTA Status: Showing indicator - %d%% - %s%s",
+             data.progress, data.status, data.is_error ? " (ERROR)" : "");
+
+    // Create/update OTA status indicator overlay
+    static lv_obj_t *otaStatusOverlay = nullptr;
+    static lv_obj_t *otaStatusBar = nullptr;
+    static lv_obj_t *otaStatusLabel = nullptr;
+    static lv_obj_t *otaStatusIcon = nullptr;
+
+    if (!otaStatusOverlay || !lv_obj_is_valid(otaStatusOverlay)) {
+        // Create the OTA status overlay
+        lv_obj_t *currentScreen = lv_scr_act();
+        if (currentScreen) {
+            otaStatusOverlay = lv_obj_create(currentScreen);
+            lv_obj_set_size(otaStatusOverlay, 300, 60);
+            lv_obj_set_align(otaStatusOverlay, LV_ALIGN_TOP_MID);
+            lv_obj_set_y(otaStatusOverlay, 10);
+
+            // Style the overlay
+            lv_obj_set_style_bg_color(otaStatusOverlay,
+                                      data.is_error ? lv_color_hex(0x330000) : lv_color_hex(0x003300),
+                                      LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(otaStatusOverlay, 240, LV_PART_MAIN);
+            lv_obj_set_style_border_color(otaStatusOverlay,
+                                          data.is_error ? lv_color_hex(0xFF0000) : lv_color_hex(0x00FF00),
+                                          LV_PART_MAIN);
+            lv_obj_set_style_border_width(otaStatusOverlay, 2, LV_PART_MAIN);
+            lv_obj_set_style_radius(otaStatusOverlay, 10, LV_PART_MAIN);
+
+            // Create progress bar
+            otaStatusBar = lv_bar_create(otaStatusOverlay);
+            lv_obj_set_size(otaStatusBar, 250, 15);
+            lv_obj_set_align(otaStatusBar, LV_ALIGN_TOP_MID);
+            lv_obj_set_y(otaStatusBar, 5);
+
+            // Create status label
+            otaStatusLabel = lv_label_create(otaStatusOverlay);
+            lv_obj_set_align(otaStatusLabel, LV_ALIGN_BOTTOM_MID);
+            lv_obj_set_y(otaStatusLabel, -5);
+            lv_obj_set_style_text_color(otaStatusLabel, lv_color_white(), LV_PART_MAIN);
+            lv_obj_set_style_text_font(otaStatusLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+
+            // Create status icon (optional)
+            otaStatusIcon = lv_label_create(otaStatusOverlay);
+            lv_obj_set_align(otaStatusIcon, LV_ALIGN_TOP_LEFT);
+            lv_obj_set_pos(otaStatusIcon, 5, 5);
+            lv_obj_set_style_text_color(otaStatusIcon,
+                                        data.is_error ? lv_color_hex(0xFF0000) : lv_color_hex(0x00FF00),
+                                        LV_PART_MAIN);
+            lv_label_set_text(otaStatusIcon, data.is_error ? "✗" : "⟳");
+        }
+    }
+
+    // Update the indicator
+    if (otaStatusBar && lv_obj_is_valid(otaStatusBar)) {
+        lv_bar_set_value(otaStatusBar, data.progress, data.pulsing ? LV_ANIM_ON : LV_ANIM_OFF);
+    }
+
+    if (otaStatusLabel && lv_obj_is_valid(otaStatusLabel)) {
+        lv_label_set_text(otaStatusLabel, data.status);
+    }
+
+    // Handle pulsing animation for status
+    if (data.pulsing && otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
+        lv_anim_t anim;
+        lv_anim_init(&anim);
+        lv_anim_set_var(&anim, otaStatusOverlay);
+        lv_anim_set_values(&anim, 240, 150);
+        lv_anim_set_time(&anim, 1000);
+        lv_anim_set_repeat_count(&anim, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_set_playback_time(&anim, 500);
+        lv_anim_set_exec_cb(&anim, (lv_anim_exec_xcb_t)lv_obj_set_style_bg_opa);
+        lv_anim_start(&anim);
+    }
+}
+
+static void handleUpdateOtaStatusIndicator(const LVGLMessage_t *msg) {
+    // Same implementation as show - they can share the logic
+    handleShowOtaStatusIndicator(msg);
+}
+
+static void handleHideOtaStatusIndicator(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "OTA Status: Hiding status indicator");
+
+    // Clean up the OTA status overlay
+    static lv_obj_t *otaStatusOverlay = nullptr;
+    if (otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
+        lv_obj_del(otaStatusOverlay);
+        otaStatusOverlay = nullptr;
+    }
+}
+
+// PERFORMANCE: Initialize message handler mappings - single O(1) lookup
+static void initializeMessageHandlers() {
+    messageHandlers = {
+        // Common/simple message handlers
+        {MSG_UPDATE_WIFI_STATUS, handleWifiStatus},
+        {MSG_UPDATE_NETWORK_INFO, handleNetworkInfo},
+        {MSG_UPDATE_FPS_DISPLAY, handleFpsDisplay},
+        {MSG_UPDATE_MASTER_VOLUME, handleMasterVolume},
+        {MSG_UPDATE_SINGLE_VOLUME, handleSingleVolume},
+        {MSG_UPDATE_BALANCE_VOLUME, handleBalanceVolume},
+        {MSG_UPDATE_MASTER_DEVICE, handleMasterDevice},
+
+        // Complex message handlers
+        {MSG_UPDATE_OTA_PROGRESS, handleOtaProgress},
+        {MSG_UPDATE_SINGLE_DEVICE, handleSingleDevice},
+        {MSG_UPDATE_BALANCE_DEVICES, handleBalanceDevices},
+        {MSG_SCREEN_CHANGE, handleScreenChange},
+        {MSG_REQUEST_DATA, handleRequestData},
+        {MSG_SHOW_OTA_SCREEN, handleShowOtaScreen},
+        {MSG_UPDATE_OTA_SCREEN_PROGRESS, handleUpdateOtaScreenProgress},
+        {MSG_HIDE_OTA_SCREEN, handleHideOtaScreen},
+        {MSG_SHOW_OTA_STATUS_INDICATOR, handleShowOtaStatusIndicator},
+        {MSG_UPDATE_OTA_STATUS_INDICATOR, handleUpdateOtaStatusIndicator},
+        {MSG_HIDE_OTA_STATUS_INDICATOR, handleHideOtaStatusIndicator}};
+}
 
 // Queue handle
 QueueHandle_t lvglMessageQueue = NULL;
@@ -106,6 +454,9 @@ QueueHandle_t lvglMessageQueue = NULL;
 
 bool init(void) {
     ESP_LOGI(TAG, "Initializing LVGL Message Handler");
+
+    // PERFORMANCE: Initialize message handler mappings
+    initializeMessageHandlers();
 
     // Create message queue
     lvglMessageQueue =
@@ -210,73 +561,12 @@ void processMessageQueue(lv_timer_t *timer) {
            xQueueReceive(lvglMessageQueue, &message, 0) == pdTRUE) {
         messagesProcessed++;
 
-        // OPTIMIZED: Fast-path processing for common message types
-        switch (message.type) {
-            case MSG_UPDATE_WIFI_STATUS:
-                // Update WiFi status indicators
-                if (ui_lblWifiStatus) {
-                    lv_label_set_text(ui_lblWifiStatus, message.data.wifi_status.status);
-                }
-                if (ui_objWifiIndicator) {
-                    lv_color_t color = message.data.wifi_status.connected ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000);
-                    lv_obj_set_style_bg_color(ui_objWifiIndicator, color, LV_PART_MAIN);
-                }
-                break;
-
-            case MSG_UPDATE_NETWORK_INFO:
-                // Update network information
-                if (ui_lblSSIDValue) {
-                    lv_label_set_text(ui_lblSSIDValue, message.data.network_info.ssid);
-                }
-                if (ui_lblIPValue) {
-                    lv_label_set_text(ui_lblIPValue, message.data.network_info.ip);
-                }
-                break;
-
-            case MSG_UPDATE_FPS_DISPLAY:
-                // Update FPS display with both task and actual render FPS
-                if (ui_lblFPS) {
-                    char fpsText[64];
-                    float actualFps = Display::getActualRenderFPS();
-                    snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
-                             actualFps, message.data.fps_display.fps);
-                    lv_label_set_text(ui_lblFPS, fpsText);
-                }
-                break;
-
-            case MSG_UPDATE_MASTER_VOLUME:
-                if (ui_primaryVolumeSlider) {
-                    lv_arc_set_value(ui_primaryVolumeSlider, message.data.master_volume.volume);
-                    lv_obj_send_event(ui_primaryVolumeSlider, LV_EVENT_VALUE_CHANGED, NULL);
-                }
-                break;
-
-            case MSG_UPDATE_SINGLE_VOLUME:
-                if (ui_singleVolumeSlider) {
-                    lv_arc_set_value(ui_singleVolumeSlider, message.data.single_volume.volume);
-                    lv_obj_send_event(ui_singleVolumeSlider, LV_EVENT_VALUE_CHANGED, NULL);
-                }
-                break;
-
-            case MSG_UPDATE_BALANCE_VOLUME:
-                if (ui_balanceVolumeSlider) {
-                    lv_arc_set_value(ui_balanceVolumeSlider, message.data.balance_volume.volume);
-                    lv_obj_send_event(ui_balanceVolumeSlider, LV_EVENT_VALUE_CHANGED, NULL);
-                }
-                break;
-
-            case MSG_UPDATE_MASTER_DEVICE:
-                // Update Master tab device label
-                if (ui_lblPrimaryAudioDeviceValue) {
-                    lv_label_set_text(ui_lblPrimaryAudioDeviceValue,
-                                      message.data.master_device.device_name);
-                }
-                break;
-
-            // OPTIMIZED: Combine less critical message processing
-            default:
-                processComplexMessage(&message);
-                break;
+        // PERFORMANCE: Single O(1) hash map lookup - no more double lookups!
+        auto handler = messageHandlers.find(message.type);
+        if (handler != messageHandlers.end()) {
+            handler->second(&message);
+        } else {
+            ESP_LOGD(TAG, "Unhandled message type: %d", message.type);
         }
     }
 
@@ -291,274 +581,33 @@ void processMessageQueue(lv_timer_t *timer) {
     if (uxQueueMessagesWaiting(lvglMessageQueue) > 100) {
         ESP_LOGW(TAG, "Message queue critically full (%d), purging old messages",
                  uxQueueMessagesWaiting(lvglMessageQueue));
+
+        // Track message type distribution during purge
+        int messageTypeCounts[32] = {0};  // Assuming we have less than 32 message types
+        int totalPurged = 0;
+
         // Purge some old messages to prevent complete overflow
         LVGLMessage_t dummyMessage;
         for (int i = 0; i < 20 && xQueueReceive(lvglMessageQueue, &dummyMessage, 0) == pdTRUE; i++) {
-            // Just discard messages
+            // Track the message type
+            if (dummyMessage.type < 32) {
+                messageTypeCounts[dummyMessage.type]++;
+            }
+            totalPurged++;
         }
-    }
-}
 
-// OPTIMIZED: Separate function for complex message processing to reduce main loop time
-void processComplexMessage(const LVGLMessage_t *message) {
-    switch (message->type) {
-        case MSG_UPDATE_OTA_PROGRESS:
-            // Update OTA progress
-            if (message->data.ota_progress.in_progress) {
-                // Switch to OTA screen if not already there
-                if (lv_scr_act() != ui_screenOTA) {
-                    _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_NONE, 0, 0,
-                                      ui_screenOTA_screen_init);
-                }
-
-                // Update progress bar
-                if (ui_barOTAUpdateProgress) {
-                    lv_bar_set_value(ui_barOTAUpdateProgress,
-                                     message->data.ota_progress.progress, LV_ANIM_OFF);
-                }
-
-                // Update status label
-                if (ui_lblOTAUpdateProgress) {
-                    lv_label_set_text(ui_lblOTAUpdateProgress,
-                                      message->data.ota_progress.message);
-                }
-
-                ESP_LOGI(TAG, "OTA Progress: %d%% - %s",
-                         message->data.ota_progress.progress,
-                         message->data.ota_progress.message);
-            } else {
-                // OTA finished - update final status
-                if (ui_lblOTAUpdateProgress) {
-                    lv_label_set_text(ui_lblOTAUpdateProgress,
-                                      message->data.ota_progress.message);
-                }
-                if (ui_barOTAUpdateProgress) {
-                    lv_bar_set_value(ui_barOTAUpdateProgress,
-                                     message->data.ota_progress.success ? 100 : 0,
-                                     LV_ANIM_OFF);
+        // Log the distribution of purged message types
+        if (totalPurged > 0) {
+            ESP_LOGW(TAG, "Purged %d messages. Distribution:", totalPurged);
+            for (int i = 0; i < 32; i++) {
+                if (messageTypeCounts[i] > 0) {
+                    const char *msgTypeName = getMessageTypeName(i);
+                    ESP_LOGW(TAG, "  Type %d (%s): %d messages (%.1f%%)",
+                             i, msgTypeName, messageTypeCounts[i],
+                             (messageTypeCounts[i] * 100.0f) / totalPurged);
                 }
             }
-            break;
-
-        case MSG_UPDATE_SINGLE_DEVICE:
-            // Update Single tab device dropdown selection
-            ESP_LOGI(TAG, "Single device update requested: %s",
-                     message->data.single_device.device_name);
-            break;
-
-        case MSG_UPDATE_BALANCE_DEVICES:
-            // Update Balance tab device dropdown selections
-            ESP_LOGI(TAG, "Balance devices update requested: %s, %s",
-                     message->data.balance_devices.device1_name,
-                     message->data.balance_devices.device2_name);
-            break;
-
-        case MSG_SCREEN_CHANGE:
-            // Change screen
-            if (message->data.screen_change.screen) {
-                lv_screen_load_anim_t anim = static_cast<lv_screen_load_anim_t>(
-                    message->data.screen_change.anim_type);
-                _ui_screen_change((lv_obj_t **)&message->data.screen_change.screen, anim,
-                                  message->data.screen_change.time,
-                                  message->data.screen_change.delay, NULL);
-            }
-            break;
-
-        case MSG_REQUEST_DATA:
-            // Handle data request - could trigger other system actions
-            ESP_LOGI(TAG, "Data request triggered from UI");
-            break;
-
-        // BULLETPROOF OTA SCREEN MANAGEMENT - MISSING IMPLEMENTATION ADDED
-        case MSG_SHOW_OTA_SCREEN: {
-            ESP_LOGI(TAG, "OTA: Showing OTA screen");
-
-            // Save current screen for restoration later
-            static lv_obj_t *previousScreen = nullptr;
-            previousScreen = lv_scr_act();
-
-            // Switch to OTA screen with smooth animation
-            if (lv_scr_act() != ui_screenOTA) {
-                _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, ui_screenOTA_screen_init);
-            }
-
-            // Initialize OTA screen with default values
-            if (ui_barOTAUpdateProgress) {
-                lv_bar_set_value(ui_barOTAUpdateProgress, 0, LV_ANIM_OFF);
-            }
-            if (ui_lblOTAUpdateProgress) {
-                lv_label_set_text(ui_lblOTAUpdateProgress, "Starting OTA update...");
-            }
-
-            ESP_LOGI(TAG, "OTA: Screen transition completed");
-        } break;
-
-        case MSG_UPDATE_OTA_SCREEN_PROGRESS: {
-            ESP_LOGI(TAG, "OTA: Updating progress to %d%% - %s",
-                     message->data.ota_screen_progress.progress,
-                     message->data.ota_screen_progress.message);
-
-            // Ensure we're on the OTA screen
-            if (lv_scr_act() != ui_screenOTA) {
-                ESP_LOGW(TAG, "OTA: Progress update but not on OTA screen, switching");
-                _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_NONE, 0, 0, ui_screenOTA_screen_init);
-            }
-
-            // Update progress bar with smooth animation for visual feedback
-            if (ui_barOTAUpdateProgress) {
-                lv_bar_set_value(ui_barOTAUpdateProgress,
-                                 message->data.ota_screen_progress.progress,
-                                 LV_ANIM_ON);
-                // lv_anim_set_time(lv_obj_get_anim(ui_barOTAUpdateProgress), 200);  // Smooth 200ms animation
-            }
-
-            // Update status message
-            if (ui_lblOTAUpdateProgress) {
-                lv_label_set_text(ui_lblOTAUpdateProgress,
-                                  message->data.ota_screen_progress.message);
-            }
-
-            // Add visual feedback for completion
-            if (message->data.ota_screen_progress.progress >= 100) {
-                ESP_LOGI(TAG, "OTA: Update appears complete, preparing for reboot");
-                if (ui_Label2) {
-                    lv_label_set_text(ui_Label2, "COMPLETE");
-                    lv_obj_set_style_text_color(ui_Label2, lv_color_hex(0x00FF00), LV_PART_MAIN);
-                }
-            }
-
-            // Force immediate UI refresh for OTA critical operations
-            lv_refr_now(lv_disp_get_default());
-        } break;
-
-        case MSG_HIDE_OTA_SCREEN: {
-            ESP_LOGI(TAG, "OTA: Hiding OTA screen and restoring previous screen");
-
-            // Get the previous screen that was saved
-            static lv_obj_t *previousScreen = nullptr;
-
-            // If we have a previous screen, return to it
-            if (previousScreen && previousScreen != ui_screenOTA) {
-                ESP_LOGI(TAG, "OTA: Returning to previous screen");
-                lv_scr_load_anim(previousScreen, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
-            } else {
-                // // Fallback: return to main screen
-                // ESP_LOGI(TAG, "OTA: No previous screen found, returning to main screen");
-                // extern lv_obj_t *ui_screenMain;  // Declare external reference
-                // if (ui_screenMain) {
-                //     lv_scr_load_anim(ui_screenMain, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
-                // } else {
-                //     ESP_LOGW(TAG, "OTA: Main screen not available, staying on OTA screen");
-                // }
-            }
-
-            // Reset OTA screen visual state
-            if (ui_Label2) {
-                lv_label_set_text(ui_Label2, "UPDATING");
-                lv_obj_set_style_text_color(ui_Label2, lv_color_white(), LV_PART_MAIN);
-            }
-
-            previousScreen = nullptr;  // Clear saved screen
-        } break;
-
-        // BULLETPROOF: OTA Status Indicator Messages
-        case MSG_SHOW_OTA_STATUS_INDICATOR:
-        case MSG_UPDATE_OTA_STATUS_INDICATOR: {
-            ESP_LOGI(TAG, "OTA Status: %s indicator - %d%% - %s%s",
-                     message->type == MSG_SHOW_OTA_STATUS_INDICATOR ? "Showing" : "Updating",
-                     message->data.ota_status_indicator.progress,
-                     message->data.ota_status_indicator.status,
-                     message->data.ota_status_indicator.is_error ? " (ERROR)" : "");
-
-            // Create/update OTA status indicator overlay
-            static lv_obj_t *otaStatusOverlay = nullptr;
-            static lv_obj_t *otaStatusBar = nullptr;
-            static lv_obj_t *otaStatusLabel = nullptr;
-            static lv_obj_t *otaStatusIcon = nullptr;
-
-            if (!otaStatusOverlay || !lv_obj_is_valid(otaStatusOverlay)) {
-                // Create the OTA status overlay
-                lv_obj_t *currentScreen = lv_scr_act();
-                if (currentScreen) {
-                    otaStatusOverlay = lv_obj_create(currentScreen);
-                    lv_obj_set_size(otaStatusOverlay, 300, 60);
-                    lv_obj_set_align(otaStatusOverlay, LV_ALIGN_TOP_MID);
-                    lv_obj_set_y(otaStatusOverlay, 10);
-
-                    // Style the overlay
-                    lv_obj_set_style_bg_color(otaStatusOverlay,
-                                              message->data.ota_status_indicator.is_error ? lv_color_hex(0x330000) : lv_color_hex(0x003300),
-                                              LV_PART_MAIN);
-                    lv_obj_set_style_bg_opa(otaStatusOverlay, 240, LV_PART_MAIN);
-                    lv_obj_set_style_border_color(otaStatusOverlay,
-                                                  message->data.ota_status_indicator.is_error ? lv_color_hex(0xFF0000) : lv_color_hex(0x00FF00),
-                                                  LV_PART_MAIN);
-                    lv_obj_set_style_border_width(otaStatusOverlay, 2, LV_PART_MAIN);
-                    lv_obj_set_style_radius(otaStatusOverlay, 10, LV_PART_MAIN);
-
-                    // Create progress bar
-                    otaStatusBar = lv_bar_create(otaStatusOverlay);
-                    lv_obj_set_size(otaStatusBar, 250, 15);
-                    lv_obj_set_align(otaStatusBar, LV_ALIGN_TOP_MID);
-                    lv_obj_set_y(otaStatusBar, 5);
-
-                    // Create status label
-                    otaStatusLabel = lv_label_create(otaStatusOverlay);
-                    lv_obj_set_align(otaStatusLabel, LV_ALIGN_BOTTOM_MID);
-                    lv_obj_set_y(otaStatusLabel, -5);
-                    lv_obj_set_style_text_color(otaStatusLabel, lv_color_white(), LV_PART_MAIN);
-                    lv_obj_set_style_text_font(otaStatusLabel, &lv_font_montserrat_12, LV_PART_MAIN);
-
-                    // Create status icon (optional)
-                    otaStatusIcon = lv_label_create(otaStatusOverlay);
-                    lv_obj_set_align(otaStatusIcon, LV_ALIGN_TOP_LEFT);
-                    lv_obj_set_pos(otaStatusIcon, 5, 5);
-                    lv_obj_set_style_text_color(otaStatusIcon,
-                                                message->data.ota_status_indicator.is_error ? lv_color_hex(0xFF0000) : lv_color_hex(0x00FF00),
-                                                LV_PART_MAIN);
-                    lv_label_set_text(otaStatusIcon,
-                                      message->data.ota_status_indicator.is_error ? "✗" : "⟳");
-                }
-            }
-
-            // Update the indicator
-            if (otaStatusBar && lv_obj_is_valid(otaStatusBar)) {
-                lv_bar_set_value(otaStatusBar, message->data.ota_status_indicator.progress,
-                                 message->data.ota_status_indicator.pulsing ? LV_ANIM_ON : LV_ANIM_OFF);
-            }
-
-            if (otaStatusLabel && lv_obj_is_valid(otaStatusLabel)) {
-                lv_label_set_text(otaStatusLabel, message->data.ota_status_indicator.status);
-            }
-
-            // Handle pulsing animation for status
-            if (message->data.ota_status_indicator.pulsing && otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
-                lv_anim_t anim;
-                lv_anim_init(&anim);
-                lv_anim_set_var(&anim, otaStatusOverlay);
-                lv_anim_set_values(&anim, 240, 150);
-                lv_anim_set_time(&anim, 1000);
-                lv_anim_set_repeat_count(&anim, LV_ANIM_REPEAT_INFINITE);
-                lv_anim_set_playback_time(&anim, 500);
-                lv_anim_set_exec_cb(&anim, (lv_anim_exec_xcb_t)lv_obj_set_style_bg_opa);
-                lv_anim_start(&anim);
-            }
-        } break;
-
-        case MSG_HIDE_OTA_STATUS_INDICATOR: {
-            ESP_LOGI(TAG, "OTA Status: Hiding status indicator");
-
-            // Clean up the OTA status overlay
-            static lv_obj_t *otaStatusOverlay = nullptr;
-            if (otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
-                lv_obj_del(otaStatusOverlay);
-                otaStatusOverlay = nullptr;
-            }
-        } break;
-
-        default:
-            ESP_LOGD(TAG, "Unhandled message type: %d", message->type);
-            break;
+        }
     }
 }
 
@@ -772,22 +821,27 @@ bool updateBalanceDevices(const char *device1_name, const char *device2_name) {
     return sendMessage(&message);
 }
 
+// PERFORMANCE: Tab volume update function pointers for O(1) lookup
+using TabVolumeUpdater = bool (*)(int);
+
+static std::unordered_map<uint32_t, TabVolumeUpdater> tabVolumeUpdaters = {
+    {0, updateMasterVolume},  // Master tab
+    {1, updateSingleVolume},  // Single tab
+    {2, updateBalanceVolume}  // Balance tab
+};
+
 // Convenience function to update volume for the currently active tab
 bool updateCurrentTabVolume(int volume) {
     // Get the currently active tab from the UI
     if (ui_tabsModeSwitch) {
         uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
 
-        switch (activeTab) {
-            case 0:  // Master tab
-                return updateMasterVolume(volume);
-            case 1:  // Single tab
-                return updateSingleVolume(volume);
-            case 2:  // Balance tab
-                return updateBalanceVolume(volume);
-            default:
-                ESP_LOGW(TAG, "Unknown active tab: %d, defaulting to Master volume", activeTab);
-                return updateMasterVolume(volume);  // Default to Master tab
+        auto tabUpdater = tabVolumeUpdaters.find(activeTab);
+        if (tabUpdater != tabVolumeUpdaters.end()) {
+            return tabUpdater->second(volume);
+        } else {
+            ESP_LOGW(TAG, "Unknown active tab: %d, defaulting to Master volume", activeTab);
+            return updateMasterVolume(volume);  // Default to Master tab
         }
     } else {
         ESP_LOGW(TAG, "Tab view not available, defaulting to Master volume");
