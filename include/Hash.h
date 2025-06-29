@@ -50,14 +50,14 @@ uint32_t combineHashes(const Args&... args) {
     return result;
 }
 
-// Alternative macro that handles the Hashable inheritance too
-#define HASHABLE_STRUCT(StructName, ...)       \
-    struct StructName : public Hashable {      \
-        __VA_ARGS__                            \
-        uint32_t hash() const override {       \
-            return combineHashes(__VA_ARGS__); \
-        }                                      \
-    }
+// // Alternative macro that handles the Hashable inheritance too
+// #define HASHABLE_STRUCT(StructName, ...)       \
+//     struct StructName : public Hashable {      \
+//         __VA_ARGS__                            \
+//         uint32_t hash() const override {       \
+//             return combineHashes(__VA_ARGS__); \
+//         }                                      \
+//     }
 
 #define IS(state, flag) (((state) & (flag)) != 0)
 
@@ -91,6 +91,8 @@ class Hashable {
 // ============================================================================
 // ADVANCED MACRO UTILITIES
 // ============================================================================
+#ifndef ADVANCED_MACRO_UTILITIES
+#define ADVANCED_MACRO_UTILITIES
 
 // Basic hash implementation
 #define IMPLEMENT_HASH(...)                 \
@@ -108,14 +110,14 @@ class Hashable {
         }                                   \
     }
 
-// Hash comparison utility - returns true if hash changed and updates lastHash
+// Hash comparison utilities
 #define HASH_CHANGED(obj, lastHash)                 \
-    [&]() {                                         \
+    ([&]() {                                        \
         uint32_t currentHash = (obj).hash();        \
         bool changed = (currentHash != (lastHash)); \
         if (changed) (lastHash) = currentHash;      \
         return changed;                             \
-    }()
+    }())
 
 // Static hash tracker for change detection
 #define DEFINE_HASH_TRACKER(name, obj)   \
@@ -149,7 +151,6 @@ class Hashable {
 // ============================================================================
 // ADVANCED HASH UTILITIES
 // ============================================================================
-
 // Hash equality check
 template <typename T>
 bool hashEquals(const T& a, const T& b) {
@@ -173,15 +174,6 @@ uint32_t hashContainer(const Container& container) {
         __VA_ARGS__                                      \
         IMPLEMENT_HASH(EXTRACT_FIELD_NAMES(__VA_ARGS__)) \
     }
-
-// Hash comparison utilities
-#define HASH_CHANGED(obj, lastHash)                 \
-    ([&]() {                                        \
-        uint32_t currentHash = (obj).hash();        \
-        bool changed = (currentHash != (lastHash)); \
-        if (changed) (lastHash) = currentHash;      \
-        return changed;                             \
-    }())
 
 // Bulk field setter with hash invalidation
 #define SET_FIELDS(obj, ...)                           \
@@ -227,3 +219,5 @@ uint32_t hashContainer(const Container& container) {
 
 #define IS_EMPTY_0 1
 #define IS_EMPTY_1 0
+
+#endif

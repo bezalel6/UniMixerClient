@@ -51,7 +51,10 @@ typedef enum {
     // BULLETPROOF: OTA status indicator messages
     MSG_SHOW_OTA_STATUS_INDICATOR,
     MSG_UPDATE_OTA_STATUS_INDICATOR,
-    MSG_HIDE_OTA_STATUS_INDICATOR
+    MSG_HIDE_OTA_STATUS_INDICATOR,
+
+    // maximum message types, must be the last element
+    NUM_OF_MSGS
 } LVGLMessageType_t;
 
 // Message data structures

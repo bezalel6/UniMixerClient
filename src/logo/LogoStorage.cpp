@@ -164,7 +164,7 @@ LogoStorage::FileType LogoStorage::getFileType(const String& fileName) {
     } else if (fileName.endsWith(".bin")) {
         return FileType::BINARY;
     }
-    return FileType::BINARY;  // Default fallback
+    return FileType::PNG;  // Default fallback
 }
 
 String LogoStorage::getFileExtension(FileType type) {

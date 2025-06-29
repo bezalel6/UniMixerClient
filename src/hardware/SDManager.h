@@ -37,8 +37,6 @@ typedef enum {
     SD_STATE_LAST_SD_MOUNTED = 1 << 3
 } SDStateFlags;
 
-#define IS_FLAG()
-
 // Macro to safely reset cardInfo without corrupting vtable
 #define RESET_CARD_INFO(cardInfo)             \
     do {                                      \
@@ -69,9 +67,9 @@ typedef struct : public Hashable {
     inline uint64_t getTotalMB() { return this->totalBytes / (1024 * 1024); }
     inline uint64_t getUsedMB() { return this->usedBytes / (1024 * 1024); }
     inline bool isInitialized() const { return IS(this->stateFlags, SD_STATE_INITIALIZED); }
-    inline bool isMounted() const { return (this->stateFlags & SD_STATE_MOUNTED) != 0; }
-    inline bool isLVGLReady() const { return (this->stateFlags & SD_STATE_LVGL_FILESYSTEM_READY) != 0; }
-    inline bool wasLastSDMounted() const { return (this->stateFlags & SD_STATE_LAST_SD_MOUNTED) != 0; }
+    inline bool isMounted() const { return IS(this->stateFlags, SD_STATE_MOUNTED); }
+    inline bool isLVGLReady() const { return IS(this->stateFlags, SD_STATE_LVGL_FILESYSTEM_READY); }
+    inline bool wasLastSDMounted() const { return IS(this->stateFlags, SD_STATE_LAST_SD_MOUNTED); }
 
     // Helper methods for flag manipulation
     inline void setStateFlag(SDStateFlags flag) {

@@ -35,7 +35,7 @@ static String convertLvglPath(const char* lvgl_path) {
 
 // LVGL filesystem driver functions
 static void* sd_open_cb(lv_fs_drv_t* drv, const char* path, lv_fs_mode_t mode) {
-    ESP_LOGD(TAG, "Opening file: %s (mode: %d)", path, mode);
+    ESP_LOGI(TAG, "Opening file: %s (mode: %d)", path, mode);
 
     if (!Hardware::SD::isMounted()) {
         ESP_LOGW(TAG, "SD card not mounted");
@@ -43,7 +43,7 @@ static void* sd_open_cb(lv_fs_drv_t* drv, const char* path, lv_fs_mode_t mode) {
     }
 
     String sdPath = convertLvglPath(path);
-    ESP_LOGD(TAG, "Converted path: %s", sdPath.c_str());
+    ESP_LOGI(TAG, "Converted path: %s", sdPath.c_str());
 
     // Determine file mode
     const char* fileMode = FILE_READ;
@@ -65,7 +65,7 @@ static void* sd_open_cb(lv_fs_drv_t* drv, const char* path, lv_fs_mode_t mode) {
         return nullptr;
     }
 
-    ESP_LOGD(TAG, "File opened successfully: %s", sdPath.c_str());
+    ESP_LOGI(TAG, "File opened successfully: %s", sdPath.c_str());
     return file;
 }
 
@@ -78,7 +78,7 @@ static lv_fs_res_t sd_close_cb(lv_fs_drv_t* drv, void* file_p) {
     Hardware::SD::closeFile(*file);
     delete file;
 
-    ESP_LOGD(TAG, "File closed");
+    ESP_LOGI(TAG, "File closed");
     return LV_FS_RES_OK;
 }
 
@@ -94,7 +94,7 @@ static lv_fs_res_t sd_read_cb(lv_fs_drv_t* drv, void* file_p, void* buf, uint32_
 
     *br = file->read(static_cast<uint8_t*>(buf), btr);
 
-    ESP_LOGD(TAG, "Read %lu bytes (requested: %lu)", *br, btr);
+    ESP_LOGI(TAG, "Read %lu bytes (requested: %lu)", *br, btr);
     return LV_FS_RES_OK;
 }
 
@@ -110,7 +110,7 @@ static lv_fs_res_t sd_write_cb(lv_fs_drv_t* drv, void* file_p, const void* buf, 
 
     *bw = file->write(static_cast<const uint8_t*>(buf), btw);
 
-    ESP_LOGD(TAG, "Wrote %lu bytes (requested: %lu)", *bw, btw);
+    ESP_LOGI(TAG, "Wrote %lu bytes (requested: %lu)", *bw, btw);
     return (*bw == btw) ? LV_FS_RES_OK : LV_FS_RES_HW_ERR;
 }
 
@@ -137,7 +137,7 @@ static lv_fs_res_t sd_seek_cb(lv_fs_drv_t* drv, void* file_p, uint32_t pos, lv_f
             break;
     }
 
-    ESP_LOGD(TAG, "Seek to position %lu (whence: %d) - %s", pos, whence, success ? "success" : "failed");
+    ESP_LOGI(TAG, "Seek to position %lu (whence: %d) - %s", pos, whence, success ? "success" : "failed");
     return success ? LV_FS_RES_OK : LV_FS_RES_HW_ERR;
 }
 
@@ -153,13 +153,13 @@ static lv_fs_res_t sd_tell_cb(lv_fs_drv_t* drv, void* file_p, uint32_t* pos_p) {
 
     *pos_p = file->position();
 
-    ESP_LOGD(TAG, "Tell position: %lu", *pos_p);
+    ESP_LOGI(TAG, "Tell position: %lu", *pos_p);
     return LV_FS_RES_OK;
 }
 
 // Directory operations
 static void* sd_dir_open_cb(lv_fs_drv_t* drv, const char* path) {
-    ESP_LOGD(TAG, "Opening directory: %s", path);
+    ESP_LOGI(TAG, "Opening directory: %s", path);
 
     if (!Hardware::SD::isMounted()) {
         ESP_LOGW(TAG, "SD card not mounted");
@@ -167,7 +167,7 @@ static void* sd_dir_open_cb(lv_fs_drv_t* drv, const char* path) {
     }
 
     String sdPath = convertLvglPath(path);
-    ESP_LOGD(TAG, "Converted directory path: %s", sdPath.c_str());
+    ESP_LOGI(TAG, "Converted directory path: %s", sdPath.c_str());
 
     if (!Hardware::SD::directoryExists(sdPath.c_str())) {
         ESP_LOGW(TAG, "Directory does not exist: %s", sdPath.c_str());
@@ -186,7 +186,7 @@ static void* sd_dir_open_cb(lv_fs_drv_t* drv, const char* path) {
         return nullptr;
     }
 
-    ESP_LOGD(TAG, "Directory opened successfully: %s", sdPath.c_str());
+    ESP_LOGI(TAG, "Directory opened successfully: %s", sdPath.c_str());
     return dir;
 }
 
@@ -204,7 +204,7 @@ static lv_fs_res_t sd_dir_read_cb(lv_fs_drv_t* drv, void* rddir_p, char* fn, uin
     if (!entry) {
         // End of directory
         fn[0] = '\0';
-        ESP_LOGD(TAG, "End of directory reached");
+        ESP_LOGI(TAG, "End of directory reached");
         return LV_FS_RES_OK;
     }
 
@@ -233,7 +233,7 @@ static lv_fs_res_t sd_dir_read_cb(lv_fs_drv_t* drv, void* rddir_p, char* fn, uin
 
     entry.close();
 
-    ESP_LOGD(TAG, "Directory entry: %s", fn);
+    ESP_LOGI(TAG, "Directory entry: %s", fn);
     return LV_FS_RES_OK;
 }
 
@@ -246,7 +246,7 @@ static lv_fs_res_t sd_dir_close_cb(lv_fs_drv_t* drv, void* rddir_p) {
     dir->close();
     delete dir;
 
-    ESP_LOGD(TAG, "Directory closed");
+    ESP_LOGI(TAG, "Directory closed");
     return LV_FS_RES_OK;
 }
 

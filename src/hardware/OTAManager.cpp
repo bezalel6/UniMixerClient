@@ -246,23 +246,23 @@ static void onOTAError(ota_error_t error) {
 static void otaTimeoutCheck(void) {
     unsigned long currentTime = millis();
 
-    // Global timeout check
-    if (currentTime - otaStartTime > OTA_TIMEOUT_MS) {
-        if (!otaTimeoutTriggered) {
-            ESP_LOGE(TAG, "BULLETPROOF OTA: Global timeout reached (%lu ms)", OTA_TIMEOUT_MS);
-            otaTimeoutTriggered = true;
-            otaEmergencyRecovery("Global timeout");
-        }
-        return;
-    }
+    // // Global timeout check
+    // if (currentTime - otaStartTime > OTA_TIMEOUT_MS) {
+    //     if (!otaTimeoutTriggered) {
+    //         ESP_LOGE(TAG, "BULLETPROOF OTA: Global timeout reached (%lu ms)", OTA_TIMEOUT_MS);
+    //         otaTimeoutTriggered = true;
+    //         otaEmergencyRecovery("Global timeout");
+    //     }
+    //     return;
+    // }
 
-    // Progress timeout check
-    if (currentTime - lastProgressTime > OTA_PROGRESS_TIMEOUT_MS) {
-        ESP_LOGE(TAG, "BULLETPROOF OTA: Progress timeout reached (%lu ms without progress)",
-                 OTA_PROGRESS_TIMEOUT_MS);
-        otaEmergencyRecovery("Progress timeout");
-        return;
-    }
+    // // Progress timeout check
+    // if (currentTime - lastProgressTime > OTA_PROGRESS_TIMEOUT_MS) {
+    //     ESP_LOGE(TAG, "BULLETPROOF OTA: Progress timeout reached (%lu ms without progress)",
+    //              OTA_PROGRESS_TIMEOUT_MS);
+    //     otaEmergencyRecovery("Progress timeout");
+    //     return;
+    // }
 }
 
 static void otaProgressMonitor(void) {
