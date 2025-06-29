@@ -409,7 +409,7 @@ void processComplexMessage(const LVGLMessage_t *message) {
                 lv_bar_set_value(ui_barOTAUpdateProgress,
                                  message->data.ota_screen_progress.progress,
                                  LV_ANIM_ON);
-                lv_anim_set_time(lv_obj_get_anim(ui_barOTAUpdateProgress), 200);  // Smooth 200ms animation
+                // lv_anim_set_time(lv_obj_get_anim(ui_barOTAUpdateProgress), 200);  // Smooth 200ms animation
             }
 
             // Update status message
@@ -442,14 +442,14 @@ void processComplexMessage(const LVGLMessage_t *message) {
                 ESP_LOGI(TAG, "OTA: Returning to previous screen");
                 lv_scr_load_anim(previousScreen, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
             } else {
-                // Fallback: return to main screen
-                ESP_LOGI(TAG, "OTA: No previous screen found, returning to main screen");
-                extern lv_obj_t *ui_screenMain;  // Declare external reference
-                if (ui_screenMain) {
-                    lv_scr_load_anim(ui_screenMain, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
-                } else {
-                    ESP_LOGW(TAG, "OTA: Main screen not available, staying on OTA screen");
-                }
+                // // Fallback: return to main screen
+                // ESP_LOGI(TAG, "OTA: No previous screen found, returning to main screen");
+                // extern lv_obj_t *ui_screenMain;  // Declare external reference
+                // if (ui_screenMain) {
+                //     lv_scr_load_anim(ui_screenMain, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
+                // } else {
+                //     ESP_LOGW(TAG, "OTA: Main screen not available, staying on OTA screen");
+                // }
             }
 
             // Reset OTA screen visual state
