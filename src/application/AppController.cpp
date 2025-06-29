@@ -30,9 +30,13 @@ static const char *TAG = "AppController";
 
 namespace Application {
 
+// Refactored init function using the macros
 bool init(void) {
-    ESP_LOGI(TAG,
-             "Initializing Application Controller (Multi-threaded ESP32-S3)");
+    Serial.println("==========================================");
+    Serial.println("AppController::init() called!");
+    Serial.println("==========================================");
+    ESP_LOGI(TAG, "Initializing Application Controller (Multi-threaded ESP32-S3)");
+    ESP_LOGE(TAG, "[DEBUG] AppController init started - using ERROR level for visibility");
 
     // Initialize watchdog timer for startup debugging (15 seconds)
     ESP_LOGI(TAG, "Initializing startup watchdog timer...");
@@ -40,235 +44,177 @@ bool init(void) {
     esp_task_wdt_add(NULL);
     esp_task_wdt_reset();
 
-    // Initialize hardware/device manager
-    ESP_LOGI(TAG, "WDT Reset: Initializing Device Manager...");
-    if (!Hardware::Device::init()) {
-        ESP_LOGE(TAG, "Failed to initialize device manager");
-        return false;
-    }
-    esp_task_wdt_reset();
+    // Critical initialization steps
+    INIT_STEP_CRITICAL("Initializing Device Manager", Hardware::Device::init());
 
-    // Initialize SD card manager
-    ESP_LOGI(TAG, "WDT Reset: Initializing SD Manager...");
-    if (!Hardware::SD::init()) {
-        ESP_LOGW(TAG, "SD Manager initialization failed - SD card functionality will be unavailable");
-        // Note: SD card failure is not fatal for the application
-    } else {
-        ESP_LOGI(TAG, "SD Manager initialized successfully");
-    }
-    esp_task_wdt_reset();
+    // Optional initialization steps
+    INIT_STEP_OPTIONAL("Initializing SD Manager",
+                       "SD Manager initialized successfully",
+                       "SD Manager initialization failed - SD card functionality will be unavailable",
+                       Hardware::SD::init());
 
-    // Initialize Logo Manager (depends on SD Manager)
-    ESP_LOGI(TAG, "WDT Reset: Initializing Logo Manager...");
-    if (!Logo::LogoManager::getInstance().init()) {
-        ESP_LOGW(TAG, "Logo Manager initialization failed - logo functionality will be limited");
-        // Note: Logo Manager failure is not fatal for the application
-    } else {
-        ESP_LOGI(TAG, "Logo Manager initialized successfully");
-    }
-    esp_task_wdt_reset();
+    INIT_STEP_OPTIONAL("Initializing Logo Manager",
+                       "Logo Manager initialized successfully",
+                       "Logo Manager initialization failed - logo functionality will be limited",
+                       Logo::LogoManager::getInstance().init());
 
-    // Initialize display manager
-    ESP_LOGI(TAG, "WDT Reset: Initializing Display Manager...");
-    if (!Display::init()) {
-        ESP_LOGE(TAG, "Failed to initialize display manager");
-        return false;
-    }
-    esp_task_wdt_reset();
+    INIT_STEP_CRITICAL("Initializing Display Manager", Display::init());
 
-    // Initialize LVGL filesystem for SD card now that LVGL is ready
-    if (Hardware::SD::isMounted()) {
-        ESP_LOGI(TAG, "WDT Reset: Initializing LVGL SD filesystem...");
-        if (!Hardware::SD::initLVGLFilesystem()) {
-            ESP_LOGW(TAG, "Failed to initialize LVGL SD filesystem - SD file access from UI will be unavailable");
-        } else {
-            ESP_LOGI(TAG, "LVGL SD filesystem initialized successfully");
+    // Conditional SD filesystem initialization
+    INIT_STEP("Checking SD filesystem", {
+        if (Hardware::SD::isMounted()) {
+            ESP_LOGI(TAG, "Initializing LVGL SD filesystem...");
+            if (!Hardware::SD::initLVGLFilesystem()) {
+                ESP_LOGW(TAG, "Failed to initialize LVGL SD filesystem - SD file access from UI will be unavailable");
+            } else {
+                ESP_LOGI(TAG, "LVGL SD filesystem initialized successfully");
+            }
         }
-        esp_task_wdt_reset();
-    }
+    });
 
-    // Initialize messaging system
-    ESP_LOGI(TAG, "WDT Reset: Initializing Message System...");
-    if (!Messaging::MessageAPI::init()) {
-        ESP_LOGE(TAG, "Failed to initialize messaging system");
-        return false;
-    }
-    esp_task_wdt_reset();
+    INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::init());
 
-    // NETWORK-FREE ARCHITECTURE: Determine network requirements
+    // Network architecture logic
+    INIT_STEP("Configuring Network Architecture", {
 #if OTA_ON_DEMAND_ONLY
-    // Network-free mode: No always-on network, OTA only on demand
-    ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
-    ESP_LOGI(TAG, "[NETWORK-FREE] Network will only be activated for OTA when requested by user");
-    bool networkNeeded = false;
+        ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
+        ESP_LOGI(TAG, "[NETWORK-FREE] Network will only be activated for OTA when requested by user");
+        bool networkNeeded = false;
 
-    // Check if MQTT transport is required (overrides network-free mode)
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-    ESP_LOGW(TAG, "[NETWORK-FREE] MQTT transport requested but network-free mode enabled");
-    ESP_LOGW(TAG, "[NETWORK-FREE] Disabling MQTT transport in favor of Serial-only");
-    // Force serial-only mode in network-free architecture
+        ESP_LOGW(TAG, "[NETWORK-FREE] MQTT transport requested but network-free mode enabled");
+        ESP_LOGW(TAG, "[NETWORK-FREE] Disabling MQTT transport in favor of Serial-only");
 #endif
 
 #else
-    // Legacy mode: Always-on network for MQTT and OTA
-    bool networkNeeded = false;
+        bool networkNeeded = false;
 
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-    networkNeeded = true;  // MQTT transport modes need network
+        networkNeeded = true;
 #endif
 
 #if OTA_ENABLE_UPDATES
-    networkNeeded = true;  // OTA always needs network
+        networkNeeded = true;
 #endif
 
-    // Initialize network manager if needed
-    if (networkNeeded) {
-        ESP_LOGI(TAG,
-                 "Network required for MQTT/OTA - initializing network manager");
-        if (!Hardware::Network::init()) {
-            ESP_LOGE(TAG, "Failed to initialize network manager");
-            return false;
+        if (networkNeeded) {
+            ESP_LOGI(TAG, "Network required for MQTT/OTA - initializing network manager");
+            if (!Hardware::Network::init()) {
+                ESP_LOGE(TAG, "Failed to initialize network manager");
+                return false;
+            }
+            Hardware::Network::enableAutoReconnect(true);
         }
-
-        // Enable auto-reconnect (WiFi connection will be started automatically by
-        // NetworkManager)
-        Hardware::Network::enableAutoReconnect(true);
-    }
 #endif
-    esp_task_wdt_reset();
+    });
 
-    // Configure transport based on MessagingConfig.h settings
+    // Transport configuration
+    INIT_STEP("Configuring Message Transport", {
 #if MESSAGING_DEFAULT_TRANSPORT == 0
-    // MQTT only
 #if MESSAGING_ENABLE_MQTT_TRANSPORT
-    ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
-    // MQTT transport registration will be handled by MqttManager
-    // when it connects - just note that we expect it
+        ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
 #else
-    ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
-    return false;
+        ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
+        return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 1
-    // Serial only - no additional network configuration needed
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
-    if (!Messaging::Serial::init()) {
-        ESP_LOGE(TAG, "Failed to initialize Serial bridge");
-        return false;
-    }
+        ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
+        if (!Messaging::Serial::init()) {
+            ESP_LOGE(TAG, "Failed to initialize Serial bridge");
+            return false;
+        }
 #else
-    ESP_LOGE(TAG, "Serial transport requested but disabled in config");
-    return false;
+        ESP_LOGE(TAG, "Serial transport requested but disabled in config");
+        return false;
 #endif
 #elif MESSAGING_DEFAULT_TRANSPORT == 2
-    // Both transports
 #if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
-    ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
-    if (!Messaging::Serial::init()) {
-        ESP_LOGE(TAG, "Failed to initialize Serial bridge");
+        ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
+        if (!Messaging::Serial::init()) {
+            ESP_LOGE(TAG, "Failed to initialize Serial bridge");
+            return false;
+        }
+#else
+        ESP_LOGE(TAG, "Dual transport requested but one or both transports disabled in config");
         return false;
-    }
-    // MQTT transport will self-register when it connects
-#else
-    ESP_LOGE(
-        TAG,
-        "Dual transport requested but one or both transports disabled in config");
-    return false;
 #endif
 #else
-    ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d",
-             MESSAGING_DEFAULT_TRANSPORT);
-    return false;
+        ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d", MESSAGING_DEFAULT_TRANSPORT);
+        return false;
 #endif
-    esp_task_wdt_reset();
+    });
 
-    // Note: Message handlers will be registered by individual components
-    // during their initialization (AudioManager, etc.)
     ESP_LOGI(TAG, "WDT Reset: Message handlers will be registered by components...");
     esp_task_wdt_reset();
 
-    // Initialize MessageBusLogoSupplier (requires Messaging to be initialized)
-    ESP_LOGI(TAG, "WDT Reset: Initializing MessageBusLogoSupplier...");
-    Application::LogoAssets::MessageBusLogoSupplier &messageBusSupplier =
-        Application::LogoAssets::MessageBusLogoSupplier::getInstance();
+    // MessageBusLogoSupplier initialization
+    INIT_STEP("Initializing MessageBusLogoSupplier", {
+        Application::LogoAssets::MessageBusLogoSupplier &messageBusSupplier =
+            Application::LogoAssets::MessageBusLogoSupplier::getInstance();
+        messageBusSupplier.setRequestTimeout(30000);
+        messageBusSupplier.setMaxConcurrentRequests(1);
 
-    // Configure supplier settings
-    messageBusSupplier.setRequestTimeout(30000);     // 30 second timeout
-    messageBusSupplier.setMaxConcurrentRequests(1);  // Serial port can only handle 1 request at a time
+        if (messageBusSupplier.init()) {
+            ESP_LOGI(TAG, "MessageBusLogoSupplier initialized successfully");
+        } else {
+            ESP_LOGW(TAG, "MessageBusLogoSupplier initialization failed - automatic logo requests will be disabled");
+        }
+    });
 
-    if (messageBusSupplier.init()) {
-        ESP_LOGI(TAG, "MessageBusLogoSupplier initialized successfully");
-    } else {
-        ESP_LOGW(TAG, "MessageBusLogoSupplier initialization failed - automatic logo requests will be disabled");
-    }
-    esp_task_wdt_reset();
-
-    // Initialize audio system (requires MessageBus and handlers to be initialized)
-    ESP_LOGI(TAG, "WDT Reset: Initializing Audio System...");
-    if (!Application::Audio::AudioManager::getInstance().init()) {
-        ESP_LOGE(TAG, "Failed to initialize AudioManager");
-        return false;
-    }
-    if (!Application::Audio::AudioUI::getInstance().init()) {
-        ESP_LOGE(TAG, "Failed to initialize AudioUI");
-        return false;
-    }
-    esp_task_wdt_reset();
+    // Audio system initialization
+    INIT_STEP_CRITICAL("Initializing Audio System",
+                       Application::Audio::AudioManager::getInstance().init() &&
+                           Application::Audio::AudioUI::getInstance().init());
 
 #if OTA_ENABLE_UPDATES
 #if OTA_ON_DEMAND_ONLY
-    // NETWORK-FREE ARCHITECTURE: Initialize On-Demand OTA Manager
-    ESP_LOGI(TAG, "WDT Reset: Initializing On-Demand OTA Manager (Network-Free)...");
-    if (!Hardware::OnDemandOTA::OnDemandOTAManager::init()) {
-        ESP_LOGE(TAG, "Failed to initialize On-Demand OTA Manager");
-        return false;
-    }
+    INIT_STEP_CRITICAL("Initializing On-Demand OTA Manager (Network-Free)",
+                       Hardware::OnDemandOTA::OnDemandOTAManager::init());
     ESP_LOGI(TAG, "On-Demand OTA Manager initialized successfully - network-free mode active");
 #else
-    // Legacy: Initialize standard always-on OTA
-    ESP_LOGI(TAG, "WDT Reset: Initializing OTA Manager...");
-    if (!Hardware::OTA::init()) {
-        ESP_LOGE(TAG, "Failed to initialize OTA manager");
-        return false;
-    }
+    INIT_STEP_CRITICAL("Initializing OTA Manager", Hardware::OTA::init());
     ESP_LOGI(TAG, "OTA manager initialized successfully");
 #endif
-    esp_task_wdt_reset();
 #endif
 
-    // Setup UI components
-    ESP_LOGI(TAG, "WDT Reset: Setting up UI components...");
-    setupUiComponents();
-    esp_task_wdt_reset();
+    INIT_STEP("Setting up UI components", { setupUiComponents(); });
 
-    // NETWORK-FREE ARCHITECTURE: Initialize task manager with appropriate mode
-    ESP_LOGI(TAG, "WDT Reset: Initializing Task Manager...");
+    // Task Manager initialization
+    INIT_STEP("Initializing Task Manager", {
+        Serial.println("AppController: About to initialize TaskManager...");
 #if OTA_ON_DEMAND_ONLY
-    ESP_LOGI(TAG, "[NETWORK-FREE] Initializing network-free task manager");
-    if (!TaskManager::initNetworkFreeTasks()) {
-        ESP_LOGE(TAG, "Failed to initialize network-free task manager");
-        return false;
-    }
-    ESP_LOGI(TAG, "[NETWORK-FREE] Task manager initialized - maximum UI/audio performance enabled");
+        Serial.println("AppController: OTA_ON_DEMAND_ONLY is defined - calling initNetworkFreeTasks()");
+        ESP_LOGI(TAG, "[NETWORK-FREE] Initializing network-free task manager");
+        ESP_LOGE(TAG, "[DEBUG] About to call TaskManager::initNetworkFreeTasks()");
+        if (!TaskManager::initNetworkFreeTasks()) {
+            ESP_LOGE(TAG, "Failed to initialize network-free task manager");
+            Serial.println("ERROR: TaskManager::initNetworkFreeTasks() returned false!");
+            return false;
+        }
+        ESP_LOGI(TAG, "[NETWORK-FREE] Task manager initialized - maximum UI/audio performance enabled");
+        Serial.println("AppController: TaskManager::initNetworkFreeTasks() succeeded!");
 #else
-    if (!TaskManager::init()) {
-        ESP_LOGE(TAG, "Failed to initialize task manager");
-        return false;
-    }
+        Serial.println("AppController: OTA_ON_DEMAND_ONLY not defined - calling init()");
+        ESP_LOGE(TAG, "[DEBUG] About to call TaskManager::init()");
+        if (!TaskManager::init()) {
+            ESP_LOGE(TAG, "Failed to initialize task manager");
+            Serial.println("ERROR: TaskManager::init() returned false!");
+            return false;
+        }
+        Serial.println("AppController: TaskManager::init() succeeded!");
 #endif
-    esp_task_wdt_reset();
+    });
 
-    // Send initial status request to get current audio information
-    ESP_LOGI(TAG, "WDT Reset: Sending initial status request...");
-    Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
-    audioManager.publishStatusRequest();
-    esp_task_wdt_reset();
+    // Send initial status request
+    INIT_STEP("Sending initial status request", {
+        Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
+        audioManager.publishStatusRequest();
+    });
 
-    ESP_LOGI(TAG,
-             "Application Controller initialized successfully "
-             "(Multi-threaded ESP32-S3)");
+    ESP_LOGI(TAG, "Application Controller initialized successfully (Multi-threaded ESP32-S3)");
 
-    // De-initialize watchdog timer after successful startup
+    // Cleanup watchdog timer
     ESP_LOGI(TAG, "De-initializing startup watchdog timer.");
     esp_task_wdt_delete(NULL);
     esp_task_wdt_deinit();
@@ -308,8 +254,8 @@ void deinit(void) {
     Messaging::MessageAPI::shutdown();
 
     // Deinitialize network manager if it was initialized
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || \
-    OTA_ENABLE_UPDATES
+#if !OTA_ON_DEMAND_ONLY && (MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || \
+                            OTA_ENABLE_UPDATES)
     Hardware::Network::deinit();
 #endif
 

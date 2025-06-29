@@ -1,7 +1,7 @@
 #include "OTAManager.h"
 #include <Update.h>
 
-#if OTA_ENABLE_UPDATES
+#if OTA_ENABLE_UPDATES && !OTA_ON_DEMAND_ONLY
 
 #include "../application/LVGLMessageHandler.h"
 #include "../application/TaskManager.h"
@@ -344,7 +344,7 @@ bool init(void) {
     otaResetState();
 
     ArduinoOTA.setHostname(hostname.c_str());
-    ArduinoOTA.setPort(OTA_PORT);
+    ArduinoOTA.setPort(8266);
 
 #if OTA_REQUIRE_PASSWORD
     ArduinoOTA.setPassword(password.c_str());

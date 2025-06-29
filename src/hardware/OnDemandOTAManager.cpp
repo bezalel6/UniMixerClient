@@ -20,9 +20,9 @@ uint32_t OnDemandOTAManager::otaStartTime = 0;
 uint32_t OnDemandOTAManager::lastProgressUpdate = 0;
 bool OnDemandOTAManager::userCancelRequested = false;
 
-OnDemandOTAManager::OTAStateCallback OnDemandOTAManager::stateCallback = nullptr;
-OnDemandOTAManager::OTAProgressCallback OnDemandOTAManager::progressCallback = nullptr;
-OnDemandOTAManager::OTACompleteCallback OnDemandOTAManager::completeCallback = nullptr;
+OTAStateCallback OnDemandOTAManager::stateCallback = nullptr;
+OTAProgressCallback OnDemandOTAManager::progressCallback = nullptr;
+OTACompleteCallback OnDemandOTAManager::completeCallback = nullptr;
 
 // NETWORK-FREE ARCHITECTURE: Freed resources tracking
 static size_t freedNetworkMemory = 0;
@@ -340,37 +340,50 @@ bool OnDemandOTAManager::downloadFirmware(void) {
 
     ESP_LOGI(TAG, "[DOWNLOAD] Starting firmware download from: %s", OTA_SERVER_URL);
 
+    // Create WiFi client for HTTP update
+    WiFiClient client;
+
     // Set up progress callback for HTTP update
     httpUpdate.onProgress([](int cur, int total) {
-        uint8_t progress = 20 + ((cur * 60) / total);  // 20-80% for download
-        char progressMsg[64];
-        snprintf(progressMsg, sizeof(progressMsg), "Downloading: %d/%d bytes", cur, total);
-        OnDemandOTAManager::updateProgress(progress, progressMsg);
+        if (total > 0) {
+            uint8_t progress = 20 + ((cur * 60) / total);  // 20-80% for download
+            char progressMsg[64];
+            snprintf(progressMsg, sizeof(progressMsg), "Downloading: %d/%d bytes", cur, total);
+            OnDemandOTAManager::updateProgress(progress, progressMsg);
 
-        // Check for user cancellation during download
-        if (OnDemandOTAManager::userCancelRequested) {
-            ESP_LOGW(TAG, "[DOWNLOAD] User cancellation detected");
-            // Note: HTTP update doesn't support easy cancellation, but we can handle it after
+            // Check for user cancellation during download
+            if (OnDemandOTAManager::userCancelRequested) {
+                ESP_LOGW(TAG, "[DOWNLOAD] User cancellation detected");
+                // Note: HTTP update doesn't support easy cancellation, but we can handle it after
+            }
         }
     });
 
-    // Perform the update
-    t_httpUpdate_return result = httpUpdate.update(OTA_SERVER_URL);
+    // Configure HTTP update settings
+    httpUpdate.setLedPin(-1);          // Disable LED indication
+    httpUpdate.rebootOnUpdate(false);  // We'll handle reboot ourselves
+
+    // Perform the update with WiFiClient
+    HTTPUpdateResult result = httpUpdate.update(client, String(OTA_SERVER_URL), "");
 
     switch (result) {
         case HTTP_UPDATE_FAILED:
+            ESP_LOGE(TAG, "[DOWNLOAD] HTTP update failed: %s", httpUpdate.getLastErrorString().c_str());
             completeOTA(OTA_RESULT_DOWNLOAD_FAILED, "Download failed");
             return false;
 
         case HTTP_UPDATE_NO_UPDATES:
+            ESP_LOGI(TAG, "[DOWNLOAD] No updates available");
             completeOTA(OTA_RESULT_SUCCESS, "Already up to date");
             return true;
 
         case HTTP_UPDATE_OK:
+            ESP_LOGI(TAG, "[DOWNLOAD] HTTP update completed successfully");
             updateProgress(80, "Download complete, installing...");
             return true;
 
         default:
+            ESP_LOGE(TAG, "[DOWNLOAD] Unknown HTTP update result: %d", result);
             completeOTA(OTA_RESULT_DOWNLOAD_FAILED, "Unknown download error");
             return false;
     }
