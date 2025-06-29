@@ -46,7 +46,12 @@ typedef enum {
     MSG_FORMAT_SD_REQUEST,
     MSG_FORMAT_SD_CONFIRM,
     MSG_FORMAT_SD_PROGRESS,
-    MSG_FORMAT_SD_COMPLETE
+    MSG_FORMAT_SD_COMPLETE,
+
+    // BULLETPROOF: OTA status indicator messages
+    MSG_SHOW_OTA_STATUS_INDICATOR,
+    MSG_UPDATE_OTA_STATUS_INDICATOR,
+    MSG_HIDE_OTA_STATUS_INDICATOR
 } LVGLMessageType_t;
 
 // Message data structures
@@ -156,6 +161,15 @@ typedef struct {
             uint8_t progress;
             char message[64];
         } sd_format;
+
+        // BULLETPROOF: OTA status indicator data
+        struct {
+            bool show;
+            uint8_t progress;
+            char status[32];
+            bool is_error;
+            bool pulsing;
+        } ota_status_indicator;
     } data;
 } LVGLMessage_t;
 
@@ -209,6 +223,11 @@ bool requestSDFormat(void);
 bool confirmSDFormat(void);
 bool updateSDFormatProgress(uint8_t progress, const char *message);
 bool completeSDFormat(bool success, const char *message);
+
+// BULLETPROOF: Helper functions for OTA status indicators on any screen
+bool showOTAStatusIndicator(uint8_t progress, const char *status, bool is_error = false, bool pulsing = false);
+bool updateOTAStatusIndicator(uint8_t progress, const char *status, bool is_error = false, bool pulsing = false);
+bool hideOTAStatusIndicator(void);
 
 }  // namespace LVGLMessageHandler
 }  // namespace Application
