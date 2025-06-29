@@ -167,6 +167,7 @@ bool init(void);
 void deinit(void);
 bool sendMessage(const LVGLMessage_t *message);
 void processMessageQueue(lv_timer_t *timer);
+void processComplexMessage(const LVGLMessage_t *message);
 
 // Helper functions for common messages
 bool updateWifiStatus(const char *status, bool connected);

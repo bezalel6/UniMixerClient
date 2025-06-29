@@ -2,6 +2,7 @@
 #include "../messaging/MessageConfig.h"
 #include "../hardware/DeviceManager.h"
 #include "../logo/LogoManager.h"
+#include "../../include/ManagerMacros.h"
 #include <esp_log.h>
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
@@ -28,10 +29,7 @@ MessageBusLogoSupplier& MessageBusLogoSupplier::getInstance() {
 }
 
 bool MessageBusLogoSupplier::init() {
-    if (initialized) {
-        ESP_LOGW(TAG, "MessageBusLogoSupplier already initialized");
-        return true;
-    }
+    INIT_GUARD("MessageBusLogoSupplier", initialized, TAG);
 
     ESP_LOGI(TAG, "Initializing MessageBusLogoSupplier");
 
@@ -93,10 +91,7 @@ void MessageBusLogoSupplier::deinit() {
     }
 
     // Clean up mutex
-    if (requestMutex) {
-        vSemaphoreDelete(requestMutex);
-        requestMutex = nullptr;
-    }
+    CLEANUP_SEMAPHORE(requestMutex, TAG, "request");
 
     initialized = false;
     ESP_LOGI(TAG, "MessageBusLogoSupplier deinitialized");
@@ -108,14 +103,11 @@ bool MessageBusLogoSupplier::isReady() const {
 }
 
 bool MessageBusLogoSupplier::requestLogo(const char* processName, AssetRequestCallback callback) {
-    if (!initialized || !processName || !callback) {
-        return false;
-    }
+    REQUIRE_INIT("MessageBusLogoSupplier", initialized, TAG, false);
+    VALIDATE_PARAM(processName, TAG, "processName", false);
+    VALIDATE_PARAM(callback, TAG, "callback", false);
 
-    if (!requestMutex || xSemaphoreTake(requestMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
-        ESP_LOGW(TAG, "Failed to acquire mutex for logo request");
-        return false;
-    }
+    MUTEX_GUARD(requestMutex, MANAGER_DEFAULT_MUTEX_TIMEOUT_MS, TAG, "logo request", false);
 
     // Create asset request
     AssetRequest request = createAssetRequest(processName);
@@ -128,8 +120,20 @@ bool MessageBusLogoSupplier::requestLogo(const char* processName, AssetRequestCa
     pendingRequest.requestTime = millis();
     pendingRequest.expired = false;
 
-    // If no requests are currently active, send immediately
-    if (pendingRequests.empty()) {
+    // OPTIMIZED: Check memory availability before processing
+    uint32_t freeHeap = ESP.getFreeHeap();
+    if (freeHeap < 32768) {  // 32KB minimum free heap
+        ESP_LOGW(TAG, "Low memory (%u bytes), rejecting logo request for: %s", freeHeap, processName);
+        if (callback) {
+            AssetResponse response = createAssetResponse(false, processName, request.requestId.c_str(),
+                                                         "Insufficient memory");
+            callback(response);
+        }
+        return false;
+    }
+
+    // If no requests are currently active and sufficient memory, send immediately
+    if (pendingRequests.size() < 2) {  // OPTIMIZED: Reduced from unlimited to 2 concurrent
         pendingRequests[request.requestId] = pendingRequest;
 
         bool success = sendAssetRequest(request);
@@ -142,7 +146,7 @@ bool MessageBusLogoSupplier::requestLogo(const char* processName, AssetRequestCa
             ESP_LOGE(TAG, "Failed to send asset request for: %s", processName);
         }
 
-        xSemaphoreGive(requestMutex);
+        MUTEX_RELEASE(requestMutex, TAG, "logo request");
         return success;
     } else {
         // Queue the request for later processing
@@ -150,15 +154,13 @@ bool MessageBusLogoSupplier::requestLogo(const char* processName, AssetRequestCa
         ESP_LOGI(TAG, "Asset request queued for: %s (queue size: %zu)",
                  processName, requestQueue.size());
 
-        xSemaphoreGive(requestMutex);
+        MUTEX_RELEASE(requestMutex, TAG, "logo request");
         return true;
     }
 }
 
 void MessageBusLogoSupplier::update() {
-    if (!initialized) {
-        return;
-    }
+    REQUIRE_INIT_VOID("MessageBusLogoSupplier", initialized, TAG);
 
     // Timeout expired requests
     timeoutExpiredRequests();
@@ -187,9 +189,7 @@ String MessageBusLogoSupplier::getStatus() const {
 // =============================================================================
 
 void MessageBusLogoSupplier::onAssetResponse(const Messaging::Message& message) {
-    if (!initialized) {
-        return;
-    }
+    REQUIRE_INIT_VOID("MessageBusLogoSupplier", initialized, TAG);
 
     ESP_LOGD(TAG, "Received asset response: %d chars", message.payload.length());
 
@@ -201,9 +201,11 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::Message& message) 
     }
 
     // Save asset data if successful and data is present
-    if (response.success && response.hasAssetData && response.assetData && response.assetDataSize > 0) {
+    bool shouldSave = response.success && response.hasAssetData && response.assetData && response.assetDataSize > 0;
+    if (shouldSave) {
         saveAssetToStorage(response);
     }
+    LOG_WARN_IF(!shouldSave && response.success, TAG, "Asset response successful but no data to save for: %s", response.processName.c_str());
 
     completeRequest(response.requestId, response);
 }
@@ -214,13 +216,9 @@ bool MessageBusLogoSupplier::sendAssetRequest(const AssetRequest& request) {
 }
 
 void MessageBusLogoSupplier::timeoutExpiredRequests() {
-    if (!initialized || !requestMutex) {
-        return;
-    }
+    REQUIRE_INIT_VOID("MessageBusLogoSupplier", initialized, TAG);
 
-    if (xSemaphoreTake(requestMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return;
-    }
+    MUTEX_QUICK_GUARD_VOID(requestMutex, TAG, "timeout expired requests");
 
     unsigned long currentTime = millis();
     std::vector<String> expiredRequests;
@@ -256,7 +254,7 @@ void MessageBusLogoSupplier::timeoutExpiredRequests() {
         processNextQueuedRequest();
     }
 
-    xSemaphoreGive(requestMutex);
+    MUTEX_RELEASE(requestMutex, TAG, "timeout expired requests");
 }
 
 AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPayload) {
@@ -339,10 +337,7 @@ String MessageBusLogoSupplier::createAssetRequestJson(const AssetRequest& reques
 }
 
 void MessageBusLogoSupplier::completeRequest(const String& requestId, const AssetResponse& response) {
-    if (!requestMutex || xSemaphoreTake(requestMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
-        ESP_LOGW(TAG, "Failed to acquire mutex for request completion");
-        return;
-    }
+    MUTEX_GUARD_VOID(requestMutex, MANAGER_DEFAULT_MUTEX_TIMEOUT_MS, TAG, "request completion");
 
     auto it = pendingRequests.find(requestId);
 
@@ -368,7 +363,7 @@ void MessageBusLogoSupplier::completeRequest(const String& requestId, const Asse
         ESP_LOGW(TAG, "Received response for unknown request: %s", requestId.c_str());
     }
 
-    xSemaphoreGive(requestMutex);
+    MUTEX_RELEASE(requestMutex, TAG, "request completion");
 }
 
 void MessageBusLogoSupplier::failRequest(const String& requestId, const char* errorMessage) {
@@ -377,13 +372,11 @@ void MessageBusLogoSupplier::failRequest(const String& requestId, const char* er
 }
 
 void MessageBusLogoSupplier::processQueuedRequests() {
-    if (!requestMutex || xSemaphoreTake(requestMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return;  // Don't block if mutex unavailable
-    }
+    MUTEX_QUICK_GUARD_VOID(requestMutex, TAG, "process queued requests");
 
     processNextQueuedRequest();
 
-    xSemaphoreGive(requestMutex);
+    MUTEX_RELEASE(requestMutex, TAG, "process queued requests");
 }
 
 void MessageBusLogoSupplier::processNextQueuedRequest() {
@@ -424,8 +417,10 @@ void MessageBusLogoSupplier::processNextQueuedRequest() {
 }
 
 bool MessageBusLogoSupplier::saveAssetToStorage(const AssetResponse& response) {
+    LOG_WARN_IF(!response.hasAssetData || !response.assetData || response.assetDataSize == 0,
+                TAG, "No asset data to save for process: %s", response.processName.c_str());
+
     if (!response.hasAssetData || !response.assetData || response.assetDataSize == 0) {
-        ESP_LOGW(TAG, "No asset data to save for process: %s", response.processName.c_str());
         return false;
     }
 

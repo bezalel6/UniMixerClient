@@ -250,6 +250,7 @@ static lv_fs_res_t sd_dir_close_cb(lv_fs_drv_t* drv, void* rddir_p) {
     return LV_FS_RES_OK;
 }
 
+#define DISABLE_LVGL_SD 0
 // Public interface implementation
 bool init(void) {
     ESP_LOGI(TAG, "Initializing LVGL SD filesystem driver");
@@ -258,7 +259,10 @@ bool init(void) {
         ESP_LOGW(TAG, "LVGL SD filesystem driver already initialized");
         return true;
     }
-
+#if DISABLE_LVGL_SD == 1
+    ESP_LOGW(TAG, "LVGL SD filesystem driver is disabled");
+    return initialized = true;
+#endif
     // Check if SD card is mounted
     if (!Hardware::SD::isMounted()) {
         ESP_LOGW(TAG, "SD card not mounted, cannot initialize filesystem driver");

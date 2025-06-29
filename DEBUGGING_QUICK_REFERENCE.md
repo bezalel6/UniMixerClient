@@ -111,3 +111,99 @@ If system is unresponsive:
 - Balanced cores: 60-70% / 30-40%
 - Stable 60fps UI
 - <50ms UI responsiveness 
+
+# Performance Monitoring Commands
+
+## Real-time System Health
+```cpp
+// Add to any task for live monitoring
+ESP_LOGI("HEALTH", "Heap: %u, PSRAM: %u, Queue: %d", 
+         ESP.getFreeHeap(), ESP.getFreePsram(), uxQueueMessagesWaiting(lvglMessageQueue));
+
+// Check task stack usage
+ESP_LOGI("STACK", "LVGL: %u, Audio: %u, Network: %u", 
+         uxTaskGetStackHighWaterMark(lvglTaskHandle),
+         uxTaskGetStackHighWaterMark(audioTaskHandle), 
+         uxTaskGetStackHighWaterMark(networkTaskHandle));
+```
+
+## LVGL Performance Diagnostics
+```cpp
+// Monitor LVGL processing times
+uint32_t start = millis();
+lv_timer_handler();
+uint32_t duration = millis() - start;
+if (duration > 20) ESP_LOGW("PERF", "LVGL slow: %ums", duration);
+
+// Check rendering state
+lv_disp_t *disp = lv_disp_get_default();
+ESP_LOGI("RENDER", "In progress: %s", disp->rendering_in_progress ? "YES" : "NO");
+```
+
+## Mutex Contention Analysis
+```cpp
+// Track mutex wait times
+uint32_t start = millis();
+bool acquired = lvglTryLock(50);
+uint32_t wait_time = millis() - start;
+if (wait_time > 10) ESP_LOGW("MUTEX", "LVGL wait: %ums", wait_time);
+if (acquired) lvglUnlock();
+```
+
+## Memory Leak Detection
+```cpp
+// Periodic memory reporting
+static uint32_t last_heap = 0;
+uint32_t current_heap = ESP.getFreeHeap();
+int32_t heap_delta = (int32_t)current_heap - (int32_t)last_heap;
+ESP_LOGI("MEM", "Heap: %u (%+d), Largest: %u", 
+         current_heap, heap_delta, ESP.getMaxAllocHeap());
+last_heap = current_heap;
+```
+
+## SD Card Performance
+```cpp
+// Monitor SD operation times
+uint32_t start = millis();
+bool result = Hardware::SD::directoryExists("/logos");
+uint32_t duration = millis() - start;
+ESP_LOGI("SD", "Directory check: %ums, result: %s", duration, result ? "OK" : "FAIL");
+```
+
+## Emergency Diagnostics
+```cpp
+// When system becomes unresponsive:
+void emergencyDiagnostics() {
+    ESP_LOGE("EMERGENCY", "=== SYSTEM DIAGNOSTICS ===");
+    ESP_LOGE("EMERGENCY", "Free heap: %u bytes", ESP.getFreeHeap());
+    ESP_LOGE("EMERGENCY", "Free PSRAM: %u bytes", ESP.getFreePsram());
+    ESP_LOGE("EMERGENCY", "Message queue: %d/%d", 
+             uxQueueMessagesWaiting(lvglMessageQueue), LVGL_MESSAGE_QUEUE_SIZE);
+    ESP_LOGE("EMERGENCY", "LVGL mutex state: %s", 
+             lvglMutex ? "EXISTS" : "NULL");
+    ESP_LOGE("EMERGENCY", "Tasks running: %s", tasksRunning ? "YES" : "NO");
+    ESP_LOGE("EMERGENCY", "Current task: %s", pcTaskGetTaskName(NULL));
+    ESP_LOGE("EMERGENCY", "=== END DIAGNOSTICS ===");
+}
+```
+
+## Performance Benchmarking
+```cpp
+// System load test
+void performanceTest() {
+    ESP_LOGI("TEST", "Starting performance test...");
+    
+    // Test LVGL processing under load
+    for (int i = 0; i < 100; i++) {
+        uint32_t start = micros();
+        lv_timer_handler();
+        uint32_t duration = micros() - start;
+        if (duration > 20000) { // >20ms
+            ESP_LOGW("TEST", "LVGL iteration %d: %uus (SLOW)", i, duration);
+        }
+        vTaskDelay(pdMS_TO_TICKS(16)); // 60fps simulation
+    }
+    
+    ESP_LOGI("TEST", "Performance test completed");
+}
+```

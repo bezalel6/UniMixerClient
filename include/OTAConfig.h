@@ -8,11 +8,11 @@
 #define OTA_ENABLE_UPDATES 1
 
 // OTA Security Configuration
-#define OTA_REQUIRE_PASSWORD 1 // Require password for OTA updates
-#define OTA_PASSWORD "esp32_smartdisplay_ota" // Default OTA password
-#define OTA_HOSTNAME "esp32-smartdisplay"     // Device hostname for OTA
+#define OTA_REQUIRE_PASSWORD 1                 // Require password for OTA updates
+#define OTA_PASSWORD "esp32_smartdisplay_ota"  // Default OTA password
+#define OTA_HOSTNAME "esp32-smartdisplay"      // Device hostname for OTA
 
 // OTA Port Configuration
-#define OTA_PORT 8266 // Default port for Arduino OTA
+#define OTA_PORT 8266  // Default port for Arduino OTA
 
-#endif // OTA_CONFIG_H
+#endif  // OTA_CONFIG_H

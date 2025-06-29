@@ -6,7 +6,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include <functional>
-
+#include "Hash.h"
 namespace Hardware {
 namespace SD {
 
@@ -29,13 +29,28 @@ typedef enum {
 } SDStatus;
 
 // SD card information structure
-typedef struct {
+typedef struct : public Hashable {
     uint8_t cardType;
     uint64_t cardSize;
     uint64_t totalBytes;
     uint64_t usedBytes;
     bool mounted;
     unsigned long lastActivity;
+    SDStatus status;
+
+    // Additional state information to make this the single source of truth
+    unsigned long lastMountAttempt;
+    bool initializationComplete;
+    bool lvglFilesystemInitialized;
+    bool lastSDMountedState;
+
+    IMPLEMENT_HASH(cardType, cardSize, totalBytes, usedBytes, status, lastMountAttempt, initializationComplete);
+
+    inline uint64_t getTotalMB() { return this->totalBytes / (1024 * 1024); }
+    inline uint64_t getUsedMB() { return this->usedBytes / (1024 * 1024); }
+    inline bool isInitialized() const { return this->initializationComplete; }
+    inline bool isMounted() const { return this->status == SD_STATUS_MOUNTED; }
+    inline bool isLVGLReady() const { return this->lvglFilesystemInitialized && this->isMounted(); }
 } SDCardInfo;
 
 // File operation result structure
@@ -87,6 +102,12 @@ bool copyFile(const char* sourcePath, const char* destPath);
 bool format(void);
 void printCardInfo(void);
 void cleanup(void);
+
+// LVGL SD filesystem management
+bool initLVGLFilesystem(void);
+void deinitLVGLFilesystem(void);
+bool isLVGLFilesystemReady(void);
+void updateLVGLFilesystem(void);
 
 // File system constants
 static const char* ROOT_PATH = "/";

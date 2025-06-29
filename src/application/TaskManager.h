@@ -17,6 +17,13 @@ namespace TaskManager {
 #define OTA_TASK_STACK_SIZE (8 * 1024)
 #define AUDIO_TASK_STACK_SIZE (4 * 1024)
 
+// LVGL performance monitoring thresholds
+#define LVGL_DURATION_CRITICAL_STARTUP 300  // Critical threshold during startup (ms)
+#define LVGL_DURATION_WARNING_STARTUP 200   // Warning threshold during startup (ms)
+#define LVGL_DURATION_INFO_STARTUP 100      // Info threshold during startup (ms)
+#define LVGL_DURATION_CRITICAL_NORMAL 100   // Critical threshold during normal operation (ms)
+#define LVGL_DURATION_WARNING_NORMAL 50     // Warning threshold during normal operation (ms)
+
 // Dynamic priority management
 #define LVGL_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 1)       // During normal operation
 #define LVGL_TASK_PRIORITY_CRITICAL (configMAX_PRIORITIES - 1)   // During OTA (maintain UI)
@@ -31,12 +38,12 @@ namespace TaskManager {
 // Core assignment for ESP32-S3 (optimized for performance)
 #define LVGL_TASK_CORE 0       // Core 0 for UI/LVGL (Arduino loop core)
 #define NETWORK_TASK_CORE 1    // Core 1 for network operations
-#define MESSAGING_TASK_CORE 0  // Moved to Core 0 to balance load
+#define MESSAGING_TASK_CORE 1  // Moved to Core 0 to balance load
 #define OTA_TASK_CORE 1        // Core 1 for OTA (network intensive)
 #define AUDIO_TASK_CORE 0      // Core 0 for audio (needs UI updates)
 
 // Adaptive update intervals
-#define LVGL_UPDATE_INTERVAL 16                 // 16ms = 60 FPS (maintained)
+#define LVGL_UPDATE_INTERVAL 32                 //
 #define NETWORK_UPDATE_INTERVAL_NORMAL 500      // Normal operation
 #define NETWORK_UPDATE_INTERVAL_OTA 100         // During OTA for responsiveness
 #define MESSAGING_UPDATE_INTERVAL_NORMAL 50     // Reduced CPU load from 20ms

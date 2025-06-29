@@ -211,7 +211,7 @@
  *-----------*/
 
 /*Enable the log module*/
-#define LV_USE_LOG 0
+#define LV_USE_LOG 1
 #if LV_USE_LOG
 
     /*How important log should be added:
@@ -222,7 +222,6 @@
     *LV_LOG_LEVEL_USER        Only logs added by the user
     *LV_LOG_LEVEL_NONE        Do not log anything*/
     #define LV_LOG_LEVEL LV_LOG_LEVEL_INFO  /* Increased logging for debugging */
-
     /*1: Print the log with 'printf';
     *0: User need to register a callback with `lv_log_register_print_cb()`*/
     #define LV_LOG_PRINTF 1
@@ -233,17 +232,17 @@
 
     /*1: Print file and line number of the log;
      *0: Do not print file and line number of the log*/
-    #define LV_LOG_USE_FILE_LINE 0  /* Disabled for performance */
+    #define LV_LOG_USE_FILE_LINE 1  /* Disabled for performance */
 
     /*Enable/disable LV_LOG_TRACE in modules that produces a huge number of logs*/
     #define LV_LOG_TRACE_MEM        0
-    #define LV_LOG_TRACE_TIMER      0
+    #define LV_LOG_TRACE_TIMER      1
     #define LV_LOG_TRACE_INDEV      0
-    #define LV_LOG_TRACE_DISP_REFR  0
-    #define LV_LOG_TRACE_EVENT      0
+    #define LV_LOG_TRACE_DISP_REFR  1
+    #define LV_LOG_TRACE_EVENT      1
     #define LV_LOG_TRACE_OBJ_CREATE 0
     #define LV_LOG_TRACE_LAYOUT     0
-    #define LV_LOG_TRACE_ANIM       0
+    #define LV_LOG_TRACE_ANIM       1
     #define LV_LOG_TRACE_CACHE      0
 
 #endif  /*LV_USE_LOG*/
