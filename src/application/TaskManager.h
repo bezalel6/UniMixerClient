@@ -73,14 +73,22 @@ typedef enum {
     OTA_STATE_ERROR         // Error occurred
 } OTAState_t;
 
-// Dynamic task configuration
+// NETWORK-FREE ARCHITECTURE: Task configuration
+enum TaskMode {
+    TASK_MODE_NETWORK_FREE,  // Default: No network tasks, maximum UI/audio performance
+    TASK_MODE_OTA_ACTIVE     // Temporary: Network tasks active during OTA only
+};
+
+// NETWORK-FREE ARCHITECTURE: Enhanced task system configuration
 typedef struct {
     TaskSystemState_t currentState;
     OTAState_t otaState;
-    uint32_t messageLoad;         // Messages per second
-    uint32_t lastStateChange;     // Timestamp of last state change
-    bool emergencyMode;           // Critical operation in progress
-    uint32_t taskLoadMetrics[5];  // CPU usage per task (if available)
+    TaskMode taskMode;  // NEW: Current task mode
+    uint32_t messageLoad;
+    uint32_t lastStateChange;
+    bool emergencyMode;
+    bool networkTasksActive;  // NEW: Track if network tasks are running
+    uint32_t taskLoadMetrics[8];
 } TaskSystemConfig_t;
 
 // Task handles
@@ -153,6 +161,23 @@ uint32_t getTaskCPUUsage(TaskHandle_t taskHandle);  // If FreeRTOS stats availab
 // Message load monitoring
 void reportMessageActivity(void);
 uint32_t getMessageLoadPerSecond(void);
+
+// NETWORK-FREE ARCHITECTURE: Task control functions
+bool initNetworkFreeTasks(void);     // Initialize only UI/audio tasks
+bool createOTATasks(void);           // Create network tasks for OTA
+void destroyOTATasks(void);          // Remove network tasks after OTA
+void switchToNetworkFreeMode(void);  // Boost UI/audio with freed resources
+void switchToOTAMode(void);          // Prepare for OTA operation
+
+// NETWORK-FREE ARCHITECTURE: Resource management
+size_t getFreedNetworkMemory(void);     // Memory available from disabled network tasks
+void reallocateNetworkResources(void);  // Boost UI/audio with network resources
+void restoreNetworkResources(void);     // Restore resources for OTA
+
+// NETWORK-FREE ARCHITECTURE: Task mode control
+TaskMode getCurrentTaskMode(void);
+bool setTaskMode(TaskMode mode);
+bool isNetworkFree(void);
 
 }  // namespace TaskManager
 }  // namespace Application

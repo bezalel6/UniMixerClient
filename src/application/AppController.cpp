@@ -4,8 +4,6 @@
 #include "../display/DisplayManager.h"
 #include "../events/UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
-#include "../hardware/NetworkManager.h"
-#include "../hardware/OTAManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
 #include "../messaging/SerialBridge.h"
@@ -18,6 +16,14 @@
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 #include <ui/ui.h>
+
+// NETWORK-FREE ARCHITECTURE: Only include network components when needed
+#if OTA_ON_DEMAND_ONLY
+#include "../hardware/OnDemandOTAManager.h"
+#else
+#include "../hardware/NetworkManager.h"
+#include "../hardware/OTAManager.h"
+#endif
 
 // Private variables
 static const char *TAG = "AppController";
@@ -89,7 +95,22 @@ bool init(void) {
     }
     esp_task_wdt_reset();
 
-    // Determine if network manager is needed (for MQTT or OTA)
+    // NETWORK-FREE ARCHITECTURE: Determine network requirements
+#if OTA_ON_DEMAND_ONLY
+    // Network-free mode: No always-on network, OTA only on demand
+    ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
+    ESP_LOGI(TAG, "[NETWORK-FREE] Network will only be activated for OTA when requested by user");
+    bool networkNeeded = false;
+
+    // Check if MQTT transport is required (overrides network-free mode)
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
+    ESP_LOGW(TAG, "[NETWORK-FREE] MQTT transport requested but network-free mode enabled");
+    ESP_LOGW(TAG, "[NETWORK-FREE] Disabling MQTT transport in favor of Serial-only");
+    // Force serial-only mode in network-free architecture
+#endif
+
+#else
+    // Legacy mode: Always-on network for MQTT and OTA
     bool networkNeeded = false;
 
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
@@ -113,6 +134,7 @@ bool init(void) {
         // NetworkManager)
         Hardware::Network::enableAutoReconnect(true);
     }
+#endif
     esp_task_wdt_reset();
 
     // Configure transport based on MessagingConfig.h settings
@@ -194,13 +216,23 @@ bool init(void) {
     esp_task_wdt_reset();
 
 #if OTA_ENABLE_UPDATES
-    // Initialize standard OTA
+#if OTA_ON_DEMAND_ONLY
+    // NETWORK-FREE ARCHITECTURE: Initialize On-Demand OTA Manager
+    ESP_LOGI(TAG, "WDT Reset: Initializing On-Demand OTA Manager (Network-Free)...");
+    if (!Hardware::OnDemandOTA::OnDemandOTAManager::init()) {
+        ESP_LOGE(TAG, "Failed to initialize On-Demand OTA Manager");
+        return false;
+    }
+    ESP_LOGI(TAG, "On-Demand OTA Manager initialized successfully - network-free mode active");
+#else
+    // Legacy: Initialize standard always-on OTA
     ESP_LOGI(TAG, "WDT Reset: Initializing OTA Manager...");
     if (!Hardware::OTA::init()) {
         ESP_LOGE(TAG, "Failed to initialize OTA manager");
         return false;
     }
     ESP_LOGI(TAG, "OTA manager initialized successfully");
+#endif
     esp_task_wdt_reset();
 #endif
 
@@ -209,12 +241,21 @@ bool init(void) {
     setupUiComponents();
     esp_task_wdt_reset();
 
-    // Initialize the multi-threaded task manager (includes LVGL Message Handler)
+    // NETWORK-FREE ARCHITECTURE: Initialize task manager with appropriate mode
     ESP_LOGI(TAG, "WDT Reset: Initializing Task Manager...");
+#if OTA_ON_DEMAND_ONLY
+    ESP_LOGI(TAG, "[NETWORK-FREE] Initializing network-free task manager");
+    if (!TaskManager::initNetworkFreeTasks()) {
+        ESP_LOGE(TAG, "Failed to initialize network-free task manager");
+        return false;
+    }
+    ESP_LOGI(TAG, "[NETWORK-FREE] Task manager initialized - maximum UI/audio performance enabled");
+#else
     if (!TaskManager::init()) {
         ESP_LOGE(TAG, "Failed to initialize task manager");
         return false;
     }
+#endif
     esp_task_wdt_reset();
 
     // Send initial status request to get current audio information
@@ -251,7 +292,11 @@ void deinit(void) {
     Logo::LogoManager::getInstance().deinit();
 
 #if OTA_ENABLE_UPDATES
+#if OTA_ON_DEMAND_ONLY
+    Hardware::OnDemandOTA::OnDemandOTAManager::deinit();
+#else
     Hardware::OTA::deinit();
+#endif
 #endif
 
     // Shutdown transports
@@ -402,11 +447,18 @@ void setupUiComponents(void) {
                             LV_EVENT_LONG_PRESSED, NULL);
     }
 
-    // Setup OTA UI elements if available
+    // NETWORK-FREE ARCHITECTURE: Setup OTA UI elements
 #if OTA_ENABLE_UPDATES
-    // Use message handler for thread-safe UI initialization
+#if OTA_ON_DEMAND_ONLY
+    // Network-free mode: OTA available on-demand only
+    Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
+                                                       "OTA Ready (Network-Free Mode)");
+    ESP_LOGI(TAG, "[NETWORK-FREE] OTA UI configured for on-demand operation");
+#else
+    // Legacy mode: Always-on OTA
     Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
                                                        "OTA Ready");
+#endif
 #endif
 
     // Setup file explorer navigation
