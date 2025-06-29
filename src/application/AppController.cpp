@@ -70,6 +70,17 @@ bool init(void) {
     }
     esp_task_wdt_reset();
 
+    // Initialize LVGL filesystem for SD card now that LVGL is ready
+    if (Hardware::SD::isMounted()) {
+        ESP_LOGI(TAG, "WDT Reset: Initializing LVGL SD filesystem...");
+        if (!Hardware::SD::initLVGLFilesystem()) {
+            ESP_LOGW(TAG, "Failed to initialize LVGL SD filesystem - SD file access from UI will be unavailable");
+        } else {
+            ESP_LOGI(TAG, "LVGL SD filesystem initialized successfully");
+        }
+        esp_task_wdt_reset();
+    }
+
     // Initialize messaging system
     ESP_LOGI(TAG, "WDT Reset: Initializing Message System...");
     if (!Messaging::MessageAPI::init()) {
