@@ -12,7 +12,7 @@ namespace Hardware {
 namespace SD {
 
 // Private variables - cardInfo is now the single source of truth
-static SDCardInfo cardInfo;
+static SDCardInfo cardInfo = {};
 static SemaphoreHandle_t sdOperationMutex = nullptr;
 
 // Private function declarations
@@ -27,7 +27,7 @@ static bool removeFileOrDirectory(const char* path);
 bool init(void) {
     ESP_LOGI(TAG, "Initializing SD manager for ESP32-8048S070C");
 
-    if (cardInfo.initializationComplete) {
+    if (cardInfo.isInitialized()) {
         ESP_LOGW(TAG, "SD manager already initialized");
         return cardInfo.status == SD_STATUS_MOUNTED;
     }
@@ -42,20 +42,20 @@ bool init(void) {
     }
 
     // Initialize cardInfo as single source of truth
-    memset(&cardInfo, 0, sizeof(cardInfo));
-    cardInfo.status = SD_STATUS_INITIALIZING;
-    cardInfo.lastActivity = Hardware::Device::getMillis();
-    cardInfo.lastMountAttempt = 0;
+    RESET_CARD_INFO(cardInfo);
+    cardInfo.set(cardInfo.status, SD_STATUS_INITIALIZING);
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
+    cardInfo.set(cardInfo.lastMountAttempt, 0UL);
 
     // Initialize SPI interface
     if (!initializeSPI()) {
         ESP_LOGE(TAG, "Failed to initialize SPI interface");
-        cardInfo.status = SD_STATUS_ERROR;
+        cardInfo.set(cardInfo.status, SD_STATUS_ERROR);
         return false;
     }
 
     // Attempt to mount the SD card
-    cardInfo.initializationComplete = true;
+    cardInfo.setStateFlag(SD_STATE_INITIALIZED);
     if (mount()) {
         ESP_LOGI(TAG, "SD manager initialized successfully with card mounted");
         return true;
@@ -65,12 +65,12 @@ bool init(void) {
     }
 }
 bool isInitialized(void) {
-    return cardInfo.initializationComplete;
+    return cardInfo.isInitialized();
 }
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing SD manager");
 
-    if (!cardInfo.initializationComplete) {
+    if (!cardInfo.isInitialized()) {
         return;
     }
 
@@ -86,8 +86,8 @@ void deinit(void) {
     deinitializeSPI();
 
     // Reset cardInfo state
-    memset(&cardInfo, 0, sizeof(cardInfo));
-    cardInfo.status = SD_STATUS_NOT_INITIALIZED;
+    RESET_CARD_INFO(cardInfo);
+    cardInfo.set(cardInfo.status, SD_STATUS_NOT_INITIALIZED);
 
     // Clean up mutex
     if (sdOperationMutex) {
@@ -99,7 +99,7 @@ void deinit(void) {
 }
 
 void update(void) {
-    if (!cardInfo.initializationComplete) {
+    if (!cardInfo.isInitialized()) {
         return;
     }
 
@@ -115,7 +115,7 @@ void update(void) {
         // Check if card is still present (basic check)
         if (!::SD.cardSize()) {
             ESP_LOGW(TAG, "SD card appears to have been removed");
-            cardInfo.status = SD_STATUS_CARD_REMOVED;
+            cardInfo.set(cardInfo.status, SD_STATUS_CARD_REMOVED);
         }
     }
 
@@ -135,13 +135,13 @@ void update(void) {
 bool mount(void) {
     ESP_LOGI(TAG, "Attempting to mount SD card");
 
-    if (!cardInfo.initializationComplete) {
+    if (!cardInfo.isInitialized()) {
         ESP_LOGE(TAG, "Cannot mount: SD manager not initialized");
         return false;
     }
 
-    cardInfo.lastMountAttempt = Hardware::Device::getMillis();
-    cardInfo.status = SD_STATUS_INITIALIZING;
+    cardInfo.set(cardInfo.lastMountAttempt, Hardware::Device::getMillis());
+    cardInfo.set(cardInfo.status, SD_STATUS_INITIALIZING);
 
     // Attempt to begin SD card communication
     for (int attempt = 0; attempt < SD_RETRY_ATTEMPTS; attempt++) {
@@ -149,13 +149,14 @@ bool mount(void) {
 
         if (::SD.begin(SD_CS_PIN, SPI, SD_SPI_FREQUENCY)) {
             ESP_LOGI(TAG, "SD card mounted successfully");
-            cardInfo.status = SD_STATUS_MOUNTED;
+            cardInfo.set(cardInfo.status, SD_STATUS_MOUNTED);
+            cardInfo.setStateFlag(SD_STATE_MOUNTED);
             updateCardInfo();
-            cardInfo.lastActivity = Hardware::Device::getMillis();
+            cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
             printCardInfo();
 
-            // Initialize LVGL filesystem now that SD card is mounted
-            initLVGLFilesystem();
+            // Note: LVGL filesystem initialization is deferred until LVGL is ready
+            // Call initLVGLFilesystem() manually after Display::init() if needed
 
             return true;
         }
@@ -167,7 +168,7 @@ bool mount(void) {
     }
 
     ESP_LOGE(TAG, "Failed to mount SD card after %d attempts", SD_RETRY_ATTEMPTS);
-    cardInfo.status = SD_STATUS_MOUNT_FAILED;
+    cardInfo.set(cardInfo.status, SD_STATUS_MOUNT_FAILED);
     return false;
 }
 
@@ -179,8 +180,10 @@ void unmount(void) {
         deinitLVGLFilesystem();
 
         ::SD.end();
-        memset(&cardInfo, 0, sizeof(cardInfo));
-        cardInfo.status = SD_STATUS_NOT_INITIALIZED;
+        RESET_CARD_INFO(cardInfo);
+        cardInfo.set(cardInfo.status, SD_STATUS_NOT_INITIALIZED);
+        // Keep the initialized flag since the manager itself is still initialized
+        cardInfo.setStateFlag(SD_STATE_INITIALIZED);
         ESP_LOGI(TAG, "SD card unmounted");
     }
 }
@@ -254,7 +257,7 @@ bool createDirectory(const char* path) {
     result = ::SD.mkdir(path);
     if (result) {
         ESP_LOGI(TAG, "Directory created successfully: %s", path);
-        cardInfo.lastActivity = Hardware::Device::getMillis();
+        cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     } else {
         ESP_LOGW(TAG, "Failed to create directory: %s", path);
     }
@@ -281,7 +284,7 @@ bool removeDirectory(const char* path) {
     result = ::SD.rmdir(path);
     if (result) {
         ESP_LOGI(TAG, "Directory removed successfully: %s", path);
-        cardInfo.lastActivity = Hardware::Device::getMillis();
+        cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     } else {
         ESP_LOGW(TAG, "Failed to remove directory: %s", path);
     }
@@ -490,7 +493,7 @@ bool listDirectory(const char* path, std::function<void(const char* name, bool i
         ESP_LOGD(TAG, "Exception while closing root directory");
     }
 
-    cardInfo.lastActivity = Hardware::Device::getMillis();
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     ESP_LOGI(TAG, "Listed %d items from directory: %s in %ums", fileCount, path, millis() - start_time);
     result = true;
 
@@ -525,7 +528,7 @@ SDFileResult readFile(const char* path, char* buffer, size_t maxLength) {
     buffer[bytesRead] = '\0';  // Null terminate
 
     file.close();
-    cardInfo.lastActivity = Hardware::Device::getMillis();
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
 
     ESP_LOGI(TAG, "File read successfully: %zu bytes", bytesRead);
     result = createFileResult(true, bytesRead, nullptr);
@@ -560,7 +563,7 @@ SDFileResult writeFile(const char* path, const char* data, bool append) {
     size_t bytesWritten = file.write((const uint8_t*)data, dataLength);
 
     file.close();
-    cardInfo.lastActivity = Hardware::Device::getMillis();
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
 
     if (bytesWritten == dataLength) {
         ESP_LOGI(TAG, "File written successfully: %zu bytes", bytesWritten);
@@ -590,7 +593,7 @@ SDFileResult deleteFile(const char* path) {
     ESP_LOGI(TAG, "Deleting file: %s", path);
 
     bool result = ::SD.remove(path);
-    cardInfo.lastActivity = Hardware::Device::getMillis();
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
 
     if (result) {
         ESP_LOGI(TAG, "File deleted successfully: %s", path);
@@ -637,7 +640,7 @@ bool renameFile(const char* oldPath, const char* newPath) {
     bool result = ::SD.rename(oldPath, newPath);
     if (result) {
         ESP_LOGI(TAG, "File renamed successfully");
-        cardInfo.lastActivity = Hardware::Device::getMillis();
+        cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     } else {
         ESP_LOGW(TAG, "Failed to rename file");
     }
@@ -650,14 +653,14 @@ File openFile(const char* path, const char* mode) {
         return File();
     }
 
-    cardInfo.lastActivity = Hardware::Device::getMillis();
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     return ::SD.open(path, mode);
 }
 
 void closeFile(File& file) {
     if (file) {
         file.close();
-        cardInfo.lastActivity = Hardware::Device::getMillis();
+        cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     }
 }
 
@@ -701,7 +704,7 @@ bool copyFile(const char* sourcePath, const char* destPath) {
 
     sourceFile.close();
     destFile.close();
-    cardInfo.lastActivity = Hardware::Device::getMillis();
+    cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
 
     ESP_LOGI(TAG, "File copied successfully: %zu bytes", totalCopied);
     return true;
@@ -750,7 +753,7 @@ bool format(void) {
                 ESP_LOGI(TAG, "SD card formatted successfully (all content cleared)");
                 // Update card info after format
                 updateCardInfo();
-                cardInfo.lastActivity = Hardware::Device::getMillis();
+                cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
             } else {
                 ESP_LOGW(TAG, "Failed to clear all content during format");
                 unmount();
@@ -794,7 +797,7 @@ void cleanup(void) {
 
     if (isMounted()) {
         // Close any open files (this is automatically handled by the File destructor)
-        cardInfo.lastActivity = Hardware::Device::getMillis();
+        cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
     }
 }
 
@@ -802,7 +805,7 @@ void cleanup(void) {
 bool initLVGLFilesystem(void) {
     ESP_LOGI(TAG, "Initializing LVGL SD filesystem driver");
 
-    if (cardInfo.lvglFilesystemInitialized) {
+    if (cardInfo.isLVGLReady()) {
         ESP_LOGW(TAG, "LVGL filesystem already initialized");
         return true;
     }
@@ -813,8 +816,8 @@ bool initLVGLFilesystem(void) {
     }
 
     if (Display::LVGLSDFilesystem::init()) {
-        cardInfo.lvglFilesystemInitialized = true;
-        cardInfo.lastSDMountedState = true;
+        cardInfo.setStateFlag(SD_STATE_LVGL_FILESYSTEM_READY);
+        cardInfo.setStateFlag(SD_STATE_LAST_SD_MOUNTED);
         ESP_LOGI(TAG, "LVGL SD filesystem driver initialized successfully");
         return true;
     } else {
@@ -824,41 +827,47 @@ bool initLVGLFilesystem(void) {
 }
 
 void deinitLVGLFilesystem(void) {
-    if (cardInfo.lvglFilesystemInitialized) {
+    if (cardInfo.isLVGLReady()) {
         ESP_LOGI(TAG, "Deinitializing LVGL SD filesystem driver");
         Display::LVGLSDFilesystem::deinit();
-        cardInfo.lvglFilesystemInitialized = false;
-        cardInfo.lastSDMountedState = false;
+        cardInfo.clearStateFlag(SD_STATE_LVGL_FILESYSTEM_READY);
+        cardInfo.clearStateFlag(SD_STATE_LAST_SD_MOUNTED);
     }
 }
 
 bool isLVGLFilesystemReady(void) {
-    return cardInfo.lvglFilesystemInitialized && isMounted();
+    return cardInfo.isLVGLReady() && isMounted();
 }
 
 void updateLVGLFilesystem(void) {
     bool currentSDMounted = isMounted();
 
     // Check if SD card state has changed
-    if (currentSDMounted != cardInfo.lastSDMountedState) {
+    if (currentSDMounted != cardInfo.wasLastSDMounted()) {
         ESP_LOGI(TAG, "SD card state changed: mounted=%s, LVGL filesystem initialized=%s",
-                 currentSDMounted ? "YES" : "NO", cardInfo.lvglFilesystemInitialized ? "YES" : "NO");
+                 currentSDMounted ? "YES" : "NO", cardInfo.isLVGLReady() ? "YES" : "NO");
 
         if (currentSDMounted) {
             // SD card was mounted - initialize LVGL filesystem if not already done
-            if (!cardInfo.lvglFilesystemInitialized) {
-                ESP_LOGI(TAG, "SD card mounted, initializing LVGL filesystem");
-                initLVGLFilesystem();
+            if (!cardInfo.isLVGLReady()) {
+                // Check if LVGL is ready before trying to initialize filesystem
+                lv_disp_t* disp = lv_disp_get_default();
+                if (disp != NULL) {
+                    ESP_LOGI(TAG, "SD card mounted and LVGL ready, initializing LVGL filesystem");
+                    initLVGLFilesystem();
+                } else {
+                    ESP_LOGD(TAG, "SD card mounted but LVGL not ready yet, deferring LVGL filesystem initialization");
+                }
             }
         } else {
             // SD card was unmounted - deinitialize LVGL filesystem
-            if (cardInfo.lvglFilesystemInitialized) {
+            if (cardInfo.isLVGLReady()) {
                 ESP_LOGI(TAG, "SD card unmounted, deinitializing LVGL filesystem");
                 deinitLVGLFilesystem();
             }
         }
 
-        cardInfo.lastSDMountedState = currentSDMounted;
+        cardInfo.setStateFlag(SD_STATE_LAST_SD_MOUNTED, currentSDMounted);
     }
 }
 
@@ -866,28 +875,28 @@ void updateLVGLFilesystem(void) {
 static void updateCardInfo(void) {
     if (!isMounted()) {
         // Preserve the current state flags when not mounted
-        bool initComplete = cardInfo.initializationComplete;
-        bool lvglInit = cardInfo.lvglFilesystemInitialized;
-        bool lastSDState = cardInfo.lastSDMountedState;
+        bool initComplete = cardInfo.isInitialized();
+        bool lvglInit = cardInfo.isLVGLReady();
+        bool lastSDState = cardInfo.wasLastSDMounted();
         unsigned long lastMount = cardInfo.lastMountAttempt;
         unsigned long lastAct = cardInfo.lastActivity;
         SDStatus currentStat = cardInfo.status;
 
-        memset(&cardInfo, 0, sizeof(cardInfo));
-        cardInfo.status = currentStat;
-        cardInfo.initializationComplete = initComplete;
-        cardInfo.lvglFilesystemInitialized = lvglInit;
-        cardInfo.lastSDMountedState = lastSDState;
-        cardInfo.lastMountAttempt = lastMount;
-        cardInfo.lastActivity = lastAct;
+        RESET_CARD_INFO(cardInfo);
+        cardInfo.set(cardInfo.status, currentStat);
+        cardInfo.setStateFlag(SD_STATE_INITIALIZED, initComplete);
+        cardInfo.setStateFlag(SD_STATE_LVGL_FILESYSTEM_READY, lvglInit);
+        cardInfo.setStateFlag(SD_STATE_LAST_SD_MOUNTED, lastSDState);
+        cardInfo.set(cardInfo.lastMountAttempt, lastMount);
+        cardInfo.set(cardInfo.lastActivity, lastAct);
         return;
     }
 
-    cardInfo.cardType = ::SD.cardType();
-    cardInfo.cardSize = ::SD.cardSize();
-    cardInfo.totalBytes = ::SD.totalBytes();
-    cardInfo.usedBytes = ::SD.usedBytes();
-    cardInfo.mounted = true;
+    cardInfo.set(cardInfo.cardType, ::SD.cardType());
+    cardInfo.set(cardInfo.cardSize, ::SD.cardSize());
+    cardInfo.set(cardInfo.totalBytes, ::SD.totalBytes());
+    cardInfo.set(cardInfo.usedBytes, ::SD.usedBytes());
+    cardInfo.setStateFlag(SD_STATE_MOUNTED);
 }
 
 static const char* getCardTypeString(uint8_t cardType) {

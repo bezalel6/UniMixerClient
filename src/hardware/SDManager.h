@@ -28,29 +28,67 @@ typedef enum {
     SD_STATUS_ERROR
 } SDStatus;
 
+// SD card state flags enum
+typedef enum {
+    SD_STATE_NONE = 0,
+    SD_STATE_INITIALIZED = 1 << 0,
+    SD_STATE_MOUNTED = 1 << 1,
+    SD_STATE_LVGL_FILESYSTEM_READY = 1 << 2,
+    SD_STATE_LAST_SD_MOUNTED = 1 << 3
+} SDStateFlags;
+
+#define IS_FLAG()
+
+// Macro to safely reset cardInfo without corrupting vtable
+#define RESET_CARD_INFO(cardInfo)             \
+    do {                                      \
+        cardInfo.cardType = (sdcard_type_t)0; \
+        cardInfo.cardSize = 0;                \
+        cardInfo.totalBytes = 0;              \
+        cardInfo.usedBytes = 0;               \
+        cardInfo.lastActivity = 0;            \
+        cardInfo.lastMountAttempt = 0;        \
+        cardInfo.stateFlags = SD_STATE_NONE;  \
+    } while (0)
+
 // SD card information structure
 typedef struct : public Hashable {
-    uint8_t cardType;
+    sdcard_type_t cardType;
     uint64_t cardSize;
     uint64_t totalBytes;
     uint64_t usedBytes;
-    bool mounted;
     unsigned long lastActivity;
     SDStatus status;
 
-    // Additional state information to make this the single source of truth
+    // State flags replacing individual booleans
+    SDStateFlags stateFlags;
     unsigned long lastMountAttempt;
-    bool initializationComplete;
-    bool lvglFilesystemInitialized;
-    bool lastSDMountedState;
 
-    IMPLEMENT_HASH(cardType, cardSize, totalBytes, usedBytes, status, lastMountAttempt, initializationComplete);
+    IMPLEMENT_HASH(cardType, cardSize, totalBytes, usedBytes, status, stateFlags, lastMountAttempt);
 
     inline uint64_t getTotalMB() { return this->totalBytes / (1024 * 1024); }
     inline uint64_t getUsedMB() { return this->usedBytes / (1024 * 1024); }
-    inline bool isInitialized() const { return this->initializationComplete; }
-    inline bool isMounted() const { return this->status == SD_STATUS_MOUNTED; }
-    inline bool isLVGLReady() const { return this->lvglFilesystemInitialized && this->isMounted(); }
+    inline bool isInitialized() const { return IS(this->stateFlags, SD_STATE_INITIALIZED); }
+    inline bool isMounted() const { return (this->stateFlags & SD_STATE_MOUNTED) != 0; }
+    inline bool isLVGLReady() const { return (this->stateFlags & SD_STATE_LVGL_FILESYSTEM_READY) != 0; }
+    inline bool wasLastSDMounted() const { return (this->stateFlags & SD_STATE_LAST_SD_MOUNTED) != 0; }
+
+    // Helper methods for flag manipulation
+    inline void setStateFlag(SDStateFlags flag) {
+        SDStateFlags newFlags = (SDStateFlags)(this->stateFlags | flag);
+        set(this->stateFlags, newFlags);
+    }
+    inline void clearStateFlag(SDStateFlags flag) {
+        SDStateFlags newFlags = (SDStateFlags)(this->stateFlags & ~flag);
+        set(this->stateFlags, newFlags);
+    }
+    inline void setStateFlag(SDStateFlags flag, bool value) {
+        if (value)
+            setStateFlag(flag);
+        else
+            clearStateFlag(flag);
+    }
+
 } SDCardInfo;
 
 // File operation result structure

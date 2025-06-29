@@ -619,24 +619,19 @@ void networkTask(void *parameter) {
 
         // Update SD card status (hardware monitoring)
         Hardware::SD::update();
-        Hardware::SD::SDStatus sdStatus = Hardware::SD::getStatus();
+        Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
 
-        // Send SD status UI update messages
-        if (Hardware::SD::isInitialized()) {
+        // Send SD status UI update messages - use advanced hash comparison
+        static uint32_t lastCardInfoHash = 0;
+
+        if (HASH_CHANGED(cardInfo, lastCardInfoHash)) {
+            ESP_LOGI(TAG, "[NETWORK_TASK] Card Info Changed");
+
             const char *statusStr = Hardware::SD::getStatusString();
-            Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
-            if (cardInfo.mounted) {
-                // LVGL filesystem is now managed by SDManager - just check status
-                bool lvglReady = Hardware::SD::isLVGLFilesystemReady();
-                if (!lvglReady) {
-                    ESP_LOGD(TAG, "[NETWORK_TASK] LVGL filesystem not ready (managed by SDManager)");
-                }
-            }
 
             // Send UI update
-            LVGLMessageHandler::updateSDStatus(statusStr, cardInfo.mounted, cardInfo.getTotalMB(), cardInfo.getUsedMB(), cardInfo.cardType);
+            LVGLMessageHandler::updateSDStatus(statusStr, cardInfo.isMounted(), cardInfo.getTotalMB(), cardInfo.getUsedMB(), cardInfo.cardType);
         }
-
         // Use adaptive interval based on current system state
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(currentNetworkInterval));
     }
