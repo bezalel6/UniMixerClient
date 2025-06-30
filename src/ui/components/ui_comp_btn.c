@@ -12,8 +12,8 @@ lv_obj_t * ui_btn_create(lv_obj_t * comp_parent)
 
     lv_obj_t * cui_btn;
     cui_btn = lv_button_create(comp_parent);
-    lv_obj_set_width(cui_btn, 100);
-    lv_obj_set_height(cui_btn, 50);
+    lv_obj_set_width(cui_btn, lv_pct(100));
+    lv_obj_set_height(cui_btn, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(cui_btn, LV_ALIGN_CENTER);
     lv_obj_add_flag(cui_btn, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
     lv_obj_remove_flag(cui_btn, LV_OBJ_FLAG_SCROLLABLE);      /// Flags

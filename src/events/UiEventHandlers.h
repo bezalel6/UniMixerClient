@@ -51,7 +51,7 @@ void setCurrentTab(TabState tab);
 const char *getTabName(TabState tab);
 
 // State overview handler
-void stateOverviewLongPressHandler(lv_event_t *e);
+void openSettings(lv_event_t *e);
 
 // File Explorer handlers
 void fileExplorerBackButtonHandler(lv_event_t *e);

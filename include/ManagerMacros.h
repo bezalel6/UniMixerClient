@@ -132,35 +132,6 @@
         }                                                        \
     } while (0)
 
-/**
- * Create a scoped mutex guard that automatically releases on scope exit
- * Usage: SCOPED_MUTEX_GUARD(myMutex, 1000, "myTag", "operation");
- */
-#define SCOPED_MUTEX_GUARD(mutex_var, timeout_ms, tag, action_name)                         \
-    struct MutexGuard_##__LINE__ {                                                          \
-        SemaphoreHandle_t m;                                                                \
-        const char* t;                                                                      \
-        const char* a;                                                                      \
-        bool acquired;                                                                      \
-        MutexGuard_##__LINE__(SemaphoreHandle_t mutex, const char* tag, const char* action) \
-            : m(mutex), t(tag), a(action), acquired(false) {                                \
-            if (m && xSemaphoreTake(m, pdMS_TO_TICKS(timeout_ms)) == pdTRUE) {              \
-                acquired = true;                                                            \
-                ESP_LOGV(t, "Acquired scoped mutex for %s", a);                             \
-            } else {                                                                        \
-                ESP_LOGW(t, "Failed to acquire scoped mutex for %s", a);                    \
-            }                                                                               \
-        }                                                                                   \
-        ~MutexGuard_##__LINE__() {                                                          \
-            if (acquired && m) {                                                            \
-                xSemaphoreGive(m);                                                          \
-                ESP_LOGV(t, "Released scoped mutex for %s", a);                             \
-            }                                                                               \
-        }                                                                                   \
-        bool isAcquired() const { return acquired; }                                        \
-    } mutexGuard_##__LINE__(mutex_var, tag, action_name);                                   \
-    if (!mutexGuard_##__LINE__.isAcquired())
-
 // =============================================================================
 // CONDITIONAL LOGGING MACROS
 // =============================================================================
@@ -322,3 +293,167 @@
                  ESP_LOGD(tag, "%s took %lu ms", operation_name, _duration);                                                  \
              }                                                                                                                \
          }))
+
+// =============================================================================
+// UI EVENT REGISTRATION MACROS
+// =============================================================================
+
+/**
+ * Basic event callback registration
+ */
+#define REGISTER_EVENT_CB(widget, handler, event) \
+    lv_obj_add_event_cb(widget, handler, event, NULL)
+
+/**
+ * Safe event callback registration with null check and logging
+ */
+#define REGISTER_EVENT_CB_SAFE(widget, handler, event, description)    \
+    do {                                                               \
+        if (widget) {                                                  \
+            lv_obj_add_event_cb(widget, handler, event, NULL);         \
+            ESP_LOGI(TAG, description " registered");                  \
+        } else {                                                       \
+            ESP_LOGW(TAG, #widget " is null - skipping " description); \
+        }                                                              \
+    } while (0)
+
+/**
+ * Click event registration with automatic clickable flag setting
+ */
+#define SETUP_CLICK_EVENT(widget, handler, description)                   \
+    do {                                                                  \
+        if (widget) {                                                     \
+            lv_obj_add_flag(widget, LV_OBJ_FLAG_CLICKABLE);               \
+            lv_obj_add_event_cb(widget, handler, LV_EVENT_CLICKED, NULL); \
+            ESP_LOGD(TAG, description " click handler registered");       \
+        } else {                                                          \
+            ESP_LOGW(TAG, #widget " is null - skipping " description);    \
+        }                                                                 \
+    } while (0)
+
+/**
+ * Setup multiple click events with same handler
+ */
+#define SETUP_CLICK_EVENTS(handler, description, ...)                                                                \
+    do {                                                                                                             \
+        lv_obj_t* widgets[] = {__VA_ARGS__};                                                                         \
+        for (size_t i = 0; i < sizeof(widgets) / sizeof(widgets[0]); i++) {                                          \
+            if (widgets[i]) {                                                                                        \
+                lv_obj_add_flag(widgets[i], LV_OBJ_FLAG_CLICKABLE);                                                  \
+                lv_obj_add_event_cb(widgets[i], handler, LV_EVENT_CLICKED, NULL);                                    \
+            }                                                                                                        \
+        }                                                                                                            \
+        ESP_LOGD(TAG, description " click handlers registered (%zu widgets)", sizeof(widgets) / sizeof(widgets[0])); \
+    } while (0)
+
+/**
+ * Setup multiple value change events with same handler
+ */
+#define SETUP_VALUE_CHANGE_EVENTS(handler, description, ...)                                                                \
+    do {                                                                                                                    \
+        lv_obj_t* widgets[] = {__VA_ARGS__};                                                                                \
+        for (size_t i = 0; i < sizeof(widgets) / sizeof(widgets[0]); i++) {                                                 \
+            if (widgets[i]) {                                                                                               \
+                lv_obj_add_event_cb(widgets[i], handler, LV_EVENT_VALUE_CHANGED, NULL);                                     \
+            }                                                                                                               \
+        }                                                                                                                   \
+        ESP_LOGD(TAG, description " value change handlers registered (%zu widgets)", sizeof(widgets) / sizeof(widgets[0])); \
+    } while (0)
+
+/**
+ * Setup volume slider with both visual and change handlers
+ */
+#define SETUP_VOLUME_SLIDER(slider, visual_handler, change_handler)                    \
+    do {                                                                               \
+        if (slider) {                                                                  \
+            lv_obj_add_event_cb(slider, visual_handler, LV_EVENT_VALUE_CHANGED, NULL); \
+            lv_obj_add_event_cb(slider, change_handler, LV_EVENT_RELEASED, NULL);      \
+            ESP_LOGD(TAG, #slider " volume handlers registered");                      \
+        } else {                                                                       \
+            ESP_LOGW(TAG, #slider " is null - skipping volume setup");                 \
+        }                                                                              \
+    } while (0)
+
+/**
+ * Setup all volume sliders at once
+ */
+#define SETUP_ALL_VOLUME_SLIDERS(visual_handler, change_handler)                     \
+    do {                                                                             \
+        SETUP_VOLUME_SLIDER(ui_primaryVolumeSlider, visual_handler, change_handler); \
+        SETUP_VOLUME_SLIDER(ui_singleVolumeSlider, visual_handler, change_handler);  \
+        SETUP_VOLUME_SLIDER(ui_balanceVolumeSlider, visual_handler, change_handler); \
+        ESP_LOGI(TAG, "All volume sliders configured");                              \
+    } while (0)
+
+/**
+ * Setup all audio dropdowns at once
+ */
+#define SETUP_ALL_AUDIO_DROPDOWNS(handler)                                                             \
+    do {                                                                                               \
+        SETUP_VALUE_CHANGE_EVENTS(handler, "Audio dropdown",                                           \
+                                  ui_selectAudioDevice, ui_selectAudioDevice1, ui_selectAudioDevice2); \
+        ESP_LOGI(TAG, "All audio dropdowns configured");                                               \
+    } while (0)
+
+/**
+ * Setup tab events with both tabview and individual button handlers
+ */
+#define SETUP_TAB_EVENTS(tabview, handler)                                                \
+    do {                                                                                  \
+        ESP_LOGI(TAG, "Registering tab events on " #tabview ": %p", tabview);             \
+        if (tabview) {                                                                    \
+            lv_obj_add_event_cb(tabview, handler, LV_EVENT_VALUE_CHANGED, NULL);          \
+                                                                                          \
+            lv_obj_t* tab_buttons = lv_tabview_get_tab_bar(tabview);                      \
+            if (tab_buttons) {                                                            \
+                uint32_t tab_count = lv_obj_get_child_count(tab_buttons);                 \
+                ESP_LOGI(TAG, "Found %d tab buttons in " #tabview, tab_count);            \
+                                                                                          \
+                for (uint32_t i = 0; i < tab_count; i++) {                                \
+                    lv_obj_t* tab_button = lv_obj_get_child(tab_buttons, i);              \
+                    if (tab_button) {                                                     \
+                        lv_obj_add_flag(tab_button, LV_OBJ_FLAG_CLICKABLE);               \
+                        lv_obj_add_event_cb(tab_button, handler, LV_EVENT_CLICKED, NULL); \
+                    }                                                                     \
+                }                                                                         \
+                ESP_LOGI(TAG, "Tab events configured for %d buttons", tab_count);         \
+            }                                                                             \
+        } else {                                                                          \
+            ESP_LOGW(TAG, #tabview " is null - skipping tab setup");                      \
+        }                                                                                 \
+    } while (0)
+
+/**
+ * Setup file explorer navigation buttons
+ */
+#define SETUP_FILE_EXPLORER_NAVIGATION()                                                                            \
+    do {                                                                                                            \
+        ESP_LOGI(TAG, "Setting up file explorer event handlers");                                                   \
+        SETUP_CLICK_EVENT(ui_btnGOTOSD, Events::UI::fileExplorerNavigationHandler, "SD navigation");                \
+        SETUP_CLICK_EVENT(ui_btnFileExplorerBack, Events::UI::fileExplorerBackButtonHandler, "File explorer back"); \
+        ESP_LOGI(TAG, "File explorer navigation configured");                                                       \
+    } while (0)
+
+/**
+ * Register multiple events on the same widget
+ */
+#define REGISTER_MULTIPLE_EVENTS(widget, handler, ...)                    \
+    do {                                                                  \
+        lv_event_code_t events[] = {__VA_ARGS__};                         \
+        for (size_t i = 0; i < sizeof(events) / sizeof(events[0]); i++) { \
+            lv_obj_add_event_cb(widget, handler, events[i], NULL);        \
+        }                                                                 \
+    } while (0)
+
+/**
+ * Register the same handler and event on multiple widgets
+ */
+#define REGISTER_BULK_EVENTS(handler, event, ...)                           \
+    do {                                                                    \
+        lv_obj_t* widgets[] = {__VA_ARGS__};                                \
+        for (size_t i = 0; i < sizeof(widgets) / sizeof(widgets[0]); i++) { \
+            if (widgets[i]) {                                               \
+                REGISTER_EVENT_CB(widgets[i], handler, event);              \
+            }                                                               \
+        }                                                                   \
+    } while (0)

@@ -50,15 +50,6 @@ uint32_t combineHashes(const Args&... args) {
     return result;
 }
 
-// // Alternative macro that handles the Hashable inheritance too
-// #define HASHABLE_STRUCT(StructName, ...)       \
-//     struct StructName : public Hashable {      \
-//         __VA_ARGS__                            \
-//         uint32_t hash() const override {       \
-//             return combineHashes(__VA_ARGS__); \
-//         }                                      \
-//     }
-
 #define IS(state, flag) (((state) & (flag)) != 0)
 
 class Hashable {

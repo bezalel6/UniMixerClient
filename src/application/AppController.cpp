@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "../../include/ManagerMacros.h"
 #include "../../include/MessagingConfig.h"
 #include "../../include/OTAConfig.h"
 #include "../display/DisplayManager.h"
@@ -289,139 +290,46 @@ void run(void) {
 }
 
 void setupUiComponents(void) {
-    // Set display to 180 degrees rotation
     Display::setRotation(Display::ROTATION_0);
 
-    // Register button click event handler
-    lv_obj_add_event_cb(ui_btnRequestData,
-                        Events::UI::stateOverviewLongPressHandler,
-                        LV_EVENT_CLICKED, NULL);
-    // lv_obj_add_event_cb(ui_btnRequestData,
-    //                         Events::UI::btnRequestDataClickedHandler,
-    //                         LV_EVENT_CLICKED, NULL);
+    // =========================================================================
+    // CORE UI EVENT REGISTRATION - USING COMPREHENSIVE MACROS
+    // =========================================================================
 
-    // Register audio device dropdown event handlers
-    lv_obj_add_event_cb(ui_selectAudioDevice,
-                        Events::UI::audioDeviceDropdownChangedHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_selectAudioDevice1,
-                        Events::UI::audioDeviceDropdownChangedHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_selectAudioDevice2,
-                        Events::UI::audioDeviceDropdownChangedHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
+    // Settings button - ensures clickable state
+    SETUP_CLICK_EVENT(ui_btnGOTOSettings, Events::UI::openSettings, "Settings button");
 
-    // Register volume arc event handlers for each tab
-    // Visual feedback during dragging (VALUE_CHANGED)
-    lv_obj_add_event_cb(ui_primaryVolumeSlider,
-                        Events::UI::volumeArcVisualHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_singleVolumeSlider,
-                        Events::UI::volumeArcVisualHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(ui_balanceVolumeSlider,
-                        Events::UI::volumeArcVisualHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
+    // All audio dropdowns at once
+    SETUP_ALL_AUDIO_DROPDOWNS(Events::UI::audioDeviceDropdownChangedHandler);
 
-    // Actual volume changes on release (RELEASED)
-    lv_obj_add_event_cb(ui_primaryVolumeSlider,
-                        Events::UI::volumeArcChangedHandler,
-                        LV_EVENT_RELEASED, NULL);
-    lv_obj_add_event_cb(ui_singleVolumeSlider,
-                        Events::UI::volumeArcChangedHandler,
-                        LV_EVENT_RELEASED, NULL);
-    lv_obj_add_event_cb(ui_balanceVolumeSlider,
-                        Events::UI::volumeArcChangedHandler,
-                        LV_EVENT_RELEASED, NULL);
+    // All volume sliders with both visual and change handlers
+    SETUP_ALL_VOLUME_SLIDERS(Events::UI::volumeArcVisualHandler, Events::UI::volumeArcChangedHandler);
 
-    // Register tab switch event handler
-    ESP_LOGI(TAG,
-             "Registering tab switch event handler for ui_tabsModeSwitch: %p",
-             ui_tabsModeSwitch);
-    lv_obj_add_event_cb(ui_tabsModeSwitch, Events::UI::tabSwitchHandler,
-                        LV_EVENT_VALUE_CHANGED, NULL);
+    // Complete tab system setup (tabview + all individual buttons)
+    SETUP_TAB_EVENTS(ui_tabsModeSwitch, Events::UI::tabSwitchHandler);
 
-    // Alternative approach: Register on individual tab buttons (for newer LVGL
-    // versions)
-    lv_obj_t *tab_buttons = lv_tabview_get_tab_bar(ui_tabsModeSwitch);
-    if (tab_buttons) {
-        ESP_LOGI(TAG, "Registering tab button events on tab bar: %p", tab_buttons);
-
-        // Get the number of tabs and register event on each button
-        uint32_t tab_count = lv_obj_get_child_count(tab_buttons);
-        ESP_LOGI(TAG, "Found %d tab buttons", tab_count);
-
-        for (uint32_t i = 0; i < tab_count; i++) {
-            lv_obj_t *tab_button = lv_obj_get_child(tab_buttons, i);
-            if (tab_button) {
-                ESP_LOGI(TAG, "Registering event on tab button %d: %p", i, tab_button);
-                lv_obj_add_event_cb(tab_button, Events::UI::tabSwitchHandler,
-                                    LV_EVENT_CLICKED, NULL);
-            }
-        }
-    }
-
-    // Initialize current tab state by reading the actual active tab from the UI
+    // Initialize current tab state
     uint32_t activeTabIndex = lv_tabview_get_tab_active(ui_tabsModeSwitch);
     Events::UI::setCurrentTab(static_cast<Events::UI::TabState>(activeTabIndex));
     ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex,
              Events::UI::getTabName(Events::UI::getCurrentTab()));
 
-    // Add long-press handler to accessible UI elements for state overview
-    ESP_LOGI(TAG, "Registering long-press handler for state overview on tabview: %p", ui_tabsModeSwitch);
-    lv_obj_add_event_cb(ui_tabsModeSwitch, Events::UI::stateOverviewLongPressHandler,
-                        LV_EVENT_LONG_PRESSED, NULL);
-
-    // Also add to network panel for easy access
-    if (ui_pnlNetwork) {
-        ESP_LOGI(TAG, "Registering long-press handler for state overview on network panel: %p", ui_pnlNetwork);
-        lv_obj_add_event_cb(ui_pnlNetwork, Events::UI::stateOverviewLongPressHandler,
-                            LV_EVENT_LONG_PRESSED, NULL);
-    }
-
-    // Add to individual tab content areas for maximum accessibility
-    if (ui_Master) {
-        lv_obj_add_event_cb(ui_Master, Events::UI::stateOverviewLongPressHandler,
-                            LV_EVENT_LONG_PRESSED, NULL);
-    }
-    if (ui_Single) {
-        lv_obj_add_event_cb(ui_Single, Events::UI::stateOverviewLongPressHandler,
-                            LV_EVENT_LONG_PRESSED, NULL);
-    }
-    if (ui_Balance) {
-        lv_obj_add_event_cb(ui_Balance, Events::UI::stateOverviewLongPressHandler,
-                            LV_EVENT_LONG_PRESSED, NULL);
-    }
-
-    // NETWORK-FREE ARCHITECTURE: Setup OTA UI elements
+    // =========================================================================
+    // NETWORK-FREE ARCHITECTURE: OTA UI SETUP
+    // =========================================================================
 #if OTA_ENABLE_UPDATES
 #if OTA_ON_DEMAND_ONLY
-    // Network-free mode: OTA available on-demand only
-    Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
-                                                       "OTA Ready (Network-Free Mode)");
+    Application::LVGLMessageHandler::updateOTAProgress(0, false, false, "OTA Ready (Network-Free Mode)");
     ESP_LOGI(TAG, "[NETWORK-FREE] OTA UI configured for on-demand operation");
 #else
-    // Legacy mode: Always-on OTA
-    Application::LVGLMessageHandler::updateOTAProgress(0, false, false,
-                                                       "OTA Ready");
+    Application::LVGLMessageHandler::updateOTAProgress(0, false, false, "OTA Ready");
 #endif
 #endif
 
-    // Setup file explorer navigation
-    ESP_LOGI(TAG, "Setting up file explorer event handlers");
-
-    // SD container click handler for file explorer navigation
-    if (ui_sdContainer) {
-        lv_obj_add_event_cb(ui_sdContainer, Events::UI::fileExplorerNavigationHandler, LV_EVENT_CLICKED, NULL);
-        lv_obj_add_flag(ui_sdContainer, LV_OBJ_FLAG_CLICKABLE);
-        ESP_LOGI(TAG, "SD container click handler registered");
-    }
-
-    // File explorer back button handler (if screen exists)
-    if (ui_btnFileExplorerBack) {
-        lv_obj_add_event_cb(ui_btnFileExplorerBack, Events::UI::fileExplorerBackButtonHandler, LV_EVENT_CLICKED, NULL);
-        ESP_LOGI(TAG, "File explorer back button handler registered");
-    }
+    // =========================================================================
+    // FILE EXPLORER NAVIGATION SETUP
+    // =========================================================================
+    SETUP_FILE_EXPLORER_NAVIGATION();
 }
 
 }  // namespace Application

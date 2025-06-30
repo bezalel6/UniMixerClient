@@ -39,6 +39,13 @@ typedef enum {
     FE_STATE_MANAGING_PATTERNS
 } FileExplorerState;
 
+// Add navigation history structure
+struct NavigationState {
+    String path;
+    int scrollPosition;
+    String selectedItemName;
+};
+
 class FileExplorerManager {
    public:
     static FileExplorerManager& getInstance();
@@ -53,6 +60,11 @@ class FileExplorerManager {
     bool navigateToRoot();
     bool navigateToLogosRoot();  // Navigate to /logos directory
     void refreshCurrentDirectory();
+
+    // Navigation history methods
+    bool canNavigateBack() const;
+    bool navigateBack();
+    void clearNavigationHistory();
 
     // Directory operations
     bool createDirectory(const String& name);
@@ -71,6 +83,10 @@ class FileExplorerManager {
     bool deleteLogoAndMetadata(const String& logoFileName);
 
     // UI Management
+    void createPersistentUI();
+    void updateContent();
+    void preserveUIState();
+    void restoreUIState();
     void updateUI();
     void updateSDStatus();
     void showProperties(const FileItem* item);
@@ -171,6 +187,28 @@ class FileExplorerManager {
     lv_obj_t* logoAssignmentDialog;
     lv_obj_t* patternManagementDialog;
     lv_obj_t* logoPreviewDialog;
+
+    // Navigation history
+    std::vector<NavigationState> navigationHistory;
+    static const size_t MAX_HISTORY_SIZE = 20;
+
+    // UI state preservation
+    int currentScrollPosition;
+    String lastSelectedItemName;
+
+    // UI lifecycle flags
+    bool persistentUICreated;
+
+    // Separated UI management
+    void createBaseLayout();
+    void createActionPanels();
+    void setupEventHandlers();
+    void destroyPersistentUI();
+
+    // State management
+    void saveCurrentState();
+    void pushNavigationState(const String& path);
+    NavigationState popNavigationState();
 };
 
 }  // namespace FileExplorer

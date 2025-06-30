@@ -246,10 +246,10 @@ const char *getTabName(TabState tab) {
 }
 
 // State overview long-press handler
-void stateOverviewLongPressHandler(lv_event_t *e) {
-    // ON_EVENT(LV_EVENT_LONG_PRESSED);
+void openSettings(lv_event_t *e) {
+    ON_EVENT(LV_EVENT_CLICKED);
 
-    UI_LOG("UIEventHandlers", "Long press detected - showing state overview");
+    UI_LOG("UIEventHandlers", "Settings button detected - showing state overview");
 
     // Show state overview overlay
     Application::LVGLMessageHandler::showStateOverview();
@@ -285,9 +285,8 @@ void fileExplorerNavigationHandler(lv_event_t *e) {
     // Navigate to file explorer screen
     _ui_screen_change(&ui_screenFileExplorer, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, &ui_screenFileExplorer_screen_init);
 
-    // Load root directory and update UI
+    // Load root directory and update content (UI is already persistent)
     manager.navigateToRoot();
-    manager.updateUI();
 }
 
 // Cleanup function for debounce timers

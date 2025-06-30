@@ -43,7 +43,7 @@ class LogoManager {
     bool isInitialized() const { return initialized; }
 
     // Core logo operations (supports both binary and PNG)
-    String saveLogo(const char* processName, const uint8_t* data, size_t size, LogoStorage::FileType type = LogoStorage::FileType::BINARY);
+    String saveLogo(const char* processName, const uint8_t* data, size_t size, LogoStorage::FileType type = LogoStorage::FileType::PNG);
     String saveLogoFromFile(const char* processName, const char* sourceFilePath);  // Auto-detect type from extension
     String getLogoPath(const char* processName);
     bool deleteLogo(const char* processName);

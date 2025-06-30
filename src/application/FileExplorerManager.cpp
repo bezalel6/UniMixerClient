@@ -195,13 +195,16 @@ bool FileExplorerManager::init() {
         }
     }
 
+    // Initialize state
     currentPath = "/";
     state = FE_STATE_IDLE;
     selectedItem = nullptr;
     selectedListItem = nullptr;
-    uiCreated = false;
+    persistentUICreated = false;
+    currentScrollPosition = 0;
+    lastSelectedItemName = "";
 
-    // Initialize dynamic UI components to nullptr
+    // Initialize UI components to nullptr
     contentPanel = nullptr;
     fileList = nullptr;
     actionPanel = nullptr;
@@ -229,6 +232,12 @@ bool FileExplorerManager::init() {
     patternManagementDialog = nullptr;
     logoPreviewDialog = nullptr;
 
+    // Clear navigation history
+    navigationHistory.clear();
+
+    // Create persistent UI immediately
+    createPersistentUI();
+
     initialized = true;
     return true;
 }
@@ -248,11 +257,13 @@ void FileExplorerManager::deinit() {
         xSemaphoreGive(g_callbackMutex);
     }
 
-    destroyDynamicUI();
+    // Destroy persistent UI
+    destroyPersistentUI();
     clearItems();
+    clearNavigationHistory();
 
     initialized = false;
-    uiCreated = false;
+    persistentUICreated = false;
 
     if (g_callbackMutex) {
         vSemaphoreDelete(g_callbackMutex);
@@ -283,9 +294,22 @@ bool FileExplorerManager::navigateToPath(const String& path) {
         return false;
     }
 
+    // Save current state before navigating
+    if (!currentPath.isEmpty() && currentPath != path) {
+        saveCurrentState();
+        pushNavigationState(currentPath);
+    }
+
     if (loadDirectory(path)) {
         currentPath = path;
-        updateUI();
+        updateContent();
+
+        // Clear selection when navigating to new directory
+        selectedItem = nullptr;
+        selectedListItem = nullptr;
+        currentScrollPosition = 0;
+        lastSelectedItemName = "";
+
         return true;
     }
 
@@ -323,7 +347,9 @@ bool FileExplorerManager::navigateToRoot() {
 }
 
 void FileExplorerManager::refreshCurrentDirectory() {
-    navigateToPath(currentPath);
+    if (loadDirectory(currentPath)) {
+        updateContent();
+    }
 }
 
 bool FileExplorerManager::createDirectory(const String& name) {
@@ -422,25 +448,21 @@ bool FileExplorerManager::writeTextFile(const String& path, const String& conten
     return result.success;
 }
 
-void FileExplorerManager::updateUI() {
-    if (!initialized) {
+void FileExplorerManager::updateContent() {
+    if (!initialized || !persistentUICreated) {
         return;
-    }
-
-    // Create UI only once
-    if (!uiCreated) {
-        createDynamicUI();
-        uiCreated = true;
-    } else if (!contentPanel || !actionPanel) {
-        destroyDynamicUI();
-        createDynamicUI();
-        uiCreated = true;
     }
 
     updatePathDisplay();
     updateSDStatus();
     updateFileList();
     updateLogoPanelVisibility();
+    updateButtonStates();
+}
+
+// Legacy method for compatibility - now just calls updateContent
+void FileExplorerManager::updateUI() {
+    updateContent();
 }
 
 void FileExplorerManager::updateSDStatus() {
@@ -517,8 +539,10 @@ void FileExplorerManager::updateFileList() {
                 manager.selectedListItem = nullptr;
                 manager.updateButtonStates();
                 
-                // Navigate up
-                manager.navigateUp();
+                // Try history-based navigation first, fallback to regular up navigation
+                if (!manager.navigateBack()) {
+                    manager.navigateUp();
+                }
             } }, LV_EVENT_CLICKED, nullptr);
     }
 
@@ -585,12 +609,28 @@ void FileExplorerManager::updateFileList() {
     }
 }
 
-void FileExplorerManager::createDynamicUI() {
+void FileExplorerManager::createPersistentUI() {
     if (!ui_screenFileExplorer) {
         ESP_LOGW(TAG, "File explorer screen not available");
         return;
     }
 
+    if (persistentUICreated) {
+        ESP_LOGW(TAG, "Persistent UI already created");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Creating persistent File Explorer UI");
+
+    createBaseLayout();
+    createActionPanels();
+    setupEventHandlers();
+
+    persistentUICreated = true;
+    ESP_LOGI(TAG, "Persistent File Explorer UI created successfully");
+}
+
+void FileExplorerManager::createBaseLayout() {
     // Create main content panel (adjusting for two potential action panels)
     contentPanel = lv_obj_create(ui_screenFileExplorer);
     lv_obj_set_width(contentPanel, lv_pct(100));
@@ -603,7 +643,9 @@ void FileExplorerManager::createDynamicUI() {
     fileList = lv_list_create(contentPanel);
     lv_obj_set_size(fileList, lv_pct(100), lv_pct(100));
     lv_obj_set_align(fileList, LV_ALIGN_CENTER);
+}
 
+void FileExplorerManager::createActionPanels() {
     // Create main action panel (positioned above logo panel)
     actionPanel = lv_obj_create(ui_screenFileExplorer);
     lv_obj_set_width(actionPanel, lv_pct(100));
@@ -614,11 +656,37 @@ void FileExplorerManager::createDynamicUI() {
     lv_obj_set_flex_align(actionPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(actionPanel, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Create New button with debouncing
+    // Create main action buttons
     btnNewFolder = lv_button_create(actionPanel);
     lv_obj_t* lblNewFolder = lv_label_create(btnNewFolder);
     lv_label_set_text(lblNewFolder, "New");
 
+    btnRefresh = lv_button_create(actionPanel);
+    lv_obj_t* lblRefresh = lv_label_create(btnRefresh);
+    lv_label_set_text(lblRefresh, LV_SYMBOL_REFRESH);
+
+    btnProperties = lv_button_create(actionPanel);
+    lv_obj_t* lblProperties = lv_label_create(btnProperties);
+    lv_label_set_text(lblProperties, "Info");
+
+    btnDelete = lv_button_create(actionPanel);
+    lv_obj_t* lblDelete = lv_label_create(btnDelete);
+    lv_label_set_text(lblDelete, LV_SYMBOL_TRASH);
+
+    btnNavigateLogos = lv_button_create(actionPanel);
+    lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
+    lv_label_set_text(lblNavigateLogos, "Logos");
+
+    // Initialize button states (disable delete and properties until item selected)
+    lv_obj_add_state(btnDelete, LV_STATE_DISABLED);
+    lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
+
+    // Create logo-specific buttons
+    createLogoSpecificButtons();
+}
+
+void FileExplorerManager::setupEventHandlers() {
+    // Setup event handlers for main action buttons
     lv_obj_add_event_cb(btnNewFolder, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             unsigned long currentTime = Hardware::Device::getMillis();
@@ -628,49 +696,34 @@ void FileExplorerManager::createDynamicUI() {
             }
         } }, LV_EVENT_CLICKED, nullptr);
 
-    // Create other buttons
-    btnRefresh = lv_button_create(actionPanel);
-    lv_obj_t* lblRefresh = lv_label_create(btnRefresh);
-    lv_label_set_text(lblRefresh, LV_SYMBOL_REFRESH);
     lv_obj_add_event_cb(btnRefresh, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             FileExplorerManager::getInstance().onRefreshClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
-    btnProperties = lv_button_create(actionPanel);
-    lv_obj_t* lblProperties = lv_label_create(btnProperties);
-    lv_label_set_text(lblProperties, "Info");
     lv_obj_add_event_cb(btnProperties, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             FileExplorerManager::getInstance().onPropertiesClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
-    btnDelete = lv_button_create(actionPanel);
-    lv_obj_t* lblDelete = lv_label_create(btnDelete);
-    lv_label_set_text(lblDelete, LV_SYMBOL_TRASH);
     lv_obj_add_event_cb(btnDelete, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             FileExplorerManager::getInstance().onDeleteClicked();
         } }, LV_EVENT_CLICKED, nullptr);
 
-    // Initialize button states (disable delete and properties until item selected)
-    lv_obj_add_state(btnDelete, LV_STATE_DISABLED);
-    lv_obj_add_state(btnProperties, LV_STATE_DISABLED);
-
-    // Always create the Logos navigation button in main action panel
-    btnNavigateLogos = lv_button_create(actionPanel);
-    lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
-    lv_label_set_text(lblNavigateLogos, "Logos");
     lv_obj_add_event_cb(btnNavigateLogos, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             FileExplorerManager::getInstance().navigateToLogosRoot();
         } }, LV_EVENT_CLICKED, nullptr);
-
-    // Always create logo-specific buttons - they will be shown/hidden dynamically
-    createLogoSpecificButtons();
 }
 
-void FileExplorerManager::destroyDynamicUI() {
+void FileExplorerManager::destroyPersistentUI() {
+    if (!persistentUICreated) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Destroying persistent File Explorer UI");
+
     // Remove event callbacks before destroying objects
     if (btnNewFolder) {
         lv_obj_remove_event_cb(btnNewFolder, nullptr);
@@ -683,6 +736,9 @@ void FileExplorerManager::destroyDynamicUI() {
     }
     if (btnDelete) {
         lv_obj_remove_event_cb(btnDelete, nullptr);
+    }
+    if (btnNavigateLogos) {
+        lv_obj_remove_event_cb(btnNavigateLogos, nullptr);
     }
 
     // Remove logo-specific event callbacks
@@ -700,9 +756,6 @@ void FileExplorerManager::destroyDynamicUI() {
     }
     if (btnLogoPreview) {
         lv_obj_remove_event_cb(btnLogoPreview, nullptr);
-    }
-    if (btnNavigateLogos) {
-        lv_obj_remove_event_cb(btnNavigateLogos, nullptr);
     }
 
     // Clean up modal first
@@ -733,6 +786,7 @@ void FileExplorerManager::destroyDynamicUI() {
     btnRefresh = nullptr;
     btnProperties = nullptr;
     btnDelete = nullptr;
+    btnNavigateLogos = nullptr;
 
     // Reset logo-specific pointers
     btnLogoAssign = nullptr;
@@ -740,7 +794,6 @@ void FileExplorerManager::destroyDynamicUI() {
     btnLogoVerify = nullptr;
     btnLogoPatterns = nullptr;
     btnLogoPreview = nullptr;
-    btnNavigateLogos = nullptr;
 
     inputDialog = nullptr;
     confirmDialog = nullptr;
@@ -751,7 +804,8 @@ void FileExplorerManager::destroyDynamicUI() {
     patternManagementDialog = nullptr;
     logoPreviewDialog = nullptr;
 
-    uiCreated = false;
+    persistentUICreated = false;
+    ESP_LOGI(TAG, "Persistent File Explorer UI destroyed");
 }
 
 bool FileExplorerManager::loadDirectory(const String& path) {
@@ -2242,6 +2296,137 @@ void FileExplorerManager::showLogoPreview(const FileItem* item) {
         } }, LV_EVENT_CLICKED, nullptr);
 
     ESP_LOGI(TAG, "Logo preview opened successfully");
+}
+
+// =============================================================================
+// NAVIGATION HISTORY AND STATE MANAGEMENT
+// =============================================================================
+
+bool FileExplorerManager::canNavigateBack() const {
+    return !navigationHistory.empty();
+}
+
+bool FileExplorerManager::navigateBack() {
+    if (navigationHistory.empty()) {
+        ESP_LOGW(TAG, "No navigation history available");
+        return false;
+    }
+
+    NavigationState prevState = popNavigationState();
+
+    ESP_LOGI(TAG, "Navigating back to: %s", prevState.path.c_str());
+
+    // Load the previous directory without saving current state
+    if (loadDirectory(prevState.path)) {
+        currentPath = prevState.path;
+
+        // Restore previous UI state
+        currentScrollPosition = prevState.scrollPosition;
+        lastSelectedItemName = prevState.selectedItemName;
+
+        updateContent();
+        restoreUIState();
+
+        return true;
+    }
+
+    return false;
+}
+
+void FileExplorerManager::clearNavigationHistory() {
+    navigationHistory.clear();
+    ESP_LOGI(TAG, "Navigation history cleared");
+}
+
+void FileExplorerManager::saveCurrentState() {
+    if (!fileList) {
+        return;
+    }
+
+    // Save current scroll position
+    currentScrollPosition = lv_obj_get_scroll_y(fileList);
+
+    // Save current selection
+    if (selectedItem) {
+        lastSelectedItemName = selectedItem->name;
+    } else {
+        lastSelectedItemName = "";
+    }
+
+    ESP_LOGD(TAG, "Saved UI state - scroll: %d, selected: %s",
+             currentScrollPosition, lastSelectedItemName.c_str());
+}
+
+void FileExplorerManager::preserveUIState() {
+    saveCurrentState();
+}
+
+void FileExplorerManager::restoreUIState() {
+    if (!fileList) {
+        return;
+    }
+
+    // Restore scroll position
+    lv_obj_scroll_to_y(fileList, currentScrollPosition, LV_ANIM_OFF);
+
+    // Restore selection if the item still exists
+    if (!lastSelectedItemName.isEmpty()) {
+        // Find and select the previously selected item
+        for (size_t i = 0; i < currentItems.size(); i++) {
+            if (currentItems[i].name == lastSelectedItemName) {
+                // Find the corresponding UI list item
+                uint32_t childCount = lv_obj_get_child_count(fileList);
+                for (uint32_t j = 0; j < childCount; j++) {
+                    lv_obj_t* listItem = lv_obj_get_child(fileList, j);
+                    int index = (int)(intptr_t)lv_obj_get_user_data(listItem);
+
+                    if (index == (int)i) {
+                        // Restore selection
+                        selectedItem = &currentItems[i];
+                        selectedListItem = listItem;
+                        lv_obj_set_style_bg_color(listItem, lv_color_make(200, 220, 255), LV_PART_MAIN);
+                        updateButtonStates();
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    ESP_LOGD(TAG, "Restored UI state - scroll: %d, selected: %s",
+             currentScrollPosition, lastSelectedItemName.c_str());
+}
+
+void FileExplorerManager::pushNavigationState(const String& path) {
+    NavigationState state;
+    state.path = path;
+    state.scrollPosition = currentScrollPosition;
+    state.selectedItemName = lastSelectedItemName;
+
+    navigationHistory.push_back(state);
+
+    // Limit history size
+    if (navigationHistory.size() > MAX_HISTORY_SIZE) {
+        navigationHistory.erase(navigationHistory.begin());
+    }
+
+    ESP_LOGD(TAG, "Pushed navigation state: %s (history size: %d)",
+             path.c_str(), navigationHistory.size());
+}
+
+NavigationState FileExplorerManager::popNavigationState() {
+    if (navigationHistory.empty()) {
+        return NavigationState();
+    }
+
+    NavigationState state = navigationHistory.back();
+    navigationHistory.pop_back();
+
+    ESP_LOGD(TAG, "Popped navigation state: %s (history size: %d)",
+             state.path.c_str(), navigationHistory.size());
+
+    return state;
 }
 
 }  // namespace FileExplorer
