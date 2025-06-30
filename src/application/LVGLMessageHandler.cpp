@@ -31,6 +31,7 @@
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "../display/DisplayManager.h"
+#include "../ui/UniversalDialog.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 #include <functional>
@@ -740,221 +741,83 @@ static void handleHideStateOverview(const LVGLMessage_t *msg) {
 }
 
 static void handleFormatSDRequest(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "SD Format: Showing confirmation dialog");
+    ESP_LOGI(TAG, "SD Format: Showing confirmation dialog using Universal Dialog");
 
-    // Clean up any existing format dialog first
-    if (format_dialog && lv_obj_is_valid(format_dialog)) {
-        lv_obj_del(format_dialog);
-        format_dialog = NULL;
-    }
-
-    // Create the confirmation dialog
-    lv_obj_t *currentScreen = lv_scr_act();
-    if (currentScreen) {
-        // Create main dialog container
-        format_dialog = lv_obj_create(currentScreen);
-        lv_obj_set_size(format_dialog, 450, 250);
-        lv_obj_set_align(format_dialog, LV_ALIGN_CENTER);
-
-        // Style the dialog
-        lv_obj_set_style_bg_color(format_dialog, lv_color_hex(0x331100), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(format_dialog, 250, LV_PART_MAIN);
-        lv_obj_set_style_border_color(format_dialog, lv_color_hex(0xFF6600), LV_PART_MAIN);
-        lv_obj_set_style_border_width(format_dialog, 3, LV_PART_MAIN);
-        lv_obj_set_style_radius(format_dialog, 20, LV_PART_MAIN);
-        lv_obj_set_style_shadow_width(format_dialog, 30, LV_PART_MAIN);
-        lv_obj_set_style_shadow_opa(format_dialog, 200, LV_PART_MAIN);
-
-        // Create warning icon
-        lv_obj_t *warning_icon = lv_label_create(format_dialog);
-        lv_label_set_text(warning_icon, "WARNING");
-        lv_obj_set_align(warning_icon, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(warning_icon, 15);
-        lv_obj_set_style_text_font(warning_icon, &lv_font_montserrat_16, LV_PART_MAIN);
-        lv_obj_set_style_text_color(warning_icon, lv_color_hex(0xFF6600), LV_PART_MAIN);
-
-        // Create title label
-        lv_obj_t *title_label = lv_label_create(format_dialog);
-        lv_label_set_text(title_label, "FORMAT SD CARD");
-        lv_obj_set_align(title_label, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(title_label, 50);
-        lv_obj_set_style_text_color(title_label, lv_color_hex(0xFF6600), LV_PART_MAIN);
-        lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, LV_PART_MAIN);
-
-        // Create warning message
-        lv_obj_t *message_label = lv_label_create(format_dialog);
-        lv_label_set_text(message_label,
-                          "*** WARNING ***\n\n"
-                          "This will PERMANENTLY ERASE\n"
-                          "ALL DATA on the SD card!\n\n"
-                          "This action CANNOT be undone.\n"
-                          "Are you absolutely sure?");
-        lv_obj_set_align(message_label, LV_ALIGN_CENTER);
-        lv_obj_set_y(message_label, -10);
-        lv_obj_set_style_text_color(message_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(message_label, &lv_font_montserrat_12, LV_PART_MAIN);
-        lv_obj_set_style_text_align(message_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-        // Create button container
-        lv_obj_t *btn_container = lv_obj_create(format_dialog);
-        lv_obj_remove_style_all(btn_container);
-        lv_obj_set_size(btn_container, 400, 50);
-        lv_obj_set_align(btn_container, LV_ALIGN_BOTTOM_MID);
-        lv_obj_set_y(btn_container, -15);
-        lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(btn_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-        // Create CANCEL button
-        lv_obj_t *cancel_btn = lv_btn_create(btn_container);
-        lv_obj_set_size(cancel_btn, 120, 40);
-        lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x666666), LV_PART_MAIN);
-
-        lv_obj_t *cancel_label = lv_label_create(cancel_btn);
-        lv_label_set_text(cancel_label, "CANCEL");
-        lv_obj_center(cancel_label);
-        lv_obj_set_style_text_color(cancel_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(cancel_label, &lv_font_montserrat_14, LV_PART_MAIN);
-
-        lv_obj_add_event_cb(cancel_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "SD Format: Cancelled by user");
-                // Just hide the dialog
-                if (format_dialog && lv_obj_is_valid(format_dialog)) {
-                    lv_obj_del(format_dialog);
-                    format_dialog = NULL;
-                }
-            } }, LV_EVENT_CLICKED, NULL);
-
-        // Create CONFIRM button
-        lv_obj_t *confirm_btn = lv_btn_create(btn_container);
-        lv_obj_set_size(confirm_btn, 120, 40);
-        lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(0xFF3333), LV_PART_MAIN);
-
-        lv_obj_t *confirm_label = lv_label_create(confirm_btn);
-        lv_label_set_text(confirm_label, "FORMAT");
-        lv_obj_center(confirm_label);
-        lv_obj_set_style_text_color(confirm_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(confirm_label, &lv_font_montserrat_14, LV_PART_MAIN);
-
-        lv_obj_add_event_cb(confirm_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "SD Format: Confirmed by user - starting format");
-                confirmSDFormat();
-            } }, LV_EVENT_CLICKED, NULL);
-
-        ESP_LOGI(TAG, "SD Format: Confirmation dialog created successfully");
-    } else {
-        ESP_LOGE(TAG, "SD Format: No current screen available for dialog");
-    }
+    // Use the new Universal Dialog system for SD format confirmation
+    UI::Dialog::UniversalDialog::showWarning(
+        "FORMAT SD CARD",
+        "*** WARNING ***\n\n"
+        "This will PERMANENTLY ERASE\n"
+        "ALL DATA on the SD card!\n\n"
+        "This action CANNOT be undone.\n"
+        "Are you absolutely sure?",
+        []() {
+            // Confirmed - start format
+            ESP_LOGI(TAG, "SD Format: Confirmed by user - starting format");
+            confirmSDFormat();
+        },
+        []() {
+            // Cancelled
+            ESP_LOGI(TAG, "SD Format: Cancelled by user");
+        },
+        UI::Dialog::DialogSize::MEDIUM);
 }
 
 // Forward declaration for the SD format task
 static void sdFormatTask(void *parameter);
 
 static void handleFormatSDConfirm(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "SD Format: Starting format process");
+    ESP_LOGI(TAG, "SD Format: Starting format process using Universal Dialog");
 
-    // Hide the confirmation dialog and show progress
-    if (format_dialog && lv_obj_is_valid(format_dialog)) {
-        lv_obj_del(format_dialog);
-        format_dialog = NULL;
-    }
+    // Use Universal Dialog system for progress dialog
+    UI::Dialog::ProgressConfig progressConfig;
+    progressConfig.title = "FORMATTING SD CARD";
+    progressConfig.message = "Initializing format...";
+    progressConfig.value = 0;
+    progressConfig.max = 100;
+    progressConfig.indeterminate = false;
+    progressConfig.cancellable = false;  // Don't allow cancellation during format
 
-    // Create progress dialog
-    lv_obj_t *currentScreen = lv_scr_act();
-    if (currentScreen) {
-        // Create main progress dialog container
-        format_dialog = lv_obj_create(currentScreen);
-        lv_obj_set_size(format_dialog, 400, 200);
-        lv_obj_set_align(format_dialog, LV_ALIGN_CENTER);
+    UI::Dialog::UniversalDialog::showProgress(progressConfig, UI::Dialog::DialogSize::MEDIUM);
 
-        // Style the dialog
-        lv_obj_set_style_bg_color(format_dialog, lv_color_hex(0x002244), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(format_dialog, 250, LV_PART_MAIN);
-        lv_obj_set_style_border_color(format_dialog, lv_color_hex(0x0088FF), LV_PART_MAIN);
-        lv_obj_set_style_border_width(format_dialog, 3, LV_PART_MAIN);
-        lv_obj_set_style_radius(format_dialog, 20, LV_PART_MAIN);
+    ESP_LOGI(TAG, "SD Format: Progress dialog created, starting actual format task");
 
-        // Create title label
-        lv_obj_t *title_label = lv_label_create(format_dialog);
-        lv_label_set_text(title_label, "FORMATTING SD CARD");
-        lv_obj_set_align(title_label, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(title_label, 20);
-        lv_obj_set_style_text_color(title_label, lv_color_hex(0x00CCFF), LV_PART_MAIN);
-        lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    // Start the actual SD format process in a separate task
+    xTaskCreate(sdFormatTask, "SDFormatTask", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
 
-        // Create progress bar
-        format_progress_bar = lv_bar_create(format_dialog);
-        lv_obj_set_size(format_progress_bar, 300, 20);
-        lv_obj_set_align(format_progress_bar, LV_ALIGN_CENTER);
-        lv_obj_set_y(format_progress_bar, -10);
-        lv_bar_set_value(format_progress_bar, 0, LV_ANIM_OFF);
-
-        // Create status label
-        format_status_label = lv_label_create(format_dialog);
-        lv_label_set_text(format_status_label, "Initializing format...");
-        lv_obj_set_align(format_status_label, LV_ALIGN_BOTTOM_MID);
-        lv_obj_set_y(format_status_label, -20);
-        lv_obj_set_style_text_color(format_status_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(format_status_label, &lv_font_montserrat_12, LV_PART_MAIN);
-
-        ESP_LOGI(TAG, "SD Format: Progress dialog created, starting actual format task");
-
-        // Start the actual SD format process in a separate task
-        xTaskCreate(sdFormatTask, "SDFormatTask", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
-
-        // Initial progress update
-        updateSDFormatProgress(5, "Starting format operation...");
-    }
+    // Initial progress update
+    updateSDFormatProgress(5, "Starting format operation...");
 }
 
 static void handleFormatSDProgress(const LVGLMessage_t *msg) {
     const auto &data = msg->data.sd_format;
     ESP_LOGI(TAG, "SD Format: Progress update - %d%% - %s", data.progress, data.message);
 
-    if (format_progress_bar && lv_obj_is_valid(format_progress_bar)) {
-        lv_bar_set_value(format_progress_bar, data.progress, LV_ANIM_ON);
-    }
-
-    if (format_status_label && lv_obj_is_valid(format_status_label)) {
-        lv_label_set_text(format_status_label, data.message);
-    }
+    // Update progress using Universal Dialog system
+    UI::Dialog::UniversalDialog::updateProgress(data.progress, data.message);
 }
 
 static void handleFormatSDComplete(const LVGLMessage_t *msg) {
     const auto &data = msg->data.sd_format;
     ESP_LOGI(TAG, "SD Format: Complete - Success: %s - %s", data.success ? "YES" : "NO", data.message);
 
-    // Update the dialog to show completion
-    if (format_progress_bar && lv_obj_is_valid(format_progress_bar)) {
-        lv_bar_set_value(format_progress_bar, data.success ? 100 : 0, LV_ANIM_ON);
-        if (data.success) {
-            lv_obj_set_style_bg_color(format_progress_bar, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
-        } else {
-            lv_obj_set_style_bg_color(format_progress_bar, lv_color_hex(0xFF0000), LV_PART_INDICATOR);
-        }
-    }
+    // Close the progress dialog and show completion status
+    UI::Dialog::UniversalDialog::closeDialog();
 
-    if (format_status_label && lv_obj_is_valid(format_status_label)) {
-        lv_label_set_text(format_status_label, data.message);
-        if (data.success) {
-            lv_obj_set_style_text_color(format_status_label, lv_color_hex(0x00FF00), LV_PART_MAIN);
-        } else {
-            lv_obj_set_style_text_color(format_status_label, lv_color_hex(0xFF0000), LV_PART_MAIN);
-        }
+    // Show completion dialog based on success/failure
+    if (data.success) {
+        UI::Dialog::UniversalDialog::showInfo(
+            "Format Complete",
+            data.message,
+            nullptr,
+            UI::Dialog::DialogSize::MEDIUM);
+    } else {
+        UI::Dialog::UniversalDialog::showError(
+            "Format Failed",
+            data.message,
+            nullptr,
+            UI::Dialog::DialogSize::MEDIUM);
     }
-
-    // Auto-close the dialog after 3 seconds
-    lv_timer_create([](lv_timer_t *timer) {
-        if (format_dialog && lv_obj_is_valid(format_dialog)) {
-            lv_obj_del(format_dialog);
-            format_dialog = NULL;
-            format_progress_bar = NULL;
-            format_status_label = NULL;
-        }
-        lv_timer_delete(timer);
-    },
-                    3000, NULL);
 }
 
 // SD Format Task Implementation
