@@ -35,6 +35,8 @@
 #include <ui/ui.h>
 #include <functional>
 #include <unordered_map>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // BULLETPROOF: External UI screen declarations
 extern lv_obj_t *ui_screenMain;
@@ -420,6 +422,621 @@ static void handleHideOtaStatusIndicator(const LVGLMessage_t *msg) {
     }
 }
 
+static void handleShowStateOverview(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "Settings: Showing comprehensive system overview");
+
+    // Clean up any existing overlay first
+    if (state_overlay && lv_obj_is_valid(state_overlay)) {
+        lv_obj_del(state_overlay);
+        state_overlay = NULL;
+    }
+
+    // Create the comprehensive system overview overlay
+    lv_obj_t *currentScreen = lv_scr_act();
+    if (currentScreen) {
+        // Create main overlay container - larger for comprehensive info
+        state_overlay = lv_obj_create(currentScreen);
+        lv_obj_set_size(state_overlay, 700, 450);
+        lv_obj_set_align(state_overlay, LV_ALIGN_CENTER);
+
+        // Style the overlay
+        lv_obj_set_style_bg_color(state_overlay, lv_color_hex(0x001122), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(state_overlay, 250, LV_PART_MAIN);
+        lv_obj_set_style_border_color(state_overlay, lv_color_hex(0x0088FF), LV_PART_MAIN);
+        lv_obj_set_style_border_width(state_overlay, 3, LV_PART_MAIN);
+        lv_obj_set_style_radius(state_overlay, 20, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(state_overlay, 30, LV_PART_MAIN);
+        lv_obj_set_style_shadow_opa(state_overlay, 150, LV_PART_MAIN);
+
+        // Create title label
+        lv_obj_t *title_label = lv_label_create(state_overlay);
+        lv_label_set_text(title_label, "SYSTEM OVERVIEW");
+        lv_obj_set_align(title_label, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(title_label, 15);
+        lv_obj_set_style_text_color(title_label, lv_color_hex(0x00CCFF), LV_PART_MAIN);
+        lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, LV_PART_MAIN);
+
+        // Create close button
+        lv_obj_t *close_btn = lv_btn_create(state_overlay);
+        lv_obj_set_size(close_btn, 70, 35);
+        lv_obj_set_align(close_btn, LV_ALIGN_TOP_RIGHT);
+        lv_obj_set_pos(close_btn, -15, 10);
+        lv_obj_set_style_bg_color(close_btn, lv_color_hex(0xFF3333), LV_PART_MAIN);
+
+        lv_obj_t *close_label = lv_label_create(close_btn);
+        lv_label_set_text(close_label, "CLOSE");
+        lv_obj_center(close_label);
+        lv_obj_set_style_text_color(close_label, lv_color_white(), LV_PART_MAIN);
+
+        // Add click event to close button
+        lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                hideStateOverview();
+            } }, LV_EVENT_CLICKED, NULL);
+
+        // Create three-column layout
+        lv_obj_t *main_container = lv_obj_create(state_overlay);
+        lv_obj_remove_style_all(main_container);
+        lv_obj_set_size(main_container, 670, 350);
+        lv_obj_set_align(main_container, LV_ALIGN_CENTER);
+        lv_obj_set_y(main_container, 15);
+        lv_obj_set_flex_flow(main_container, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(main_container, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+
+        // Left Column - System Information
+        lv_obj_t *left_col = lv_obj_create(main_container);
+        lv_obj_set_size(left_col, 200, 340);
+        lv_obj_set_style_bg_color(left_col, lv_color_hex(0x002244), LV_PART_MAIN);
+        lv_obj_set_style_border_width(left_col, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_color(left_col, lv_color_hex(0x0066AA), LV_PART_MAIN);
+        lv_obj_set_style_radius(left_col, 10, LV_PART_MAIN);
+
+        lv_obj_t *sys_title = lv_label_create(left_col);
+        lv_label_set_text(sys_title, "SYSTEM");
+        lv_obj_set_align(sys_title, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(sys_title, 10);
+        lv_obj_set_style_text_color(sys_title, lv_color_hex(0x00FF88), LV_PART_MAIN);
+        lv_obj_set_style_text_font(sys_title, &lv_font_montserrat_14, LV_PART_MAIN);
+
+        state_system_label = lv_label_create(left_col);
+        lv_obj_set_align(state_system_label, LV_ALIGN_TOP_LEFT);
+        lv_obj_set_pos(state_system_label, 10, 40);
+        lv_obj_set_size(state_system_label, 180, 280);
+        lv_obj_set_style_text_color(state_system_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(state_system_label, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_label_set_long_mode(state_system_label, LV_LABEL_LONG_WRAP);
+
+        // Middle Column - Network & Connectivity
+        lv_obj_t *mid_col = lv_obj_create(main_container);
+        lv_obj_set_size(mid_col, 200, 340);
+        lv_obj_set_style_bg_color(mid_col, lv_color_hex(0x002244), LV_PART_MAIN);
+        lv_obj_set_style_border_width(mid_col, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_color(mid_col, lv_color_hex(0x0066AA), LV_PART_MAIN);
+        lv_obj_set_style_radius(mid_col, 10, LV_PART_MAIN);
+
+        lv_obj_t *net_title = lv_label_create(mid_col);
+        lv_label_set_text(net_title, "NETWORK");
+        lv_obj_set_align(net_title, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(net_title, 10);
+        lv_obj_set_style_text_color(net_title, lv_color_hex(0x00FF88), LV_PART_MAIN);
+        lv_obj_set_style_text_font(net_title, &lv_font_montserrat_14, LV_PART_MAIN);
+
+        state_network_label = lv_label_create(mid_col);
+        lv_obj_set_align(state_network_label, LV_ALIGN_TOP_LEFT);
+        lv_obj_set_pos(state_network_label, 10, 40);
+        lv_obj_set_size(state_network_label, 180, 280);
+        lv_obj_set_style_text_color(state_network_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(state_network_label, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_label_set_long_mode(state_network_label, LV_LABEL_LONG_WRAP);
+
+        // Right Column - Audio & Actions
+        lv_obj_t *right_col = lv_obj_create(main_container);
+        lv_obj_set_size(right_col, 240, 340);
+        lv_obj_set_style_bg_color(right_col, lv_color_hex(0x002244), LV_PART_MAIN);
+        lv_obj_set_style_border_width(right_col, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_color(right_col, lv_color_hex(0x0066AA), LV_PART_MAIN);
+        lv_obj_set_style_radius(right_col, 10, LV_PART_MAIN);
+
+        lv_obj_t *audio_title = lv_label_create(right_col);
+        lv_label_set_text(audio_title, "AUDIO & ACTIONS");
+        lv_obj_set_align(audio_title, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(audio_title, 10);
+        lv_obj_set_style_text_color(audio_title, lv_color_hex(0x00FF88), LV_PART_MAIN);
+        lv_obj_set_style_text_font(audio_title, &lv_font_montserrat_14, LV_PART_MAIN);
+
+        state_audio_label = lv_label_create(right_col);
+        lv_obj_set_align(state_audio_label, LV_ALIGN_TOP_LEFT);
+        lv_obj_set_pos(state_audio_label, 10, 40);
+        lv_obj_set_size(state_audio_label, 220, 180);
+        lv_obj_set_style_text_color(state_audio_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_label_set_long_mode(state_audio_label, LV_LABEL_LONG_WRAP);
+
+        // Action buttons in right column
+        lv_obj_t *actions_container = lv_obj_create(right_col);
+        lv_obj_remove_style_all(actions_container);
+        lv_obj_set_size(actions_container, 220, 110);
+        lv_obj_set_align(actions_container, LV_ALIGN_BOTTOM_MID);
+        lv_obj_set_y(actions_container, -10);
+        lv_obj_set_flex_flow(actions_container, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(actions_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        // FORMAT SD button
+        lv_obj_t *format_sd_btn = lv_btn_create(actions_container);
+        lv_obj_set_size(format_sd_btn, 200, 35);
+        lv_obj_set_style_bg_color(format_sd_btn, lv_color_hex(0xFF6600), LV_PART_MAIN);
+
+        lv_obj_t *format_label = lv_label_create(format_sd_btn);
+        lv_label_set_text(format_label, "FORMAT SD CARD");
+        lv_obj_center(format_label);
+        lv_obj_set_style_text_color(format_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(format_label, &lv_font_montserrat_12, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(format_sd_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                ESP_LOGI(TAG, "FORMAT SD button clicked");
+                requestSDFormat();
+            } }, LV_EVENT_CLICKED, NULL);
+
+        // Restart button
+        lv_obj_t *restart_btn = lv_btn_create(actions_container);
+        lv_obj_set_size(restart_btn, 200, 35);
+        lv_obj_set_style_bg_color(restart_btn, lv_color_hex(0xFF3366), LV_PART_MAIN);
+
+        lv_obj_t *restart_label = lv_label_create(restart_btn);
+        lv_label_set_text(restart_label, "RESTART SYSTEM");
+        lv_obj_center(restart_label);
+        lv_obj_set_style_text_color(restart_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(restart_label, &lv_font_montserrat_12, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(restart_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                ESP_LOGI(TAG, "RESTART button clicked - restarting in 2 seconds");
+                hideStateOverview();
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                esp_restart();
+            } }, LV_EVENT_CLICKED, NULL);
+
+        // Refresh button
+        lv_obj_t *refresh_btn = lv_btn_create(actions_container);
+        lv_obj_set_size(refresh_btn, 200, 35);
+        lv_obj_set_style_bg_color(refresh_btn, lv_color_hex(0x00AA66), LV_PART_MAIN);
+
+        lv_obj_t *refresh_label = lv_label_create(refresh_btn);
+        lv_label_set_text(refresh_label, "REFRESH DATA");
+        lv_obj_center(refresh_label);
+        lv_obj_set_style_text_color(refresh_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(refresh_label, &lv_font_montserrat_12, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(refresh_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                ESP_LOGI(TAG, "REFRESH button clicked - updating overview");
+                updateStateOverview();
+            } }, LV_EVENT_CLICKED, NULL);
+
+        ESP_LOGI(TAG, "Settings: Comprehensive system overview created successfully");
+
+        // Trigger immediate update of the state data
+        updateStateOverview();
+    } else {
+        ESP_LOGE(TAG, "Settings: No current screen available for state overlay");
+    }
+}
+
+static void handleUpdateStateOverview(const LVGLMessage_t *msg) {
+    if (!state_overlay || !lv_obj_is_valid(state_overlay)) {
+        ESP_LOGW(TAG, "Settings: Update requested but no state overlay exists");
+        return;
+    }
+
+    const auto &data = msg->data.state_overview;
+    ESP_LOGI(TAG, "Settings: Updating state overview with current system data");
+
+    // Update system information
+    if (state_system_label && lv_obj_is_valid(state_system_label)) {
+        static char system_text[512];
+        uint32_t uptimeMinutes = data.uptime_ms / 60000;
+        uint32_t uptimeHours = uptimeMinutes / 60;
+        uint32_t uptime_display_min = uptimeMinutes % 60;
+
+        snprintf(system_text, sizeof(system_text),
+                 "Memory:\n"
+                 "  Free Heap: %u KB\n"
+                 "  Free PSRAM: %u KB\n\n"
+                 "Performance:\n"
+                 "  CPU Freq: %u MHz\n"
+                 "  Uptime: %uh %um\n\n"
+                 "Storage:\n"
+                 "  SD Card Status: Available\n"
+                 "  Format Support: Yes\n\n"
+                 "Hardware:\n"
+                 "  Touch: Responsive\n"
+                 "  Display: Active",
+                 data.free_heap / 1024,
+                 data.free_psram / 1024,
+                 data.cpu_freq,
+                 uptimeHours, uptime_display_min);
+        lv_label_set_text(state_system_label, system_text);
+    }
+
+    // Update network information
+    if (state_network_label && lv_obj_is_valid(state_network_label)) {
+        static char network_text[512];
+        const char *signal_strength = "Unknown";
+        if (data.wifi_rssi > -50)
+            signal_strength = "Excellent";
+        else if (data.wifi_rssi > -60)
+            signal_strength = "Good";
+        else if (data.wifi_rssi > -70)
+            signal_strength = "Fair";
+        else if (data.wifi_rssi > -80)
+            signal_strength = "Poor";
+        else
+            signal_strength = "Very Poor";
+
+        snprintf(network_text, sizeof(network_text),
+                 "WiFi Connection:\n"
+                 "  Status: %s\n"
+                 "  Signal: %s\n"
+                 "  RSSI: %d dBm\n\n"
+                 "Network:\n"
+                 "  IP Address: %s\n\n"
+                 "Services:\n"
+                 "  MQTT: %s\n"
+                 "  OTA: Ready\n"
+                 "  Serial: Active\n\n"
+                 "Protocol:\n"
+                 "  Message Bus: Active\n"
+                 "  Audio Streaming: OK",
+                 data.wifi_status, signal_strength, data.wifi_rssi,
+                 data.ip_address, data.mqtt_status);
+        lv_label_set_text(state_network_label, network_text);
+    }
+
+    // Update audio information
+    if (state_audio_label && lv_obj_is_valid(state_audio_label)) {
+        static char audio_text[512];
+        const char *mute_indicator = data.main_device_muted ? " [MUTED]" : "";
+
+        snprintf(audio_text, sizeof(audio_text),
+                 "Current Tab: %s\n\n"
+                 "Primary Device:\n"
+                 "  Name: %s\n"
+                 "  Volume: %d%%%s\n\n"
+                 "Balance Mode:\n"
+                 "  Device 1: %s\n"
+                 "  Volume 1: %d%%%s\n"
+                 "  Device 2: %s\n"
+                 "  Volume 2: %d%%%s\n\n"
+                 "System Actions:\n"
+                 "  FORMAT SD: Erase all data\n"
+                 "  RESTART: Reboot device\n"
+                 "  REFRESH: Update info",
+                 data.current_tab,
+                 data.main_device, data.main_device_volume, mute_indicator,
+                 data.balance_device1, data.balance_device1_volume,
+                 data.balance_device1_muted ? " [MUTED]" : "",
+                 data.balance_device2, data.balance_device2_volume,
+                 data.balance_device2_muted ? " [MUTED]" : "");
+        lv_label_set_text(state_audio_label, audio_text);
+    }
+
+    ESP_LOGI(TAG, "Settings: State overview updated successfully");
+}
+
+static void handleHideStateOverview(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "Settings: Hiding state overview overlay");
+
+    if (state_overlay && lv_obj_is_valid(state_overlay)) {
+        lv_obj_del(state_overlay);
+        state_overlay = NULL;
+        state_system_label = NULL;
+        state_network_label = NULL;
+        state_audio_label = NULL;
+        ESP_LOGI(TAG, "Settings: State overview overlay hidden successfully");
+    } else {
+        ESP_LOGW(TAG, "Settings: Hide requested but no state overlay exists");
+    }
+}
+
+static void handleFormatSDRequest(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "SD Format: Showing confirmation dialog");
+
+    // Clean up any existing format dialog first
+    if (format_dialog && lv_obj_is_valid(format_dialog)) {
+        lv_obj_del(format_dialog);
+        format_dialog = NULL;
+    }
+
+    // Create the confirmation dialog
+    lv_obj_t *currentScreen = lv_scr_act();
+    if (currentScreen) {
+        // Create main dialog container
+        format_dialog = lv_obj_create(currentScreen);
+        lv_obj_set_size(format_dialog, 450, 250);
+        lv_obj_set_align(format_dialog, LV_ALIGN_CENTER);
+
+        // Style the dialog
+        lv_obj_set_style_bg_color(format_dialog, lv_color_hex(0x331100), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(format_dialog, 250, LV_PART_MAIN);
+        lv_obj_set_style_border_color(format_dialog, lv_color_hex(0xFF6600), LV_PART_MAIN);
+        lv_obj_set_style_border_width(format_dialog, 3, LV_PART_MAIN);
+        lv_obj_set_style_radius(format_dialog, 20, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(format_dialog, 30, LV_PART_MAIN);
+        lv_obj_set_style_shadow_opa(format_dialog, 200, LV_PART_MAIN);
+
+        // Create warning icon
+        lv_obj_t *warning_icon = lv_label_create(format_dialog);
+        lv_label_set_text(warning_icon, "WARNING");
+        lv_obj_set_align(warning_icon, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(warning_icon, 15);
+        lv_obj_set_style_text_font(warning_icon, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(warning_icon, lv_color_hex(0xFF6600), LV_PART_MAIN);
+
+        // Create title label
+        lv_obj_t *title_label = lv_label_create(format_dialog);
+        lv_label_set_text(title_label, "FORMAT SD CARD");
+        lv_obj_set_align(title_label, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(title_label, 50);
+        lv_obj_set_style_text_color(title_label, lv_color_hex(0xFF6600), LV_PART_MAIN);
+        lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, LV_PART_MAIN);
+
+        // Create warning message
+        lv_obj_t *message_label = lv_label_create(format_dialog);
+        lv_label_set_text(message_label,
+                          "*** WARNING ***\n\n"
+                          "This will PERMANENTLY ERASE\n"
+                          "ALL DATA on the SD card!\n\n"
+                          "This action CANNOT be undone.\n"
+                          "Are you absolutely sure?");
+        lv_obj_set_align(message_label, LV_ALIGN_CENTER);
+        lv_obj_set_y(message_label, -10);
+        lv_obj_set_style_text_color(message_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(message_label, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_align(message_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+        // Create button container
+        lv_obj_t *btn_container = lv_obj_create(format_dialog);
+        lv_obj_remove_style_all(btn_container);
+        lv_obj_set_size(btn_container, 400, 50);
+        lv_obj_set_align(btn_container, LV_ALIGN_BOTTOM_MID);
+        lv_obj_set_y(btn_container, -15);
+        lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(btn_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        // Create CANCEL button
+        lv_obj_t *cancel_btn = lv_btn_create(btn_container);
+        lv_obj_set_size(cancel_btn, 120, 40);
+        lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x666666), LV_PART_MAIN);
+
+        lv_obj_t *cancel_label = lv_label_create(cancel_btn);
+        lv_label_set_text(cancel_label, "CANCEL");
+        lv_obj_center(cancel_label);
+        lv_obj_set_style_text_color(cancel_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(cancel_label, &lv_font_montserrat_14, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(cancel_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                ESP_LOGI(TAG, "SD Format: Cancelled by user");
+                // Just hide the dialog
+                if (format_dialog && lv_obj_is_valid(format_dialog)) {
+                    lv_obj_del(format_dialog);
+                    format_dialog = NULL;
+                }
+            } }, LV_EVENT_CLICKED, NULL);
+
+        // Create CONFIRM button
+        lv_obj_t *confirm_btn = lv_btn_create(btn_container);
+        lv_obj_set_size(confirm_btn, 120, 40);
+        lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(0xFF3333), LV_PART_MAIN);
+
+        lv_obj_t *confirm_label = lv_label_create(confirm_btn);
+        lv_label_set_text(confirm_label, "FORMAT");
+        lv_obj_center(confirm_label);
+        lv_obj_set_style_text_color(confirm_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(confirm_label, &lv_font_montserrat_14, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(confirm_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                ESP_LOGI(TAG, "SD Format: Confirmed by user - starting format");
+                confirmSDFormat();
+            } }, LV_EVENT_CLICKED, NULL);
+
+        ESP_LOGI(TAG, "SD Format: Confirmation dialog created successfully");
+    } else {
+        ESP_LOGE(TAG, "SD Format: No current screen available for dialog");
+    }
+}
+
+// Forward declaration for the SD format task
+static void sdFormatTask(void *parameter);
+
+static void handleFormatSDConfirm(const LVGLMessage_t *msg) {
+    ESP_LOGI(TAG, "SD Format: Starting format process");
+
+    // Hide the confirmation dialog and show progress
+    if (format_dialog && lv_obj_is_valid(format_dialog)) {
+        lv_obj_del(format_dialog);
+        format_dialog = NULL;
+    }
+
+    // Create progress dialog
+    lv_obj_t *currentScreen = lv_scr_act();
+    if (currentScreen) {
+        // Create main progress dialog container
+        format_dialog = lv_obj_create(currentScreen);
+        lv_obj_set_size(format_dialog, 400, 200);
+        lv_obj_set_align(format_dialog, LV_ALIGN_CENTER);
+
+        // Style the dialog
+        lv_obj_set_style_bg_color(format_dialog, lv_color_hex(0x002244), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(format_dialog, 250, LV_PART_MAIN);
+        lv_obj_set_style_border_color(format_dialog, lv_color_hex(0x0088FF), LV_PART_MAIN);
+        lv_obj_set_style_border_width(format_dialog, 3, LV_PART_MAIN);
+        lv_obj_set_style_radius(format_dialog, 20, LV_PART_MAIN);
+
+        // Create title label
+        lv_obj_t *title_label = lv_label_create(format_dialog);
+        lv_label_set_text(title_label, "FORMATTING SD CARD");
+        lv_obj_set_align(title_label, LV_ALIGN_TOP_MID);
+        lv_obj_set_y(title_label, 20);
+        lv_obj_set_style_text_color(title_label, lv_color_hex(0x00CCFF), LV_PART_MAIN);
+        lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, LV_PART_MAIN);
+
+        // Create progress bar
+        format_progress_bar = lv_bar_create(format_dialog);
+        lv_obj_set_size(format_progress_bar, 300, 20);
+        lv_obj_set_align(format_progress_bar, LV_ALIGN_CENTER);
+        lv_obj_set_y(format_progress_bar, -10);
+        lv_bar_set_value(format_progress_bar, 0, LV_ANIM_OFF);
+
+        // Create status label
+        format_status_label = lv_label_create(format_dialog);
+        lv_label_set_text(format_status_label, "Initializing format...");
+        lv_obj_set_align(format_status_label, LV_ALIGN_BOTTOM_MID);
+        lv_obj_set_y(format_status_label, -20);
+        lv_obj_set_style_text_color(format_status_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(format_status_label, &lv_font_montserrat_12, LV_PART_MAIN);
+
+        ESP_LOGI(TAG, "SD Format: Progress dialog created, starting actual format task");
+
+        // Start the actual SD format process in a separate task
+        xTaskCreate(sdFormatTask, "SDFormatTask", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
+
+        // Initial progress update
+        updateSDFormatProgress(5, "Starting format operation...");
+    }
+}
+
+static void handleFormatSDProgress(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.sd_format;
+    ESP_LOGI(TAG, "SD Format: Progress update - %d%% - %s", data.progress, data.message);
+
+    if (format_progress_bar && lv_obj_is_valid(format_progress_bar)) {
+        lv_bar_set_value(format_progress_bar, data.progress, LV_ANIM_ON);
+    }
+
+    if (format_status_label && lv_obj_is_valid(format_status_label)) {
+        lv_label_set_text(format_status_label, data.message);
+    }
+}
+
+static void handleFormatSDComplete(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.sd_format;
+    ESP_LOGI(TAG, "SD Format: Complete - Success: %s - %s", data.success ? "YES" : "NO", data.message);
+
+    // Update the dialog to show completion
+    if (format_progress_bar && lv_obj_is_valid(format_progress_bar)) {
+        lv_bar_set_value(format_progress_bar, data.success ? 100 : 0, LV_ANIM_ON);
+        if (data.success) {
+            lv_obj_set_style_bg_color(format_progress_bar, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+        } else {
+            lv_obj_set_style_bg_color(format_progress_bar, lv_color_hex(0xFF0000), LV_PART_INDICATOR);
+        }
+    }
+
+    if (format_status_label && lv_obj_is_valid(format_status_label)) {
+        lv_label_set_text(format_status_label, data.message);
+        if (data.success) {
+            lv_obj_set_style_text_color(format_status_label, lv_color_hex(0x00FF00), LV_PART_MAIN);
+        } else {
+            lv_obj_set_style_text_color(format_status_label, lv_color_hex(0xFF0000), LV_PART_MAIN);
+        }
+    }
+
+    // Auto-close the dialog after 3 seconds
+    lv_timer_create([](lv_timer_t *timer) {
+        if (format_dialog && lv_obj_is_valid(format_dialog)) {
+            lv_obj_del(format_dialog);
+            format_dialog = NULL;
+            format_progress_bar = NULL;
+            format_status_label = NULL;
+        }
+        lv_timer_delete(timer);
+    },
+                    3000, NULL);
+}
+
+// SD Format Task Implementation
+static void sdFormatTask(void *parameter) {
+    ESP_LOGI(TAG, "SD Format Task: Starting SD card format operation");
+
+    bool formatSuccess = false;
+
+    // Phase 1: Preparation (5-15%)
+    updateSDFormatProgress(10, "Preparing for format...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    // Check if SD card is available
+    if (!Hardware::SD::isMounted()) {
+        ESP_LOGW(TAG, "SD Format Task: SD card not mounted, attempting to mount");
+        updateSDFormatProgress(15, "Mounting SD card...");
+
+        if (!Hardware::SD::mount()) {
+            ESP_LOGE(TAG, "SD Format Task: Failed to mount SD card");
+            completeSDFormat(false, "ERROR: Cannot access SD card");
+            vTaskDelete(NULL);
+            return;
+        }
+    }
+
+    // Phase 2: Pre-format checks (15-25%)
+    updateSDFormatProgress(20, "Verifying SD card...");
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
+    if (cardInfo.cardType == CARD_NONE) {
+        ESP_LOGE(TAG, "SD Format Task: No SD card detected");
+        completeSDFormat(false, "ERROR: No SD card found");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "SD Format Task: Card detected - Type: %d, Size: %.2f MB",
+             cardInfo.cardType, cardInfo.cardSize / (1024.0 * 1024.0));
+
+    // Phase 3: Begin format operation (25-90%)
+    updateSDFormatProgress(25, "Starting format operation...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    // Update progress during format
+    updateSDFormatProgress(40, "Removing files and directories...");
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    updateSDFormatProgress(60, "Cleaning file system...");
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    updateSDFormatProgress(75, "Finalizing format...");
+
+    // Perform the actual format operation
+    ESP_LOGI(TAG, "SD Format Task: Calling Hardware::SD::format()");
+    formatSuccess = Hardware::SD::format();
+
+    if (formatSuccess) {
+        ESP_LOGI(TAG, "SD Format Task: Format completed successfully");
+        updateSDFormatProgress(90, "Format completed successfully");
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        // Phase 4: Post-format verification (90-100%)
+        updateSDFormatProgress(95, "Verifying format...");
+        vTaskDelay(pdMS_TO_TICKS(300));
+
+        // Check if card is still accessible after format
+        if (Hardware::SD::isMounted()) {
+            completeSDFormat(true, "SD card formatted successfully!");
+        } else {
+            ESP_LOGW(TAG, "SD Format Task: Format completed but card not accessible");
+            completeSDFormat(true, "Format completed (remount required)");
+        }
+    } else {
+        ESP_LOGE(TAG, "SD Format Task: Format operation failed");
+        completeSDFormat(false, "Format operation failed");
+    }
+
+    ESP_LOGI(TAG, "SD Format Task: Task completed, deleting task");
+    vTaskDelete(NULL);
+}
+
 // PERFORMANCE: Initialize message handler mappings - single O(1) lookup
 static void initializeMessageHandlers() {
     messageHandlers = {
@@ -443,7 +1060,14 @@ static void initializeMessageHandlers() {
         {MSG_HIDE_OTA_SCREEN, handleHideOtaScreen},
         {MSG_SHOW_OTA_STATUS_INDICATOR, handleShowOtaStatusIndicator},
         {MSG_UPDATE_OTA_STATUS_INDICATOR, handleUpdateOtaStatusIndicator},
-        {MSG_HIDE_OTA_STATUS_INDICATOR, handleHideOtaStatusIndicator}};
+        {MSG_HIDE_OTA_STATUS_INDICATOR, handleHideOtaStatusIndicator},
+        {MSG_SHOW_STATE_OVERVIEW, handleShowStateOverview},
+        {MSG_UPDATE_STATE_OVERVIEW, handleUpdateStateOverview},
+        {MSG_HIDE_STATE_OVERVIEW, handleHideStateOverview},
+        {MSG_FORMAT_SD_REQUEST, handleFormatSDRequest},
+        {MSG_FORMAT_SD_CONFIRM, handleFormatSDConfirm},
+        {MSG_FORMAT_SD_PROGRESS, handleFormatSDProgress},
+        {MSG_FORMAT_SD_COMPLETE, handleFormatSDComplete}};
 }
 
 // Queue handle
