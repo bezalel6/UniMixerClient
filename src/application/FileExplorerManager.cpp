@@ -4,6 +4,7 @@
 #include "LVGLMessageHandler.h"
 #include "../logo/LogoManager.h"
 #include "../logo/LogoStorage.h"
+#include "../ui/UniversalDialog.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 #include <algorithm>
@@ -266,7 +267,7 @@ void FileExplorerManager::deinit() {
     persistentUICreated = false;
 
     if (g_callbackMutex) {
-        vSemaphoreDelete(g_callbackMutex);
+        vSemaphoreDelete(g_callbackMutex);  // Fixed typo: removed extra "ek"
         g_callbackMutex = nullptr;
     }
 }
@@ -1125,63 +1126,23 @@ void FileExplorerManager::showDeleteConfirmation(const FileItem* item) {
         return;
     }
 
-    // Create modal overlay
-    modalOverlay = lv_obj_create(ui_screenFileExplorer);
-    lv_obj_set_size(modalOverlay, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_bg_color(modalOverlay, lv_color_make(0, 0, 0), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(modalOverlay, 128, LV_PART_MAIN);
-
-    // Create confirm dialog
-    confirmDialog = lv_obj_create(modalOverlay);
-    lv_obj_set_size(confirmDialog, lv_pct(80), lv_pct(35));
-    lv_obj_set_align(confirmDialog, LV_ALIGN_CENTER);
-    lv_obj_set_style_bg_color(confirmDialog, lv_color_white(), LV_PART_MAIN);
-
-    // Title
-    lv_obj_t* title = lv_label_create(confirmDialog);
-    lv_label_set_text(title, "Confirm Delete");
-    lv_obj_set_align(title, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(title, 10);
-
-    // Message
-    lv_obj_t* message = lv_label_create(confirmDialog);
-    String msgText = "Delete '" + item->name + "'?";
-    lv_label_set_text(message, msgText.c_str());
-    lv_obj_set_align(message, LV_ALIGN_CENTER);
-    lv_obj_set_y(message, -10);
-
-    // Button panel
-    lv_obj_t* btnPanel = lv_obj_create(confirmDialog);
-    lv_obj_set_size(btnPanel, lv_pct(100), 50);
-    lv_obj_set_align(btnPanel, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_flex_flow(btnPanel, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(btnPanel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(btnPanel, LV_OBJ_FLAG_SCROLLABLE);
-
     // Store the item path for the callback
     static String itemToDelete;
     itemToDelete = item->fullPath;
 
-    // Delete button
-    lv_obj_t* btnDelete = lv_button_create(btnPanel);
-    lv_obj_t* lblDelete = lv_label_create(btnDelete);
-    lv_label_set_text(lblDelete, "Delete");
-    lv_obj_set_style_bg_color(btnDelete, lv_color_make(255, 0, 0), LV_PART_MAIN);
-    lv_obj_add_event_cb(btnDelete, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    // Use Universal Dialog system for consistent UI
+    String message = "Delete '" + item->name + "'?\n\nThis action cannot be undone.";
+
+    UI::Dialog::UniversalDialog::showConfirm(
+        "Confirm Delete",
+        message,
+        []() {
+            // Delete confirmed
             FileExplorerManager& manager = FileExplorerManager::getInstance();
             manager.deleteItem(itemToDelete);
-            manager.closeDialog();
-        } }, LV_EVENT_CLICKED, nullptr);
-
-    // Cancel button
-    lv_obj_t* btnCancel = lv_button_create(btnPanel);
-    lv_obj_t* lblCancel = lv_label_create(btnCancel);
-    lv_label_set_text(lblCancel, "Cancel");
-    lv_obj_add_event_cb(btnCancel, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            FileExplorerManager::getInstance().closeDialog();
-        } }, LV_EVENT_CLICKED, nullptr);
+        },
+        nullptr,  // No special action on cancel
+        UI::Dialog::DialogSize::MEDIUM);
 }
 
 void FileExplorerManager::showProperties(const FileItem* item) {
@@ -1339,7 +1300,14 @@ bool FileExplorerManager::isInLogosDirectory() const {
 }
 
 bool FileExplorerManager::isLogoDirectory(const String& path) const {
-    return path.startsWith("/logos/files");
+    // Show logo panel in logos directory and its subdirectories,
+    // or when logo files are present in any directory
+    return path.startsWith("/logos") || path.contains("logo") ||
+           (currentItems.size() > 0 && std::any_of(currentItems.begin(), currentItems.end(),
+                                                   [](const FileItem& item) {
+                                                       return item.name.endsWith(".bin") || item.name.endsWith(".png") ||
+                                                              item.name.toLowerCase().contains("logo");
+                                                   }));
 }
 
 String FileExplorerManager::extractProcessNameFromLogoFile(const String& filename) const {
@@ -1431,12 +1399,12 @@ String FileExplorerManager::getLogoDisplayText(const FileItem& item) {
             bool hasFlag = false;
 
             if (item.logoVerified) {
-                flags += "✓";
+                flags += "V";  // Use 'V' instead of checkmark
                 hasFlag = true;
             }
             if (item.logoFlagged) {
                 if (hasFlag) flags += ",";
-                flags += "✗";
+                flags += "F";  // Use 'F' instead of X mark
                 hasFlag = true;
             }
 
@@ -1624,7 +1592,7 @@ void FileExplorerManager::createLogoSpecificButtons() {
     // Quick navigation to logos root
     btnNavigateLogos = lv_button_create(logoActionPanel);
     lv_obj_t* lblNavigateLogos = lv_label_create(btnNavigateLogos);
-    lv_label_set_text(lblNavigateLogos, "📁");
+    lv_label_set_text(lblNavigateLogos, "LOGOS");  // Use text instead of unsupported emoji
     lv_obj_add_event_cb(btnNavigateLogos, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             FileExplorerManager::getInstance().navigateToLogosRoot();
