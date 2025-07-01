@@ -28,6 +28,7 @@
 #include "../hardware/NetworkManager.h"
 #include "../hardware/MqttManager.h"
 #include "../hardware/SDManager.h"
+#include "../hardware/OnDemandOTAManager.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "../display/DisplayManager.h"
@@ -547,15 +548,15 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
         state_audio_label = lv_label_create(right_col);
         lv_obj_set_align(state_audio_label, LV_ALIGN_TOP_LEFT);
         lv_obj_set_pos(state_audio_label, 10, 40);
-        lv_obj_set_size(state_audio_label, 220, 180);
+        lv_obj_set_size(state_audio_label, 220, 150);  // Reduced to make room for 4 buttons
         lv_obj_set_style_text_color(state_audio_label, lv_color_white(), LV_PART_MAIN);
         lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_12, LV_PART_MAIN);
         lv_label_set_long_mode(state_audio_label, LV_LABEL_LONG_WRAP);
 
-        // Action buttons in right column
+        // Action buttons in right column (expanded for 4 buttons)
         lv_obj_t *actions_container = lv_obj_create(right_col);
         lv_obj_remove_style_all(actions_container);
-        lv_obj_set_size(actions_container, 220, 110);
+        lv_obj_set_size(actions_container, 220, 140);  // Increased height for 4 buttons
         lv_obj_set_align(actions_container, LV_ALIGN_BOTTOM_MID);
         lv_obj_set_y(actions_container, -10);
         lv_obj_set_flex_flow(actions_container, LV_FLEX_FLOW_COLUMN);
@@ -563,7 +564,7 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
 
         // FORMAT SD button
         lv_obj_t *format_sd_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(format_sd_btn, 200, 35);
+        lv_obj_set_size(format_sd_btn, 200, 32);  // Standardized for 4 buttons
         lv_obj_set_style_bg_color(format_sd_btn, lv_color_hex(0xFF6600), LV_PART_MAIN);
 
         lv_obj_t *format_label = lv_label_create(format_sd_btn);
@@ -578,9 +579,64 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
                 requestSDFormat();
             } }, LV_EVENT_CLICKED, NULL);
 
+        // ENTER OTA MODE button
+        lv_obj_t *ota_mode_btn = lv_btn_create(actions_container);
+        lv_obj_set_size(ota_mode_btn, 200, 32);  // Slightly smaller for 4 buttons
+        lv_obj_set_style_bg_color(ota_mode_btn, lv_color_hex(0x3366FF), LV_PART_MAIN);
+
+        lv_obj_t *ota_label = lv_label_create(ota_mode_btn);
+        lv_label_set_text(ota_label, "ENTER OTA MODE");
+        lv_obj_center(ota_label);
+        lv_obj_set_style_text_color(ota_label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_font(ota_label, &lv_font_montserrat_12, LV_PART_MAIN);
+
+        lv_obj_add_event_cb(ota_mode_btn, [](lv_event_t *e) {
+            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+                ESP_LOGI(TAG, "ENTER OTA MODE button clicked - starting OTA mode");
+                
+                // Hide settings overlay first
+                hideStateOverview();
+                
+                // Show OTA screen with immediate feedback
+                showOtaScreen();
+                updateOtaScreenProgress(0, "Initializing OTA mode...");
+                
+                // Setup OTA callbacks for UI integration
+                Hardware::OnDemandOTA::OnDemandOTAManager::setStateCallback([](Hardware::OnDemandOTA::OTAState state, const char* message) {
+                    ESP_LOGI(TAG, "OTA State: %d - %s", (int)state, message ? message : "");
+                    updateOtaScreenProgress(Hardware::OnDemandOTA::OnDemandOTAManager::getProgress(), message ? message : "");
+                });
+                
+                Hardware::OnDemandOTA::OnDemandOTAManager::setProgressCallback([](uint8_t progress, const char* message) {
+                    ESP_LOGI(TAG, "OTA Progress: %d%% - %s", progress, message ? message : "");
+                    updateOtaScreenProgress(progress, message ? message : "");
+                });
+                
+                Hardware::OnDemandOTA::OnDemandOTAManager::setCompleteCallback([](Hardware::OnDemandOTA::OTAResult result, const char* message) {
+                    ESP_LOGI(TAG, "OTA Complete: %d - %s", (int)result, message ? message : "");
+                    if (result == Hardware::OnDemandOTA::OTA_RESULT_SUCCESS) {
+                        updateOtaScreenProgress(100, "OTA completed successfully! Restarting...");
+                        vTaskDelay(pdMS_TO_TICKS(2000));
+                        esp_restart();
+                    } else {
+                        updateOtaScreenProgress(0, message ? message : "OTA failed");
+                        vTaskDelay(pdMS_TO_TICKS(3000));
+                        hideOtaScreen();
+                    }
+                });
+                
+                // Start OTA mode
+                if (!Hardware::OnDemandOTA::OnDemandOTAManager::startOTAMode()) {
+                    ESP_LOGE(TAG, "Failed to start OTA mode");
+                    updateOtaScreenProgress(0, "Failed to start OTA mode");
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    hideOtaScreen();
+                }
+            } }, LV_EVENT_CLICKED, NULL);
+
         // Restart button
         lv_obj_t *restart_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(restart_btn, 200, 35);
+        lv_obj_set_size(restart_btn, 200, 32);  // Standardized for 4 buttons
         lv_obj_set_style_bg_color(restart_btn, lv_color_hex(0xFF3366), LV_PART_MAIN);
 
         lv_obj_t *restart_label = lv_label_create(restart_btn);
@@ -599,7 +655,7 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
 
         // Refresh button
         lv_obj_t *refresh_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(refresh_btn, 200, 35);
+        lv_obj_set_size(refresh_btn, 200, 32);  // Standardized for 4 buttons
         lv_obj_set_style_bg_color(refresh_btn, lv_color_hex(0x00AA66), LV_PART_MAIN);
 
         lv_obj_t *refresh_label = lv_label_create(refresh_btn);
@@ -710,6 +766,7 @@ static void handleUpdateStateOverview(const LVGLMessage_t *msg) {
                  "  Volume 2: %d%%%s\n\n"
                  "System Actions:\n"
                  "  FORMAT SD: Erase all data\n"
+                 "  OTA MODE: Update firmware\n"
                  "  RESTART: Reboot device\n"
                  "  REFRESH: Update info",
                  data.current_tab,
@@ -1061,6 +1118,11 @@ void processMessageQueue(lv_timer_t *timer) {
     if (processingTime > 30 || messagesProcessed >= maxMessages) {
         ESP_LOGD(TAG, "Processed %d messages in %ums (queue: %d→%d)",
                  messagesProcessed, processingTime, queueSize, uxQueueMessagesWaiting(lvglMessageQueue));
+    }
+
+    // Update OTA state machine if OTA is active
+    if (Hardware::OnDemandOTA::OnDemandOTAManager::isOTAActive()) {
+        Hardware::OnDemandOTA::OnDemandOTAManager::update();
     }
 
     // OPTIMIZED: Queue overflow protection

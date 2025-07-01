@@ -382,7 +382,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_align(ui_img, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_img, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_OVERFLOW_VISIBLE);     /// Flags
     lv_obj_remove_flag(ui_img, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_image_set_scale(ui_img, 50);
     lv_obj_set_style_bg_color(ui_img, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_img, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
