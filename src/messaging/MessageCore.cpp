@@ -181,7 +181,7 @@ void MessageCore::handleExternalMessage(const ExternalMessage& external) {
     }
 
     // Process external message (validation + conversion + routing)
-    processExternalMessage(external);
+    convertAndRouteExternal(external);
 }
 
 bool MessageCore::publishExternal(const ExternalMessage& message) {
@@ -224,8 +224,8 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
 
     // Send to all transports
     for (auto& [name, transport] : transports) {
-        if (transport.send) {
-            if (!transport.send(jsonPayload)) {
+        if (transport.sendRaw) {
+            if (!transport.sendRaw(jsonPayload)) {
                 ESP_LOGW(TAG, "Failed to send via transport: %s", name.c_str());
                 success = false;
             }
@@ -691,26 +691,25 @@ void MessageCore::routeInternalMessage(const InternalMessage& internal) {
              internal.shouldRouteToCore1() ? 1 : 0);
 }
 
-void MessageCore::logExternalMessage(const String& direction, const ExternalMessage& message) {
-    ESP_LOGD(TAG, "[%s-EXT] %s (%d bytes): %s",
-             direction.c_str(),
-             MessageProtocol::messageTypeToString(message.messageType),
-             message.rawPayload.length(),
-             (message.rawPayload.length() > Config::MESSAGE_LOG_TRUNCATE_LENGTH ? message.rawPayload.substring(0, Config::MESSAGE_LOG_TRUNCATE_LENGTH) + "..." : message.rawPayload).c_str());
+void MessageCore::logExternalMessage(const char* direction, const ExternalMessage& message) {
+    ESP_LOGD(TAG, "[%s-EXT] %s (device: %s)",
+             direction,
+             MessageProtocol::externalMessageTypeToString(message.messageType),
+             message.deviceId.c_str());
 }
 
-void MessageCore::logInternalMessage(const String& direction, const InternalMessage& message) {
+void MessageCore::logInternalMessage(const char* direction, const InternalMessage& message) {
     ESP_LOGD(TAG, "[%s-INT] %s (Core %d, Priority %d, Data %d bytes)",
-             direction.c_str(),
-             MessageProtocol::messageTypeToString(message.messageType),
+             direction,
+             MessageProtocol::internalMessageTypeToString(message.messageType),
              message.shouldRouteToCore1() ? 1 : 0,
              message.priority,
              message.dataSize);
 }
 
-// LEGACY: Log old message format
-void MessageCore::logMessage(const String& direction, const Message& message) {
-    ESP_LOGD(TAG, "[%s-LEGACY] %s: %s", direction.c_str(),
+// LEGACY: Log old message format (internal helper)
+void MessageCore::logLegacyMessage(const char* direction, const Message& message) {
+    ESP_LOGD(TAG, "[%s-LEGACY] %s: %s", direction,
              MessageProtocol::messageTypeToString(message.messageType),
              (message.payload.length() > Config::MESSAGE_LOG_TRUNCATE_LENGTH ? message.payload.substring(0, Config::MESSAGE_LOG_TRUNCATE_LENGTH) + "..." : message.payload).c_str());
 }
