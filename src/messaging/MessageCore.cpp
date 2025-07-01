@@ -25,24 +25,19 @@ bool MessageCore::init() {
         return true;
     }
 
-    ESP_LOGI(TAG, "Initializing MessageCore with type-based routing...");
+    ESP_LOGI(TAG, "Initializing MessageCore with dual architecture...");
 
-    // Clear any existing state - DUAL ARCHITECTURE
+    // Clear any existing state
     externalSubscriptions.clear();
     internalSubscriptions.clear();
     internalWildcardSubscribers.clear();
-
-    // LEGACY: Clear legacy subscriptions
-    legacyEnumSubscriptions.clear();
-    legacyStringSubscriptions.clear();
-    legacyWildcardSubscribers.clear();
-
     transports.clear();
 
     // Initialize MessageType registry for string<->enum conversion
-    MessageProtocol::MessageTypeRegistry::getInstance().init();
+    MessageProtocol::ExternalMessageTypeRegistry::getInstance().init();
+    MessageProtocol::InternalMessageTypeRegistry::getInstance().init();
 
-    // Reset statistics - DUAL ARCHITECTURE
+    // Reset statistics
     externalMessagesReceived = 0;
     externalMessagesPublished = 0;
     internalMessagesPublished = 0;
@@ -69,16 +64,10 @@ void MessageCore::deinit() {
         }
     }
 
-    // Clear all state - DUAL ARCHITECTURE
+    // Clear all state
     externalSubscriptions.clear();
     internalSubscriptions.clear();
     internalWildcardSubscribers.clear();
-
-    // LEGACY: Clear legacy subscriptions
-    legacyEnumSubscriptions.clear();
-    legacyStringSubscriptions.clear();
-    legacyWildcardSubscribers.clear();
-
     transports.clear();
 
     initialized = false;
@@ -208,14 +197,16 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
         doc["originatingDeviceId"] = message.originatingDeviceId;
     }
 
-    // Copy any additional parsed data
-    for (JsonPair kv : message.parsedData.as<JsonObject>()) {
-        if (strcmp(kv.key().c_str(), "messageType") != 0 &&
-            strcmp(kv.key().c_str(), "requestId") != 0 &&
-            strcmp(kv.key().c_str(), "deviceId") != 0 &&
-            strcmp(kv.key().c_str(), "timestamp") != 0 &&
-            strcmp(kv.key().c_str(), "originatingDeviceId") != 0) {
-            doc[kv.key()] = kv.value();
+    // Copy any additional parsed data (ArduinoJson V7 compatible iteration)
+    if (message.parsedData.is<JsonObject>()) {
+        for (JsonPair kv : message.parsedData.as<JsonObjectConst>()) {
+            if (strcmp(kv.key().c_str(), "messageType") != 0 &&
+                strcmp(kv.key().c_str(), "requestId") != 0 &&
+                strcmp(kv.key().c_str(), "deviceId") != 0 &&
+                strcmp(kv.key().c_str(), "timestamp") != 0 &&
+                strcmp(kv.key().c_str(), "originatingDeviceId") != 0) {
+                doc[kv.key()] = kv.value();
+            }
         }
     }
 
@@ -370,194 +361,6 @@ bool MessageCore::publishAudioVolumeUpdate(const String& processName, int volume
 }
 
 // =============================================================================
-// LEGACY COMPATIBILITY (Will be removed)
-// =============================================================================
-
-// LEGACY: ENUM-based subscription - PERFORMANCE OPTIMIZED
-void MessageCore::subscribeToType(MessageProtocol::MessageType messageType, MessageCallback callback) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe - not initialized");
-        return;
-    }
-
-    ESP_LOGI(TAG, "LEGACY: Subscribing to messageType: %s (enum)", MessageProtocol::messageTypeToString(messageType));
-    legacyEnumSubscriptions[messageType].push_back(callback);
-}
-
-// LEGACY: String-based subscription with conversion
-void MessageCore::subscribeToType(const String& messageType, MessageCallback callback) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe - not initialized");
-        return;
-    }
-
-    // Convert string to enum and use optimized enum subscription
-    MessageProtocol::MessageType enumType = MessageProtocol::stringToMessageType(messageType);
-    if (enumType != MessageProtocol::MessageType::INVALID && enumType != MessageProtocol::MessageType::UNKNOWN) {
-        subscribeToType(enumType, callback);
-    } else {
-        ESP_LOGW(TAG, "LEGACY: String subscription for unknown messageType: %s", messageType.c_str());
-        legacyStringSubscriptions[messageType].push_back(callback);
-    }
-}
-
-void MessageCore::subscribeToAll(MessageCallback callback) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe to all - not initialized");
-        return;
-    }
-
-    ESP_LOGI(TAG, "LEGACY: Subscribing to all message types (wildcard)");
-    legacyWildcardSubscribers.push_back(callback);
-}
-
-// LEGACY: ENUM-based unsubscription - PERFORMANCE OPTIMIZED
-void MessageCore::unsubscribeFromType(MessageProtocol::MessageType messageType) {
-    auto it = legacyEnumSubscriptions.find(messageType);
-    if (it != legacyEnumSubscriptions.end()) {
-        ESP_LOGI(TAG, "LEGACY: Unsubscribing from messageType: %s (enum)", MessageProtocol::messageTypeToString(messageType));
-        legacyEnumSubscriptions.erase(it);
-    }
-}
-
-// LEGACY: String-based unsubscription with conversion
-void MessageCore::unsubscribeFromType(const String& messageType) {
-    // First try to unsubscribe from enum subscriptions
-    MessageProtocol::MessageType enumType = MessageProtocol::stringToMessageType(messageType);
-    if (enumType != MessageProtocol::MessageType::INVALID && enumType != MessageProtocol::MessageType::UNKNOWN) {
-        unsubscribeFromType(enumType);
-    }
-
-    // Also check legacy string subscriptions
-    auto it = legacyStringSubscriptions.find(messageType);
-    if (it != legacyStringSubscriptions.end()) {
-        ESP_LOGI(TAG, "LEGACY: Unsubscribing from messageType: %s", messageType.c_str());
-        legacyStringSubscriptions.erase(it);
-    }
-}
-
-// LEGACY: Publish old Message struct
-bool MessageCore::publish(const Message& message) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot publish - not initialized");
-        return false;
-    }
-
-    updateActivity();
-
-    logMessage("LEGACY-OUT", message);
-
-    bool success = true;
-
-    // Send to all transports
-    for (auto& [name, transport] : transports) {
-        if (transport.send) {
-            if (!transport.send(message.payload)) {
-                ESP_LOGW(TAG, "Failed to send via transport: %s", name.c_str());
-                success = false;
-            }
-        }
-    }
-
-    // LEGACY: ENUM-based routing
-    auto enumIt = legacyEnumSubscriptions.find(message.messageType);
-    if (enumIt != legacyEnumSubscriptions.end()) {
-        for (auto& callback : enumIt->second) {
-            try {
-                callback(message);
-            } catch (...) {
-                ESP_LOGE(TAG, "LEGACY: Callback exception for messageType: %s", MessageProtocol::messageTypeToString(message.messageType));
-            }
-        }
-    }
-
-    // LEGACY: String-based routing for compatibility
-    String messageTypeStr = MessageProtocol::messageTypeToString(message.messageType);
-    auto legacyIt = legacyStringSubscriptions.find(messageTypeStr);
-    if (legacyIt != legacyStringSubscriptions.end()) {
-        for (auto& callback : legacyIt->second) {
-            try {
-                callback(message);
-            } catch (...) {
-                ESP_LOGE(TAG, "LEGACY: String callback exception for messageType: %s", messageTypeStr.c_str());
-            }
-        }
-    }
-
-    // Notify legacy wildcard subscribers
-    for (auto& callback : legacyWildcardSubscribers) {
-        try {
-            callback(message);
-        } catch (...) {
-            ESP_LOGE(TAG, "LEGACY: Wildcard callback exception");
-        }
-    }
-
-    return success;
-}
-
-bool MessageCore::publish(const String& jsonPayload) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot publish - not initialized");
-        return false;
-    }
-
-    // Parse the payload to create a Message object
-    Message message = MessageParser::parseMessage(jsonPayload);
-
-    if (message.messageType == MessageProtocol::MessageType::INVALID) {
-        ESP_LOGW(TAG, "Cannot publish - no messageType found in payload");
-        return false;
-    }
-
-    return publish(message);
-}
-
-bool MessageCore::publishMessage(const String& messageType, const String& jsonPayload) {
-    Message message(messageType, jsonPayload);
-    return publish(message);
-}
-
-// LEGACY: Handle incoming raw JSON message (parses then redirects)
-void MessageCore::handleIncomingMessage(const String& jsonPayload) {
-    if (!initialized) {
-        return;
-    }
-
-    ESP_LOGD(TAG, "LEGACY: Parsing JSON payload for external message");
-
-    // Parse JSON to create ExternalMessage (this is what transports should do)
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
-        invalidMessagesReceived++;
-        ESP_LOGW(TAG, "LEGACY: Failed to parse JSON payload");
-        return;
-    }
-
-    // Extract core fields
-    String typeStr = doc["messageType"] | "";
-    MessageProtocol::MessageType messageType = MessageProtocol::stringToMessageType(typeStr);
-
-    if (messageType == MessageProtocol::MessageType::INVALID ||
-        messageType == MessageProtocol::MessageType::UNKNOWN) {
-        invalidMessagesReceived++;
-        ESP_LOGW(TAG, "LEGACY: Invalid message type in JSON");
-        return;
-    }
-
-    // Create ExternalMessage with parsed data
-    ExternalMessage external(messageType,
-                             doc["requestId"] | "",
-                             doc["deviceId"] | "");
-    external.originatingDeviceId = doc["originatingDeviceId"] | "";
-    external.timestamp = doc["timestamp"] | millis();
-    external.parsedData = doc;  // Store the parsed JSON data
-
-    // Route to new efficient handler
-    handleExternalMessage(external);
-}
-
-// =============================================================================
 // STATUS & DIAGNOSTICS
 // =============================================================================
 
@@ -574,15 +377,6 @@ size_t MessageCore::getSubscriptionCount() const {
         count += callbacks.size();
     }
     count += internalWildcardSubscribers.size();
-
-    // Count legacy subscriptions
-    for (const auto& [messageType, callbacks] : legacyEnumSubscriptions) {
-        count += callbacks.size();
-    }
-    for (const auto& [messageType, callbacks] : legacyStringSubscriptions) {
-        count += callbacks.size();
-    }
-    count += legacyWildcardSubscribers.size();
 
     return count;
 }
@@ -613,7 +407,7 @@ bool MessageCore::isHealthy() const {
 }
 
 String MessageCore::getStatusInfo() const {
-    String info = "MessageCore Status (DUAL ARCHITECTURE):\n";
+    String info = "MessageCore Status (Dual Architecture):\n";
     info += "- Initialized: " + String(initialized ? "Yes" : "No") + "\n";
     info += "- Total subscriptions: " + String(getSubscriptionCount()) + "\n";
 
@@ -627,11 +421,6 @@ String MessageCore::getStatusInfo() const {
     info += "- Internal subscriptions: " + String(internalSubscriptions.size()) + " (Smart routing)\n";
     info += "- Internal wildcards: " + String(internalWildcardSubscribers.size()) + "\n";
     info += "- Internal published: " + String(internalMessagesPublished) + "\n";
-
-    // LEGACY STATS (Will be removed)
-    info += "- Legacy enum subscriptions: " + String(legacyEnumSubscriptions.size()) + " (LEGACY)\n";
-    info += "- Legacy string subscriptions: " + String(legacyStringSubscriptions.size()) + " (LEGACY)\n";
-    info += "- Legacy wildcards: " + String(legacyWildcardSubscribers.size()) + " (LEGACY)\n";
 
     info += "- Last activity: " + String((millis() - lastActivityTime) / 1000) + "s ago\n";
     info += getTransportStatus();
@@ -651,7 +440,7 @@ void MessageCore::updateActivity() {
 // INTERNAL HELPERS - DUAL ARCHITECTURE
 // =============================================================================
 
-void MessageCore::processExternalMessage(const ExternalMessage& external) {
+void MessageCore::convertAndRouteExternal(const ExternalMessage& external) {
     // Convert external message to internal message(s) for routing
     std::vector<InternalMessage> internalMessages = MessageConverter::externalToInternal(external);
 
@@ -672,7 +461,7 @@ void MessageCore::routeInternalMessage(const InternalMessage& internal) {
                 callback(internal);
             } catch (...) {
                 ESP_LOGE(TAG, "Internal callback exception for messageType: %s",
-                         MessageProtocol::messageTypeToString(internal.messageType));
+                         MessageProtocol::internalMessageTypeToString(internal.messageType));
             }
         }
     }
@@ -687,7 +476,7 @@ void MessageCore::routeInternalMessage(const InternalMessage& internal) {
     }
 
     ESP_LOGV(TAG, "Routed internal message: %s (Core %d)",
-             MessageProtocol::messageTypeToString(internal.messageType),
+             MessageProtocol::internalMessageTypeToString(internal.messageType),
              internal.shouldRouteToCore1() ? 1 : 0);
 }
 
@@ -705,13 +494,6 @@ void MessageCore::logInternalMessage(const char* direction, const InternalMessag
              message.shouldRouteToCore1() ? 1 : 0,
              message.priority,
              message.dataSize);
-}
-
-// LEGACY: Log old message format (internal helper)
-void MessageCore::logLegacyMessage(const char* direction, const Message& message) {
-    ESP_LOGD(TAG, "[%s-LEGACY] %s: %s", direction,
-             MessageProtocol::messageTypeToString(message.messageType),
-             (message.payload.length() > Config::MESSAGE_LOG_TRUNCATE_LENGTH ? message.payload.substring(0, Config::MESSAGE_LOG_TRUNCATE_LENGTH) + "..." : message.payload).c_str());
 }
 
 }  // namespace Messaging
