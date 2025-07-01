@@ -2,7 +2,8 @@
 #include "MessageAPI.h"
 #include "MessageConfig.h"
 #include "../hardware/DeviceManager.h"
-#include "../include/MessagingConfig.h"
+#include "MessagingConfig.h"
+#include "MessageProtocol.h"
 #include "../application/TaskManager.h"
 #include <ArduinoJson.h>
 #include <esp_log.h>
@@ -363,8 +364,11 @@ class SerialBridge {
         stats.messagesReceived++;
         ESP_LOGD(TAG, "Enhanced Serial RX: %u chars (CRC: 0x%04X validated)", tempBuffer.length(), calculatedCRC);
 
-        // Forward to MessageAPI
-        MessageAPI::handleIncomingMessage(tempBuffer);
+        // Forward to MessageAPI using new external message system
+        Messaging::ExternalMessage externalMsg = Messaging::MessageParser::parseExternalMessage(tempBuffer);
+        if (externalMsg.messageType != MessageProtocol::ExternalMessageType::INVALID) {
+            Messaging::MessageCore::getInstance().handleExternalMessage(externalMsg);
+        }
 
         resetReceiveState();
         return true;

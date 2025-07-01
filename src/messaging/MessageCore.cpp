@@ -181,31 +181,40 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
 
     updateActivity();
     externalMessagesPublished++;
-
     logExternalMessage("OUT", message);
 
     bool success = true;
 
-    // Convert ExternalMessage to JSON for transport
+    // Prepare JSON payload
     JsonDocument doc;
-    doc["messageType"] = MessageProtocol::externalMessageTypeToString(message.messageType);
-    doc["requestId"] = message.requestId;
-    doc["deviceId"] = message.deviceId;
-    doc["timestamp"] = message.timestamp;
+    JsonObject obj = doc.to<JsonObject>();
+
+    // Core fields
+    obj["messageType"] = MessageProtocol::externalMessageTypeToString(message.messageType);
+    obj["requestId"] = message.requestId;
+    obj["deviceId"] = message.deviceId;
+    obj["timestamp"] = message.timestamp;
 
     if (!message.originatingDeviceId.isEmpty()) {
-        doc["originatingDeviceId"] = message.originatingDeviceId;
+        obj["originatingDeviceId"] = message.originatingDeviceId;
     }
 
-    // Copy any additional parsed data (ArduinoJson V7 compatible iteration)
-    if (message.parsedData.is<JsonObject>()) {
-        for (JsonPair kv : message.parsedData.as<JsonObjectConst>()) {
-            if (strcmp(kv.key().c_str(), "messageType") != 0 &&
-                strcmp(kv.key().c_str(), "requestId") != 0 &&
-                strcmp(kv.key().c_str(), "deviceId") != 0 &&
-                strcmp(kv.key().c_str(), "timestamp") != 0 &&
-                strcmp(kv.key().c_str(), "originatingDeviceId") != 0) {
-                doc[kv.key()] = kv.value();
+    // Additional fields (excluding core ones)
+    static const char* excluded[] = {
+        "messageType", "requestId", "deviceId", "timestamp", "originatingDeviceId"};
+
+    if (message.parsedData.is<JsonObjectConst>()) {
+        JsonObjectConst parsed = message.parsedData.as<JsonObjectConst>();
+        for (JsonPairConst kv : parsed) {
+            bool skip = false;
+            for (const char* ex : excluded) {
+                if (strcmp(kv.key().c_str(), ex) == 0) {
+                    skip = true;
+                    break;
+                }
+            }
+            if (!skip) {
+                obj[kv.key()] = kv.value();
             }
         }
     }

@@ -131,85 +131,11 @@ class MessageCore {
     bool publishAudioVolumeUpdate(const String& processName, int volume);
 
     // =============================================================================
-    // LEGACY COMPATIBILITY (Will be removed)
-    // =============================================================================
-
-    /**
-     * LEGACY: ENUM-based subscription - PERFORMANCE OPTIMIZED
-     * @deprecated Use subscribeToExternal or subscribeToInternal instead
-     */
-    [[deprecated("Use subscribeToExternal or subscribeToInternal instead")]]
-    void subscribeToType(MessageProtocol::MessageType messageType, MessageCallback callback);
-
-    /**
-     * LEGACY: String-based subscription with conversion
-     * @deprecated Use subscribeToExternal or subscribeToInternal instead
-     */
-    [[deprecated("Use subscribeToExternal or subscribeToInternal instead")]]
-    void subscribeToType(const String& messageType, MessageCallback callback);
-
-    /**
-     * LEGACY: Subscribe to all messages (wildcard)
-     * @deprecated Use subscribeToAllInternal instead
-     */
-    [[deprecated("Use subscribeToAllInternal instead")]]
-    void subscribeToAll(MessageCallback callback);
-
-    /**
-     * LEGACY: Unsubscribe from message type - enum version
-     * @deprecated Use unsubscribeFromExternal or unsubscribeFromInternal instead
-     */
-    [[deprecated("Use unsubscribeFromExternal or unsubscribeFromInternal instead")]]
-    void unsubscribeFromType(MessageProtocol::MessageType messageType);
-
-    /**
-     * LEGACY: Unsubscribe from message type - string version
-     * @deprecated Use unsubscribeFromExternal or unsubscribeFromInternal instead
-     */
-    [[deprecated("Use unsubscribeFromExternal or unsubscribeFromInternal instead")]]
-    void unsubscribeFromType(const String& messageType);
-
-    /**
-     * LEGACY: Publish message
-     * @deprecated Use publishExternal or publishInternal instead
-     */
-    [[deprecated("Use publishExternal or publishInternal instead")]]
-    bool publish(const Message& message);
-
-    /**
-     * LEGACY: Publish JSON payload
-     * @deprecated Use publishExternal or publishInternal instead
-     */
-    [[deprecated("Use publishExternal or publishInternal instead")]]
-    bool publish(const String& jsonPayload);
-
-    /**
-     * LEGACY: Publish message with type and payload
-     * @deprecated Use publishExternal or publishInternal instead
-     */
-    [[deprecated("Use publishExternal or publishInternal instead")]]
-    bool publishMessage(const String& messageType, const String& jsonPayload);
-
-    /**
-     * LEGACY: Handle incoming raw JSON message
-     * @deprecated Use handleExternalMessage instead
-     */
-    [[deprecated("Use handleExternalMessage instead")]]
-    void handleIncomingMessage(const String& jsonPayload);
-
-    /**
-     * LEGACY: Handle raw message
-     * @deprecated Use handleExternalMessage instead
-     */
-    [[deprecated("Use handleExternalMessage instead")]]
-    void handleMessage(const Message& message);
-
-    // =============================================================================
     // STATUS & DIAGNOSTICS
     // =============================================================================
 
     /**
-     * Get number of active subscriptions
+     * Get total number of active subscriptions
      */
     size_t getSubscriptionCount() const;
 
@@ -252,11 +178,6 @@ class MessageCore {
     // Internal wildcard subscribers
     std::vector<InternalMessageCallback> internalWildcardSubscribers;
 
-    // LEGACY: Legacy subscriptions for backward compatibility
-    std::unordered_map<MessageProtocol::MessageType, std::vector<MessageCallback>> legacyEnumSubscriptions;
-    std::unordered_map<String, std::vector<MessageCallback>> legacyStringSubscriptions;
-    std::vector<MessageCallback> legacyWildcardSubscribers;
-
     // Statistics
     unsigned long externalMessagesReceived = 0;
     unsigned long externalMessagesPublished = 0;
@@ -269,9 +190,9 @@ class MessageCore {
     // =============================================================================
 
     /**
-     * Route external message to appropriate handlers
+     * Convert external message to internal messages and route them
      */
-    void routeExternalMessage(const ExternalMessage& message);
+    void convertAndRouteExternal(const ExternalMessage& external);
 
     /**
      * Route internal message to appropriate core/subscribers
@@ -279,26 +200,19 @@ class MessageCore {
     void routeInternalMessage(const InternalMessage& message);
 
     /**
-     * Convert external message to internal messages and route them
-     */
-    void convertAndRouteExternal(const ExternalMessage& external);
-
-    /**
      * Update activity timestamp
      */
-    void updateActivity() { lastActivityTime = millis(); }
+    void updateActivity();
 
     /**
-     * Log message for debugging (with appropriate detail level)
+     * Log external message for debugging
      */
     void logExternalMessage(const char* direction, const ExternalMessage& message);
 
-    void logInternalMessage(const char* direction, const InternalMessage& message);
-
     /**
-     * LEGACY: Log legacy message
+     * Log internal message for debugging
      */
-    void logLegacyMessage(const char* direction, const Message& message);
+    void logInternalMessage(const char* direction, const InternalMessage& message);
 };
 
 }  // namespace Messaging
