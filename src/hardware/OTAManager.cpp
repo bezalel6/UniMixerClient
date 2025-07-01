@@ -53,14 +53,15 @@ static const char* TAG = "OTAManager";
 // CONSTANTS - Bulletproof Monitoring + Watchdog Safety
 // =============================================================================
 
-static const uint32_t OTA_TIMEOUT_MS = 300000;                   // 5 minutes max
-static const uint32_t OTA_PROGRESS_TIMEOUT_MS = 60000;           // 1 minute without progress
-static const uint32_t OTA_HEARTBEAT_INTERVAL_MS = 5000;          // 5 second heartbeat
-static const uint32_t OTA_WATCHDOG_FEED_INTERVAL_MS = 1000;      // Feed watchdog every 1s
-static const uint32_t OTA_TASK_YIELD_INTERVAL_MS = 50;           // Yield every 50ms
-static const uint32_t OTA_UI_UPDATE_THROTTLE_MS = 250;           // UI updates max 4/second
-static const uint32_t OTA_UI_UPDATE_DOWNLOAD_THROTTLE_MS = 500;  // Slower during download
-static const int OTA_MAX_PROGRESS_STALL_COUNT = 5;               // Max stalls before recovery
+// Use different names to avoid macro conflicts with OTAConfig.h
+static const uint32_t OTA_GLOBAL_TIMEOUT_MS = 300000;          // 5 minutes max
+static const uint32_t OTA_PROGRESS_STALL_TIMEOUT_MS = 60000;   // 1 minute without progress
+static const uint32_t OTA_HEARTBEAT_CHECK_INTERVAL_MS = 5000;  // 5 second heartbeat
+static const uint32_t OTA_WATCHDOG_RESET_INTERVAL_MS = 1000;   // Feed watchdog every 1s
+static const uint32_t OTA_TASK_YIELD_PERIOD_MS = 50;           // Yield every 50ms
+static const uint32_t OTA_UI_THROTTLE_NORMAL_MS = 250;         // UI updates max 4/second
+static const uint32_t OTA_UI_THROTTLE_DOWNLOAD_MS = 500;       // Slower during download
+static const int OTA_MAX_PROGRESS_STALL_COUNT = 5;             // Max stalls before recovery
 
 namespace Hardware {
 namespace OTA {
@@ -100,7 +101,7 @@ void OTAManager::feedWatchdogAndYield(const char* context) {
     uint32_t currentTime = millis();
 
     // Reset watchdog periodically
-    if (currentTime - lastWatchdogReset >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
+    if (currentTime - lastWatchdogReset >= OTA_WATCHDOG_RESET_INTERVAL_MS) {
 #ifdef CONFIG_ESP_TASK_WDT_EN
         esp_task_wdt_reset();
 #endif
@@ -109,7 +110,7 @@ void OTAManager::feedWatchdogAndYield(const char* context) {
     }
 
     // Yield to other tasks periodically
-    if (currentTime - lastTaskYield >= OTA_TASK_YIELD_INTERVAL_MS) {
+    if (currentTime - lastTaskYield >= OTA_TASK_YIELD_PERIOD_MS) {
         vTaskDelay(pdMS_TO_TICKS(1));
         lastTaskYield = currentTime;
     }
@@ -173,7 +174,7 @@ void OTAManager::enterState(OTAState newState, const char* message) {
     OTA_LOG_STATE_CHANGE(oldState, newState, stateMessage);
 
     // UI update with appropriate throttling
-    uint32_t throttleMs = (newState == OTA_DOWNLOADING) ? OTA_UI_UPDATE_DOWNLOAD_THROTTLE_MS : OTA_UI_UPDATE_THROTTLE_MS;
+    uint32_t throttleMs = (newState == OTA_DOWNLOADING) ? OTA_UI_THROTTLE_DOWNLOAD_MS : OTA_UI_THROTTLE_NORMAL_MS;
     OTA_UPDATE_UI_THROTTLED(currentProgress, stateMessage, throttleMs);
 
     // Invoke state callback
@@ -206,7 +207,7 @@ void OTAManager::updateProgress(uint8_t progress, const char* message) {
     }
 
     // Throttled UI updates - slower during download to prevent LVGL blocking
-    uint32_t throttleMs = (currentState == OTA_DOWNLOADING) ? OTA_UI_UPDATE_DOWNLOAD_THROTTLE_MS : OTA_UI_UPDATE_THROTTLE_MS;
+    uint32_t throttleMs = (currentState == OTA_DOWNLOADING) ? OTA_UI_THROTTLE_DOWNLOAD_MS : OTA_UI_THROTTLE_NORMAL_MS;
     OTA_UPDATE_UI_THROTTLED(progress, stateMessage, throttleMs);
 
     // Invoke progress callback
@@ -275,16 +276,16 @@ bool OTAManager::checkTimeouts(void) {
     uint32_t elapsed = now - otaStartTime;
 
     // Global timeout
-    if (elapsed > OTA_TIMEOUT_MS) {
+    if (elapsed > OTA_GLOBAL_TIMEOUT_MS) {
         ESP_LOGE(TAG, "[TIMEOUT] Global timeout after %u ms", elapsed);
         completeOTA(OTA_RESULT_TIMEOUT, "OTA timeout");
         return true;
     }
 
     // Progress timeout
-    if (now - lastProgressTime > OTA_PROGRESS_TIMEOUT_MS) {
+    if (now - lastProgressTime > OTA_PROGRESS_STALL_TIMEOUT_MS) {
         ESP_LOGE(TAG, "[TIMEOUT] Progress timeout (%u ms without progress)",
-                 OTA_PROGRESS_TIMEOUT_MS);
+                 OTA_PROGRESS_STALL_TIMEOUT_MS);
         emergencyRecovery("Progress timeout");
         return true;
     }
@@ -339,8 +340,8 @@ void OTAManager::emergencyRecovery(const char* reason) {
     emergencyMode = true;
     ESP_LOGE(TAG, "[EMERGENCY] Emergency recovery: %s", reason);
 
-    // Stop any ongoing operations
-    httpUpdate.end();
+    // Stop any ongoing operations (HTTPUpdate doesn't have explicit end method)
+    // Note: HTTPUpdate operations are atomic and will complete or fail
 
     // Enhanced error reporting
     char recoveryMsg[128];

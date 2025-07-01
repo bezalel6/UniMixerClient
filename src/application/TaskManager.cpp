@@ -744,7 +744,7 @@ void otaTask(void *parameter) {
 
     while (tasksRunning) {
         unsigned long currentTime = millis();
-        bool otaActive = Hardware::OTA::isInProgress();
+        bool otaActive = Hardware::OTA::OTAManager::isActive();
 
         // Detect OTA state changes and update system accordingly
         if (otaActive != wasOTAActive) {
@@ -768,10 +768,10 @@ void otaTask(void *parameter) {
             }
 
             // Check for OTA updates or re-initialize if needed
-            Hardware::OTA::update();
+            Hardware::OTA::OTAManager::update();
 
             // Return to idle if no activity detected
-            if (!otaActive && !Hardware::OTA::isInProgress()) {
+            if (!otaActive && !Hardware::OTA::OTAManager::isActive()) {
                 setOTAState(OTA_STATE_IDLE);
             }
 

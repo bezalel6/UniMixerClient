@@ -21,7 +21,6 @@
 // Timeout Configuration
 #define OTA_NETWORK_CONNECT_TIMEOUT_MS 30000  // 30 seconds to connect
 #define OTA_DOWNLOAD_TIMEOUT_MS 300000        // 5 minutes total download time
-#define OTA_PROGRESS_TIMEOUT_MS 60000         // 1 minute without progress
 
 // Security Configuration
 #define OTA_REQUIRE_AUTHENTICATION 0
@@ -36,8 +35,5 @@
 // Performance Tuning
 #define OTA_PROGRESS_UPDATE_INTERVAL_MS 500  // Progress update frequency
 #define OTA_MIN_PROGRESS_STEP 1              // Report every 1% progress
-#define OTA_WATCHDOG_FEED_INTERVAL_MS 1000   // Feed watchdog every 1 second
-#define OTA_TASK_YIELD_INTERVAL_MS 50        // Yield to other tasks every 50ms
-#define OTA_UI_UPDATE_THROTTLE_MS 250        // Throttle UI updates to 4/second
 
 #endif  // OTA_CONFIG_H
