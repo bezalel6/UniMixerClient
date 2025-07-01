@@ -176,7 +176,7 @@ void MessageCore::handleExternalMessage(const ExternalMessage& external) {
     // Check if we should ignore self-originated messages
     if (external.isSelfOriginated()) {
         ESP_LOGD(TAG, "Ignoring self-originated external message: %s",
-                 MessageProtocol::messageTypeToString(external.messageType));
+                 MessageProtocol::externalMessageTypeToString(external.messageType));
         return;
     }
 
@@ -199,7 +199,7 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
 
     // Convert ExternalMessage to JSON for transport
     JsonDocument doc;
-    doc["messageType"] = MessageProtocol::messageTypeToString(message.messageType);
+    doc["messageType"] = MessageProtocol::externalMessageTypeToString(message.messageType);
     doc["requestId"] = message.requestId;
     doc["deviceId"] = message.deviceId;
     doc["timestamp"] = message.timestamp;
@@ -240,7 +240,7 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
                 callback(message);
             } catch (...) {
                 ESP_LOGE(TAG, "External callback exception for messageType: %s",
-                         MessageProtocol::messageTypeToString(message.messageType));
+                         MessageProtocol::externalMessageTypeToString(message.messageType));
             }
         }
     }
@@ -248,21 +248,21 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
     return success;
 }
 
-void MessageCore::subscribeToExternal(MessageProtocol::MessageType messageType, ExternalMessageCallback callback) {
+void MessageCore::subscribeToExternal(MessageProtocol::ExternalMessageType messageType, ExternalMessageCallback callback) {
     if (!initialized) {
         ESP_LOGW(TAG, "Cannot subscribe to external - not initialized");
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to external messageType: %s", MessageProtocol::messageTypeToString(messageType));
+    ESP_LOGI(TAG, "Subscribing to external messageType: %s", MessageProtocol::externalMessageTypeToString(messageType));
     externalSubscriptions[messageType].push_back(callback);
 }
 
-void MessageCore::unsubscribeFromExternal(MessageProtocol::MessageType messageType) {
+void MessageCore::unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
     auto it = externalSubscriptions.find(messageType);
     if (it != externalSubscriptions.end()) {
         ESP_LOGI(TAG, "Unsubscribing from external messageType: %s",
-                 MessageProtocol::messageTypeToString(messageType));
+                 MessageProtocol::externalMessageTypeToString(messageType));
         externalSubscriptions.erase(it);
     }
 }
@@ -288,21 +288,21 @@ bool MessageCore::publishInternal(const InternalMessage& message) {
     return true;
 }
 
-void MessageCore::subscribeToInternal(MessageProtocol::MessageType messageType, InternalMessageCallback callback) {
+void MessageCore::subscribeToInternal(MessageProtocol::InternalMessageType messageType, InternalMessageCallback callback) {
     if (!initialized) {
         ESP_LOGW(TAG, "Cannot subscribe to internal - not initialized");
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to internal messageType: %s", MessageProtocol::messageTypeToString(messageType));
+    ESP_LOGI(TAG, "Subscribing to internal messageType: %s", MessageProtocol::internalMessageTypeToString(messageType));
     internalSubscriptions[messageType].push_back(callback);
 }
 
-void MessageCore::unsubscribeFromInternal(MessageProtocol::MessageType messageType) {
+void MessageCore::unsubscribeFromInternal(MessageProtocol::InternalMessageType messageType) {
     auto it = internalSubscriptions.find(messageType);
     if (it != internalSubscriptions.end()) {
         ESP_LOGI(TAG, "Unsubscribing from internal messageType: %s",
-                 MessageProtocol::messageTypeToString(messageType));
+                 MessageProtocol::internalMessageTypeToString(messageType));
         internalSubscriptions.erase(it);
     }
 }
@@ -660,7 +660,7 @@ void MessageCore::processExternalMessage(const ExternalMessage& external) {
     }
 
     ESP_LOGD(TAG, "Processed external message %s -> %d internal messages",
-             MessageProtocol::messageTypeToString(external.messageType), internalMessages.size());
+             MessageProtocol::externalMessageTypeToString(external.messageType), internalMessages.size());
 }
 
 void MessageCore::routeInternalMessage(const InternalMessage& internal) {
