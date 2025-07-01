@@ -1,23 +1,23 @@
 #ifndef UNIVERSAL_DIALOG_H
 #define UNIVERSAL_DIALOG_H
 
+#include <Arduino.h>
 #include <lvgl.h>
 #include <functional>
 #include <vector>
 #include <memory>
-
 namespace UI {
 namespace Dialog {
 
 // Dialog types for consistent styling and behavior
 enum class DialogType {
-    INFO,      // Information dialog with OK button
-    WARNING,   // Warning dialog with OK/Cancel
-    ERROR,     // Error dialog with red theme
-    CONFIRM,   // Confirmation dialog with Yes/No
-    PROGRESS,  // Progress dialog with progress bar
-    INPUT,     // Input dialog with text field
-    CUSTOM     // Custom dialog for specialized use
+    INFO,          // Information dialog with OK button
+    WARNING,       // Warning dialog with OK/Cancel
+    ERROR,         // Error dialog with red theme
+    CONFIRM,       // Confirmation dialog with Yes/No
+    PROGRESS,      // Progress dialog with progress bar
+    INPUT_DIALOG,  // Input dialog with text field; Postfixed _DIALOG to not conflict with arduino macro declaration
+    CUSTOM         // Custom dialog for specialized use
 };
 
 // Dialog themes for consistent visual design

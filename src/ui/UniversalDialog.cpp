@@ -219,7 +219,7 @@ lv_obj_t* UniversalDialog::createButtonPanel(lv_obj_t* parent, const std::vector
 
         lv_obj_add_event_cb(btn, [](lv_event_t* e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                auto* callback = static_cast<std::function<void()>*>(lv_obj_get_user_data(lv_event_get_target(e)));
+                auto* callback = static_cast<std::function<void()>*>(lv_obj_get_user_data((lv_obj_t *)lv_event_get_target(e)));
                 if (callback && *callback) {
                     (*callback)();
                 }
