@@ -17,23 +17,20 @@ extern "C" {
 #include "components/ui_comp_hook.h"
 #include "ui_events.h"
 
-
 ///////////////////// SCREENS ////////////////////
 
 #include "screens/ui_screenMain.h"
 #include "screens/ui_screenOTA.h"
 #include "screens/ui_screenDebug.h"
-#include "screens/ui_screenFileExplorer.h"
 
 ///////////////////// VARIABLES ////////////////////
 
-
 // EVENTS
 
-extern lv_obj_t * ui____initial_actions0;
+extern lv_obj_t* ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_2039083_png);    // assets/2039083.png
+LV_IMG_DECLARE(ui_img_2039083_png);  // assets/2039083.png
 
 // UI INIT
 void ui_init(void);

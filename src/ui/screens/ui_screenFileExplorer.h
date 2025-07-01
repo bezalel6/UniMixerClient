@@ -14,11 +14,6 @@ extern "C" {
 extern void ui_screenFileExplorer_screen_init(void);
 extern void ui_screenFileExplorer_screen_destroy(void);
 extern lv_obj_t * ui_screenFileExplorer;
-extern lv_obj_t * ui_pnlFileExplorerHeader;
-extern lv_obj_t * ui_btnFileExplorerBack;
-extern lv_obj_t * ui_lblFileExplorerTitle;
-extern lv_obj_t * ui_objSDStatusIndicator;
-extern lv_obj_t * ui_lblCurrentPath;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

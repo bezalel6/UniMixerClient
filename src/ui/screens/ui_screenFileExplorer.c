@@ -6,11 +6,6 @@
 #include "../ui.h"
 
 lv_obj_t * ui_screenFileExplorer = NULL;
-lv_obj_t * ui_pnlFileExplorerHeader = NULL;
-lv_obj_t * ui_btnFileExplorerBack = NULL;
-lv_obj_t * ui_lblFileExplorerTitle = NULL;
-lv_obj_t * ui_objSDStatusIndicator = NULL;
-lv_obj_t * ui_lblCurrentPath = NULL;
 // event funtions
 
 // build funtions
@@ -20,38 +15,6 @@ void ui_screenFileExplorer_screen_init(void)
     ui_screenFileExplorer = lv_obj_create(NULL);
     lv_obj_remove_flag(ui_screenFileExplorer, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_pnlFileExplorerHeader = lv_obj_create(ui_screenFileExplorer);
-    lv_obj_set_width(ui_pnlFileExplorerHeader, lv_pct(100));
-    lv_obj_set_height(ui_pnlFileExplorerHeader, lv_pct(30));
-    lv_obj_set_align(ui_pnlFileExplorerHeader, LV_ALIGN_TOP_MID);
-    lv_obj_remove_flag(ui_pnlFileExplorerHeader, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_btnFileExplorerBack = ui_btn_create(ui_pnlFileExplorerHeader);
-    lv_obj_set_x(ui_btnFileExplorerBack, 0);
-    lv_obj_set_y(ui_btnFileExplorerBack, 0);
-    lv_obj_set_align(ui_btnFileExplorerBack, LV_ALIGN_LEFT_MID);
-
-    lv_label_set_text(ui_comp_get_child(ui_btnFileExplorerBack, UI_COMP_BTN_BTNLBL), "Back");
-
-    ui_lblFileExplorerTitle = lv_label_create(ui_pnlFileExplorerHeader);
-    lv_obj_set_width(ui_lblFileExplorerTitle, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblFileExplorerTitle, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblFileExplorerTitle, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_lblFileExplorerTitle, "File Explorer");
-
-    ui_objSDStatusIndicator = lv_label_create(ui_pnlFileExplorerHeader);
-    lv_obj_set_width(ui_objSDStatusIndicator, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_objSDStatusIndicator, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_objSDStatusIndicator, LV_ALIGN_RIGHT_MID);
-    lv_label_set_long_mode(ui_objSDStatusIndicator, LV_LABEL_LONG_CLIP);
-    lv_label_set_text(ui_objSDStatusIndicator, "");
-
-    ui_lblCurrentPath = lv_label_create(ui_pnlFileExplorerHeader);
-    lv_obj_set_width(ui_lblCurrentPath, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblCurrentPath, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblCurrentPath, LV_ALIGN_BOTTOM_MID);
-    lv_label_set_text(ui_lblCurrentPath, "/");
-
 }
 
 void ui_screenFileExplorer_screen_destroy(void)
@@ -60,10 +23,5 @@ void ui_screenFileExplorer_screen_destroy(void)
 
     // NULL screen variables
     ui_screenFileExplorer = NULL;
-    ui_pnlFileExplorerHeader = NULL;
-    ui_btnFileExplorerBack = NULL;
-    ui_lblFileExplorerTitle = NULL;
-    ui_objSDStatusIndicator = NULL;
-    ui_lblCurrentPath = NULL;
 
 }

@@ -50,6 +50,7 @@ extern void ui_event_btnGOTOSD_btn(lv_event_t * e);
 extern lv_obj_t * ui_btnGOTOSD;
 extern void ui_event_btnGOTOLog_btn(lv_event_t * e);
 extern lv_obj_t * ui_btnGOTOLog;
+extern void ui_event_btnGOTOSettings_btn(lv_event_t * e);
 extern lv_obj_t * ui_btnGOTOSettings;
 extern lv_obj_t * ui_mqttContainer;
 extern lv_obj_t * ui_lblMQTT;

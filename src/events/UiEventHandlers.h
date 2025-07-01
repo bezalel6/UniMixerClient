@@ -54,8 +54,6 @@ const char *getTabName(TabState tab);
 void openSettings(lv_event_t *e);
 
 // File Explorer handlers
-void fileExplorerBackButtonHandler(lv_event_t *e);
-void fileExplorerNavigationHandler(lv_event_t *e);
 
 // Cleanup function for debounce timers
 void cleanupVolumeDebouncing();

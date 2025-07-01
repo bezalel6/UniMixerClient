@@ -43,7 +43,6 @@
 extern lv_obj_t *ui_screenMain;
 extern lv_obj_t *ui_screenOTA;
 extern lv_obj_t *ui_screenDebug;
-extern lv_obj_t *ui_screenFileExplorer;
 
 // BULLETPROOF: External UI component declarations
 extern lv_obj_t *ui_barOTAUpdateProgress;

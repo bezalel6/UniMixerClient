@@ -376,7 +376,8 @@ String LogoStorage::getFilePath(const String& fileName) {
     if (fileName.isEmpty()) {
         return "";
     }
-    return "S:" + String(FILES_DIR) + "/" + fileName;  // LVGL format
+    // Use LVGL filesystem format with proper path separators
+    return "S:/logos/files/" + fileName;
 }
 
 String LogoStorage::getMappingPath(const String& processName) {

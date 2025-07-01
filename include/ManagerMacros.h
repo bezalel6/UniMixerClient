@@ -425,13 +425,12 @@
 
 /**
  * Setup file explorer navigation buttons
+ * NOTE: FileExplorer has been removed from the project
  */
-#define SETUP_FILE_EXPLORER_NAVIGATION()                                                                            \
-    do {                                                                                                            \
-        ESP_LOGI(TAG, "Setting up file explorer event handlers");                                                   \
-        SETUP_CLICK_EVENT(ui_btnGOTOSD, Events::UI::fileExplorerNavigationHandler, "SD navigation");                \
-        SETUP_CLICK_EVENT(ui_btnFileExplorerBack, Events::UI::fileExplorerBackButtonHandler, "File explorer back"); \
-        ESP_LOGI(TAG, "File explorer navigation configured");                                                       \
+#define SETUP_FILE_EXPLORER_NAVIGATION()                                           \
+    do {                                                                           \
+        ESP_LOGI(TAG, "FileExplorer removed - no navigation setup needed");        \
+        /* FileExplorer and related handlers have been removed from the project */ \
     } while (0)
 
 /**
