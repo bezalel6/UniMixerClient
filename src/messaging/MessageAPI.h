@@ -133,14 +133,7 @@ class MessageAPI {
      */
     static void subscribeToExternal(MessageProtocol::ExternalMessageType messageType,
                                     std::function<void(const ExternalMessage&)> callback) {
-        // Convert to string and use legacy method for now
-        const char* typeStr = MessageProtocol::externalMessageTypeToString(messageType);
-        MessageCore::getInstance().subscribeToType(String(typeStr), [callback](const Message& msg) {
-            // Convert legacy Message to ExternalMessage
-            ExternalMessage extMsg(MessageProtocol::stringToExternalMessageType(msg.messageType), msg.requestId, msg.deviceId);
-            extMsg.payload = msg.payload;
-            callback(extMsg);
-        });
+        MessageCore::getInstance().subscribeToExternal(messageType, callback);
     }
 
     /**
@@ -148,52 +141,35 @@ class MessageAPI {
      */
     static void subscribeToInternal(MessageProtocol::InternalMessageType messageType,
                                     std::function<void(const InternalMessage&)> callback) {
-        // Convert to string and use legacy method for now
-        const char* typeStr = MessageProtocol::internalMessageTypeToString(messageType);
-        MessageCore::getInstance().subscribeToType(String(typeStr), [callback](const Message& msg) {
-            // Convert legacy Message to InternalMessage
-            InternalMessage intMsg(MessageProtocol::stringToInternalMessageType(msg.messageType));
-            intMsg.payload = msg.payload;
-            callback(intMsg);
-        });
+        MessageCore::getInstance().subscribeToInternal(messageType, callback);
     }
 
     /**
      * Publish external message (cross-transport boundaries)
      */
     static bool publishExternal(const ExternalMessage& message) {
-        // Convert to legacy Message and publish
-        const char* typeStr = MessageProtocol::externalMessageTypeToString(message.messageType);
-        Message legacyMsg(typeStr, message.payload);
-        legacyMsg.requestId = message.requestId;
-        legacyMsg.deviceId = message.deviceId;
-        return MessageCore::getInstance().publish(legacyMsg);
+        return MessageCore::getInstance().publishExternal(message);
     }
 
     /**
      * Publish internal message (ESP32 internal communication)
      */
     static bool publishInternal(const InternalMessage& message) {
-        // Convert to legacy Message and publish
-        const char* typeStr = MessageProtocol::internalMessageTypeToString(message.messageType);
-        Message legacyMsg(typeStr, message.payload);
-        return MessageCore::getInstance().publish(legacyMsg);
+        return MessageCore::getInstance().publishInternal(message);
     }
 
     /**
      * Unsubscribe from external message type
      */
     static void unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
-        const char* typeStr = MessageProtocol::externalMessageTypeToString(messageType);
-        MessageCore::getInstance().unsubscribeFromType(String(typeStr));
+        MessageCore::getInstance().unsubscribeFromExternal(messageType);
     }
 
     /**
      * Unsubscribe from internal message type
      */
     static void unsubscribeFromInternal(MessageProtocol::InternalMessageType messageType) {
-        const char* typeStr = MessageProtocol::internalMessageTypeToString(messageType);
-        MessageCore::getInstance().unsubscribeFromType(String(typeStr));
+        MessageCore::getInstance().unsubscribeFromInternal(messageType);
     }
 
     // =============================================================================

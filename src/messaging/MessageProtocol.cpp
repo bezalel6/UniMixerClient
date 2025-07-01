@@ -389,18 +389,18 @@ MessageCategory getMessageCategory(MessageType type) {
 
     // Map to new category system
     if (value <= 5) {
-        return MessageCategory::CAT_SYSTEM;  // External messages are system-level
+        return MessageCategory::LEGACY_CAT_SYSTEM;  // External messages are system-level
     }
 
-    if (value >= 100 && value < 200) return MessageCategory::CAT_NETWORK;
-    if (value >= 200 && value < 300) return MessageCategory::CAT_UI;
-    if (value >= 300 && value < 400) return MessageCategory::CAT_FILESYSTEM;
-    if (value >= 400 && value < 500) return MessageCategory::CAT_AUDIO;
-    if (value >= 500 && value < 600) return MessageCategory::CAT_SYSTEM;
-    if (value >= 600 && value < 700) return MessageCategory::CAT_DEVICE;
-    if (value >= 700 && value < 800) return MessageCategory::CAT_SYSTEM;
+    if (value >= 100 && value < 200) return MessageCategory::LEGACY_CAT_NETWORK;
+    if (value >= 200 && value < 300) return MessageCategory::LEGACY_CAT_UI;
+    if (value >= 300 && value < 400) return MessageCategory::LEGACY_CAT_FILESYSTEM;
+    if (value >= 400 && value < 500) return MessageCategory::LEGACY_CAT_AUDIO;
+    if (value >= 500 && value < 600) return MessageCategory::LEGACY_CAT_SYSTEM;
+    if (value >= 600 && value < 700) return MessageCategory::LEGACY_CAT_DEVICE;
+    if (value >= 700 && value < 800) return MessageCategory::LEGACY_CAT_SYSTEM;
 
-    return MessageCategory::CAT_UNKNOWN;
+    return MessageCategory::LEGACY_CAT_UNKNOWN;
 }
 
 MessagePriority getMessagePriority(MessageType type) {

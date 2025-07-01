@@ -196,16 +196,16 @@ enum class MessageType : uint16_t {
  * @deprecated Legacy category enum
  */
 enum class MessageCategory : uint8_t {
-    CAT_SYSTEM,
-    CAT_AUDIO,
-    CAT_ASSET,
-    CAT_OTA,
-    CAT_DEVICE,
-    CAT_NETWORK,
-    CAT_UI,
-    CAT_FILESYSTEM,
-    CAT_DEBUG,
-    CAT_UNKNOWN
+    LEGACY_CAT_SYSTEM,
+    LEGACY_CAT_AUDIO,
+    LEGACY_CAT_ASSET,
+    LEGACY_CAT_OTA,
+    LEGACY_CAT_DEVICE,
+    LEGACY_CAT_NETWORK,
+    LEGACY_CAT_UI,
+    LEGACY_CAT_FILESYSTEM,
+    LEGACY_CAT_DEBUG,
+    LEGACY_CAT_UNKNOWN
 };
 
 // =============================================================================

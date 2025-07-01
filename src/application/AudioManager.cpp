@@ -29,33 +29,35 @@ bool AudioManager::init() {
     state.clear();
     callbacks.clear();
 
-    // Subscribe to audio status updates using messageType-based routing
-    Messaging::MessageAPI::subscribeToType(Messaging::Config::MESSAGE_TYPE_STATUS_UPDATE,
-                                           [this](const Messaging::Message& message) {
-                                               // Parse the audio status data from the message
-                                               Messaging::AudioStatusData data = Messaging::Json::parseStatusResponse(message);
+    // Subscribe to audio status updates using new external message system
+    Messaging::MessageAPI::subscribeToExternal(Messaging::Config::EXT_MSG_STATUS_UPDATE,
+                                               [this](const Messaging::ExternalMessage& message) {
+                                                   ESP_LOGD(TAG, "Received external audio status update from device: %s", message.deviceId.c_str());
 
-                                               ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
+                                                   // Parse the audio status data directly from the external message
+                                                   Messaging::AudioStatusData data = Messaging::Json::parseStatusResponse(message);
 
-                                               // DEBUG: Log default device volume conversion
-                                               if (data.hasDefaultDevice) {
-                                                   ESP_LOGI(TAG, "Received default device: %s, volume: %d",
-                                                            data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
-                                               }
+                                                   ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
 
-                                               // Check and request logos for all detected audio processes
-                                               this->checkAndRequestLogosForAudioProcesses(data);
+                                                   // DEBUG: Log default device volume conversion
+                                                   if (data.hasDefaultDevice) {
+                                                       ESP_LOGI(TAG, "Received default device: %s, volume: %d",
+                                                                data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
+                                                   }
 
-                                               // Convert AudioStatusData back to AudioStatus for compatibility
-                                               AudioStatus status;
-                                               status.setAudioLevels(data.audioLevels);
-                                               status.defaultDevice = data.defaultDevice;
-                                               status.hasDefaultDevice = data.hasDefaultDevice;
-                                               status.timestamp = data.timestamp;
+                                                   // Check and request logos for all detected audio processes
+                                                   this->checkAndRequestLogosForAudioProcesses(data);
 
-                                               // Process the audio status
-                                               this->onAudioStatusReceived(status);
-                                           });
+                                                   // Convert AudioStatusData to AudioStatus
+                                                   AudioStatus status;
+                                                   status.setAudioLevels(data.audioLevels);
+                                                   status.defaultDevice = data.defaultDevice;
+                                                   status.hasDefaultDevice = data.hasDefaultDevice;
+                                                   status.timestamp = data.timestamp;
+
+                                                   // Process the audio status
+                                                   this->onAudioStatusReceived(status);
+                                               });
 
     initialized = true;
     ESP_LOGI(TAG, "AudioManager initialized successfully");

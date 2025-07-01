@@ -380,12 +380,83 @@ String serializeInternalMessage(const InternalMessage& message);
 /**
  * PERFORMANCE: Parse audio status response from external message
  */
-AudioStatusData parseStatusResponse(const ExternalMessage& message);
+inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
+    AudioStatusData data;
+
+    // Use the parsedData from the external message
+    const JsonDocument& doc = message.parsedData;
+
+    data.timestamp = doc["timestamp"] | millis();
+    data.reason = doc["reason"] | "";
+    data.originatingDeviceId = doc["originatingDeviceId"] | "";
+
+    // Parse default device
+    if (doc["defaultDevice"].is<JsonObject>()) {
+        JsonObject defaultDev = doc["defaultDevice"];
+        data.defaultDevice.processName = defaultDev["processName"] | "";
+        data.defaultDevice.friendlyName = defaultDev["friendlyName"] | "";
+        data.defaultDevice.volume = defaultDev["volume"] | 0;
+        data.defaultDevice.isMuted = defaultDev["isMuted"] | false;
+        data.hasDefaultDevice = true;
+    }
+
+    // Parse audio levels array
+    if (doc["audioLevels"].is<JsonArray>()) {
+        JsonArray levels = doc["audioLevels"];
+        for (JsonObject levelObj : levels) {
+            Application::Audio::AudioLevel level;
+            level.processName = levelObj["processName"] | "";
+            level.friendlyName = levelObj["friendlyName"] | "";
+            level.volume = levelObj["volume"] | 0;
+            level.isMuted = levelObj["isMuted"] | false;
+            level.lastUpdate = millis();
+            level.stale = false;
+            data.audioLevels.push_back(level);
+        }
+    }
+
+    return data;
+}
 
 /**
  * PERFORMANCE: Parse device list response from external message
  */
 std::vector<AudioDeviceData> parseDeviceListResponse(const ExternalMessage& message);
+
+/**
+ * Create JSON status response from audio status data
+ */
+inline String createStatusResponse(const AudioStatusData& data) {
+    JsonDocument doc;
+
+    doc["messageType"] = MessageProtocol::externalMessageTypeToString(MessageProtocol::ExternalMessageType::STATUS_UPDATE);
+    doc["timestamp"] = data.timestamp;
+    doc["reason"] = data.reason;
+    doc["originatingDeviceId"] = data.originatingDeviceId;
+
+    // Default device
+    if (data.hasDefaultDevice) {
+        JsonObject defaultDev = doc["defaultDevice"].to<JsonObject>();
+        defaultDev["processName"] = data.defaultDevice.processName;
+        defaultDev["friendlyName"] = data.defaultDevice.friendlyName;
+        defaultDev["volume"] = data.defaultDevice.volume;
+        defaultDev["isMuted"] = data.defaultDevice.isMuted;
+    }
+
+    // Audio levels array
+    JsonArray levels = doc["audioLevels"].to<JsonArray>();
+    for (const auto& level : data.audioLevels) {
+        JsonObject levelObj = levels.add<JsonObject>();
+        levelObj["processName"] = level.processName;
+        levelObj["friendlyName"] = level.friendlyName;
+        levelObj["volume"] = level.volume;
+        levelObj["isMuted"] = level.isMuted;
+    }
+
+    String result;
+    serializeJson(doc, result);
+    return result;
+}
 
 /**
  * LEGACY: JSON utilities for backward compatibility
