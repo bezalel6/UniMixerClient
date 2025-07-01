@@ -1,6 +1,7 @@
 #include "LogoSupplier.h"
 #include "../hardware/DeviceManager.h"
 #include "../messaging/MessageConfig.h"
+#include <MessageProtocol.h>
 #include <esp_log.h>
 #include <algorithm>
 
@@ -15,7 +16,8 @@ namespace LogoAssets {
 
 AssetRequest LogoSupplier::createAssetRequest(const char* processName) {
     AssetRequest request;
-    request.messageType = Messaging::Config::MESSAGE_TYPE_GET_ASSETS;
+    // Use new enum-based constants for external messages
+    request.messageType = MessageProtocol::externalMessageTypeToString(Messaging::Config::EXT_MSG_GET_ASSETS);
     request.requestId = Messaging::Config::generateRequestId();
     request.deviceId = Messaging::Config::getDeviceId();
     request.processName = String(processName ? processName : "");
@@ -26,7 +28,8 @@ AssetRequest LogoSupplier::createAssetRequest(const char* processName) {
 AssetResponse LogoSupplier::createAssetResponse(bool success, const char* processName,
                                                 const char* requestId, const char* errorMessage) {
     AssetResponse response;
-    response.messageType = Messaging::Config::MESSAGE_TYPE_ASSET_RESPONSE;
+    // Use new enum-based constants for external messages
+    response.messageType = MessageProtocol::externalMessageTypeToString(Messaging::Config::EXT_MSG_ASSET_RESPONSE);
     response.requestId = String(requestId ? requestId : "");
     response.deviceId = Messaging::Config::getDeviceId();
     response.processName = String(processName ? processName : "");
