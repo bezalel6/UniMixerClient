@@ -5,7 +5,9 @@
 #ifndef BOARD_NAME
 #define BOARD_NAME "${this.board}"
 #endif
-
+#ifndef ui_imgset_
+#define ui_imgset_ (NULL)
+#endif
 #ifndef CORE_DEBUG_LEVEL
 #define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_WARN
 #endif

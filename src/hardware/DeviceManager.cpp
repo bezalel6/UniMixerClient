@@ -91,6 +91,7 @@ void printSystemInfo(void) {
     log_i("Free heap: %d bytes", ESP.getFreeHeap());
     log_i("Free PSRAM: %d bytes", ESP.getPsramSize());
     log_i("SDK version: %s", ESP.getSdkVersion());
+    log_i("Firmware: %s | Built: %s", getFirmwareVersion(), getBuildTimestamp());
 }
 
 uint32_t getFreeHeap(void) {

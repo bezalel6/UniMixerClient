@@ -24,6 +24,7 @@
 
 #include "LVGLMessageHandler.h"
 #include "../../include/DebugUtils.h"
+#include "../../include/BuildInfo.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/NetworkManager.h"
 #include "../hardware/MqttManager.h"
@@ -172,12 +173,11 @@ static void handleNetworkInfo(const LVGLMessage_t *msg) {
 
 static void handleFpsDisplay(const LVGLMessage_t *msg) {
     if (ui_lblFPS) {
-        // PERFORMANCE: Use static buffer to avoid stack allocation overhead
-        static char fpsText[64];
-        float actualFps = Display::getActualRenderFPS();
-        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
-                 actualFps, msg->data.fps_display.fps);
-        lv_label_set_text(ui_lblFPS, fpsText);
+        // Display build time and date instead of FPS
+        static char buildText[64];
+        snprintf(buildText, sizeof(buildText), "%s\n%s",
+                 getBuildTime12Hour(), getBuildDateDayMonth());
+        lv_label_set_text(ui_lblFPS, buildText);
     }
 }
 

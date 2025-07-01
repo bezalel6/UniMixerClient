@@ -26,6 +26,8 @@ extern "C" {
 
 ///////////////////// VARIABLES ////////////////////
 
+extern lv_anim_t * slideIntoFrame_Animation(lv_obj_t * TargetObject, int delay);
+extern lv_anim_t * slideOutOfFrame_Animation(lv_obj_t * TargetObject, int delay);
 
 // EVENTS
 

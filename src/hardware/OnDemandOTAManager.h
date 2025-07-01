@@ -4,6 +4,8 @@
 #include "../../include/OTAConfig.h"
 #include <Arduino.h>
 #include <functional>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 namespace Hardware {
 namespace OnDemandOTA {
@@ -72,7 +74,6 @@ class OnDemandOTAManager {
     static bool isNetworkFree(void);     // True when no network activity
     static size_t getFreedMemory(void);  // Memory freed from network tasks
 
-   private:
     static OTAState currentState;
     static uint8_t currentProgress;
     static char stateMessage[128];
@@ -83,6 +84,16 @@ class OnDemandOTAManager {
     static OTAStateCallback stateCallback;
     static OTAProgressCallback progressCallback;
     static OTACompleteCallback completeCallback;
+
+    // Core 1 task management
+    static TaskHandle_t otaTaskHandle;
+    static bool otaTaskRunning;
+
+   private:
+    // Core 1 task functions
+    static void otaTaskFunction(void* parameter);
+    static bool startOTATask(void);
+    static void stopOTATask(void);
 
     // State machine functions
     static void processStateMachine(void);

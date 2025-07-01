@@ -53,7 +53,6 @@ namespace TaskManager {
 #define OTA_UPDATE_INTERVAL_ACTIVE 50           // 50ms during active download
 #define AUDIO_UPDATE_INTERVAL_NORMAL 1000       // Normal operation
 #define AUDIO_UPDATE_INTERVAL_REDUCED 5000      // Low priority mode
-
 // Task state management
 typedef enum {
     TASK_STATE_NORMAL,

@@ -37,6 +37,7 @@ bool init(void) {
     Serial.println("AppController::init() called!");
     Serial.println("==========================================");
     ESP_LOGI(TAG, "Initializing Application Controller (Multi-threaded ESP32-S3)");
+    ESP_LOGI(TAG, "Build Info: %s", getBuildInfo());
     ESP_LOGE(TAG, "[DEBUG] AppController init started - using ERROR level for visibility");
 
     // Initialize watchdog timer for startup debugging (15 seconds)
