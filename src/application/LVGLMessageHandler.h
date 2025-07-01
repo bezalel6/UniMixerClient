@@ -16,6 +16,7 @@ typedef enum {
     MSG_UPDATE_NETWORK_INFO,
     MSG_UPDATE_OTA_PROGRESS,
     MSG_UPDATE_FPS_DISPLAY,
+    MSG_UPDATE_BUILD_TIME_DISPLAY,
     MSG_SCREEN_CHANGE,
     MSG_REQUEST_DATA,
 
@@ -81,6 +82,10 @@ typedef struct {
         struct {
             float fps;
         } fps_display;
+
+        struct {
+            // No data needed - build time is compile-time
+        } build_time_display;
 
         // Tab-specific volume update data
         struct {
@@ -192,6 +197,7 @@ bool updateNetworkInfo(const char *ssid, const char *ip);
 bool updateOTAProgress(uint8_t progress, bool in_progress, bool success,
                        const char *message);
 bool updateFpsDisplay(float fps);
+bool updateBuildTimeDisplay();
 bool changeScreen(void *screen, int anim_type, int time, int delay);
 
 // Tab-specific volume update functions

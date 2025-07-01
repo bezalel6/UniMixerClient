@@ -216,6 +216,11 @@ bool init(void) {
 
     ESP_LOGI(TAG, "Application Controller initialized successfully (Multi-threaded ESP32-S3)");
 
+    // Update build time display
+    INIT_STEP("Updating build time display", {
+        Application::LVGLMessageHandler::updateBuildTimeDisplay();
+    });
+
     // Cleanup watchdog timer
     ESP_LOGI(TAG, "De-initializing startup watchdog timer.");
     esp_task_wdt_delete(NULL);

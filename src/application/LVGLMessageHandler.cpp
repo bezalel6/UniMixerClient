@@ -88,6 +88,7 @@ static const char *messageTypeNames[] = {
     [MSG_UPDATE_NETWORK_INFO] = "NETWORK_INFO",
     [MSG_UPDATE_OTA_PROGRESS] = "OTA_PROGRESS",
     [MSG_UPDATE_FPS_DISPLAY] = "FPS_DISPLAY",
+    [MSG_UPDATE_BUILD_TIME_DISPLAY] = "BUILD_TIME_DISPLAY",
     [MSG_SCREEN_CHANGE] = "SCREEN_CHANGE",
     [MSG_REQUEST_DATA] = "REQUEST_DATA",
     [MSG_UPDATE_MASTER_VOLUME] = "MASTER_VOLUME",
@@ -173,11 +174,12 @@ static void handleNetworkInfo(const LVGLMessage_t *msg) {
 
 static void handleFpsDisplay(const LVGLMessage_t *msg) {
     if (ui_lblFPS) {
-        // Display build time and date instead of FPS
-        static char buildText[64];
-        snprintf(buildText, sizeof(buildText), "%s\n%s",
-                 getBuildTime12Hour(), getBuildDateDayMonth());
-        lv_label_set_text(ui_lblFPS, buildText);
+        // PERFORMANCE: Use static buffer to avoid stack allocation overhead
+        static char fpsText[64];
+        float actualFps = Display::getActualRenderFPS();
+        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
+                 actualFps, msg->data.fps_display.fps);
+        lv_label_set_text(ui_lblFPS, fpsText);
     }
 }
 
@@ -196,6 +198,12 @@ static void handleBalanceVolume(const LVGLMessage_t *msg) {
 static void handleMasterDevice(const LVGLMessage_t *msg) {
     if (ui_lblPrimaryAudioDeviceValue) {
         lv_label_set_text(ui_lblPrimaryAudioDeviceValue, msg->data.master_device.device_name);
+    }
+}
+
+static void handleBuildTimeDisplay(const LVGLMessage_t *msg) {
+    if (ui_lblBuildTimeValue) {
+        lv_label_set_text(ui_lblBuildTimeValue, getBuildTimeAndDate());
     }
 }
 
@@ -963,6 +971,7 @@ static void initializeMessageHandlers() {
         {MSG_UPDATE_WIFI_STATUS, handleWifiStatus},
         {MSG_UPDATE_NETWORK_INFO, handleNetworkInfo},
         {MSG_UPDATE_FPS_DISPLAY, handleFpsDisplay},
+        {MSG_UPDATE_BUILD_TIME_DISPLAY, handleBuildTimeDisplay},
         {MSG_UPDATE_MASTER_VOLUME, handleMasterVolume},
         {MSG_UPDATE_SINGLE_VOLUME, handleSingleVolume},
         {MSG_UPDATE_BALANCE_VOLUME, handleBalanceVolume},
@@ -1201,6 +1210,12 @@ bool updateFpsDisplay(float fps) {
     LVGLMessage_t message;
     message.type = MSG_UPDATE_FPS_DISPLAY;
     message.data.fps_display.fps = fps;
+    return sendMessage(&message);
+}
+
+bool updateBuildTimeDisplay() {
+    LVGLMessage_t message;
+    message.type = MSG_UPDATE_BUILD_TIME_DISPLAY;
     return sendMessage(&message);
 }
 

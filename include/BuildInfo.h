@@ -203,6 +203,17 @@ static const char* getBuildDateDayMonth() {
     return dayMonth;
 }
 
+/**
+ * @brief Get build time and date in the format "9:41 PM    12/12"
+ * @return const char* formatted string with time and date separated by 4 spaces
+ */
+static const char* getBuildTimeAndDate() {
+    static char timeAndDate[32];
+    snprintf(timeAndDate, sizeof(timeAndDate), "%s    %s",
+             getBuildTime12Hour(), getBuildDateDayMonth());
+    return timeAndDate;
+}
+
 #ifdef __cplusplus
 }
 #endif
