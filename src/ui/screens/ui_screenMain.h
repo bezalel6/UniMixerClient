@@ -46,8 +46,6 @@ extern lv_obj_t * ui_lblSD;
 extern lv_obj_t * ui_objSDIndicator;
 extern lv_obj_t * ui_lblSDStatus;
 extern lv_obj_t * ui_actionBtns;
-extern void ui_event_btnGOTOSD_btn(lv_event_t * e);
-extern lv_obj_t * ui_btnGOTOSD;
 extern void ui_event_btnGOTOLog_btn(lv_event_t * e);
 extern lv_obj_t * ui_btnGOTOLog;
 extern void ui_event_btnGOTOSettings_btn(lv_event_t * e);
