@@ -125,12 +125,86 @@ class MessageAPI {
     }
 
     // =============================================================================
-    // MESSAGE HANDLING (Type-Based)
+    // NEW DUAL MESSAGE TYPE SYSTEM - External/Internal Separation
     // =============================================================================
 
     /**
+     * Subscribe to external messages (cross-transport boundaries)
+     */
+    static void subscribeToExternal(MessageProtocol::ExternalMessageType messageType,
+                                    std::function<void(const ExternalMessage&)> callback) {
+        // Convert to string and use legacy method for now
+        const char* typeStr = MessageProtocol::externalMessageTypeToString(messageType);
+        MessageCore::getInstance().subscribeToType(String(typeStr), [callback](const Message& msg) {
+            // Convert legacy Message to ExternalMessage
+            ExternalMessage extMsg(MessageProtocol::stringToExternalMessageType(msg.messageType), msg.requestId, msg.deviceId);
+            extMsg.payload = msg.payload;
+            callback(extMsg);
+        });
+    }
+
+    /**
+     * Subscribe to internal messages (ESP32 internal communication)
+     */
+    static void subscribeToInternal(MessageProtocol::InternalMessageType messageType,
+                                    std::function<void(const InternalMessage&)> callback) {
+        // Convert to string and use legacy method for now
+        const char* typeStr = MessageProtocol::internalMessageTypeToString(messageType);
+        MessageCore::getInstance().subscribeToType(String(typeStr), [callback](const Message& msg) {
+            // Convert legacy Message to InternalMessage
+            InternalMessage intMsg(MessageProtocol::stringToInternalMessageType(msg.messageType));
+            intMsg.payload = msg.payload;
+            callback(intMsg);
+        });
+    }
+
+    /**
+     * Publish external message (cross-transport boundaries)
+     */
+    static bool publishExternal(const ExternalMessage& message) {
+        // Convert to legacy Message and publish
+        const char* typeStr = MessageProtocol::externalMessageTypeToString(message.messageType);
+        Message legacyMsg(typeStr, message.payload);
+        legacyMsg.requestId = message.requestId;
+        legacyMsg.deviceId = message.deviceId;
+        return MessageCore::getInstance().publish(legacyMsg);
+    }
+
+    /**
+     * Publish internal message (ESP32 internal communication)
+     */
+    static bool publishInternal(const InternalMessage& message) {
+        // Convert to legacy Message and publish
+        const char* typeStr = MessageProtocol::internalMessageTypeToString(message.messageType);
+        Message legacyMsg(typeStr, message.payload);
+        return MessageCore::getInstance().publish(legacyMsg);
+    }
+
+    /**
+     * Unsubscribe from external message type
+     */
+    static void unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
+        const char* typeStr = MessageProtocol::externalMessageTypeToString(messageType);
+        MessageCore::getInstance().unsubscribeFromType(String(typeStr));
+    }
+
+    /**
+     * Unsubscribe from internal message type
+     */
+    static void unsubscribeFromInternal(MessageProtocol::InternalMessageType messageType) {
+        const char* typeStr = MessageProtocol::internalMessageTypeToString(messageType);
+        MessageCore::getInstance().unsubscribeFromType(String(typeStr));
+    }
+
+    // =============================================================================
+    // LEGACY MESSAGE HANDLING (Deprecated)
+    // =============================================================================
+
+    /**
+     * @deprecated Use subscribeToExternal or subscribeToInternal instead
      * Subscribe to messages by messageType
      */
+    [[deprecated("Use subscribeToExternal or subscribeToInternal instead")]]
     static void subscribeToType(const String& messageType, MessageCallback callback) {
         MessageCore::getInstance().subscribeToType(messageType, callback);
     }
