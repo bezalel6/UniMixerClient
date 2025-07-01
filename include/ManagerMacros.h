@@ -456,3 +456,315 @@
             }                                                               \
         }                                                                   \
     } while (0)
+
+// =============================================================================
+// AUDIO MANAGER SPECIFIC MACROS
+// =============================================================================
+
+/**
+ * Validate device selection for current tab context
+ */
+#define VALIDATE_DEVICE_SELECTION(device_ptr, tab_name, return_value) \
+    do {                                                              \
+        if (!device_ptr) {                                            \
+            ESP_LOGW(TAG, "No device selected for %s tab", tab_name); \
+            return return_value;                                      \
+        }                                                             \
+    } while (0)
+
+#define VALIDATE_DEVICE_SELECTION_VOID(device_ptr, tab_name)          \
+    do {                                                              \
+        if (!device_ptr) {                                            \
+            ESP_LOGW(TAG, "No device selected for %s tab", tab_name); \
+            return;                                                   \
+        }                                                             \
+    } while (0)
+
+/**
+ * Execute operation on device with fallback for default device
+ */
+#define EXECUTE_DEVICE_OPERATION(device_name, operation, default_fallback) \
+    do {                                                                   \
+        if (device_name.isEmpty()) {                                       \
+            default_fallback;                                              \
+        } else {                                                           \
+            operation;                                                     \
+        }                                                                  \
+    } while (0)
+
+/**
+ * Notify state change only if device selection actually changed
+ */
+#define NOTIFY_STATE_CHANGE_IF_DIFFERENT(old_device, new_device, change_type)  \
+    do {                                                                       \
+        if (old_device != new_device) {                                        \
+            String deviceName = new_device ? new_device->processName : "";     \
+            notifyStateChange(AudioStateChangeEvent::change_type(deviceName)); \
+        }                                                                      \
+    } while (0)
+
+/**
+ * Validate both balance devices are available
+ */
+#define VALIDATE_BALANCE_DEVICES(device1, device2, return_value)      \
+    do {                                                              \
+        if (!device1 || !device2) {                                   \
+            ESP_LOGW(TAG, "Balance operation requires both devices"); \
+            return return_value;                                      \
+        }                                                             \
+    } while (0)
+
+#define VALIDATE_BALANCE_DEVICES_VOID(device1, device2)               \
+    do {                                                              \
+        if (!device1 || !device2) {                                   \
+            ESP_LOGW(TAG, "Balance operation requires both devices"); \
+            return;                                                   \
+        }                                                             \
+    } while (0)
+
+/**
+ * Update balance device selection with validation
+ */
+#define UPDATE_BALANCE_SELECTION(device1_name, device2_name)                        \
+    do {                                                                            \
+        AudioLevel* dev1 = state.findDevice(device1_name);                          \
+        AudioLevel* dev2 = state.findDevice(device2_name);                          \
+        if (dev1 && dev2) {                                                         \
+            state.selectedDevice1 = dev1;                                           \
+            state.selectedDevice2 = dev2;                                           \
+            ESP_LOGI(TAG, "Updated balance selection: %s, %s",                      \
+                     device1_name.c_str(), device2_name.c_str());                   \
+        } else {                                                                    \
+            ESP_LOGW(TAG, "Failed to update balance selection: devices not found"); \
+        }                                                                           \
+    } while (0)
+
+/**
+ * Distribute volume across balance devices with ratio
+ */
+#define BALANCE_VOLUME_DISTRIBUTE(volume, device1, device2, balance_ratio) \
+    do {                                                                   \
+        VALIDATE_BALANCE_DEVICES_VOID(device1, device2);                   \
+        int clampedVolume = constrain(volume, 0, 100);                     \
+        float ratio = constrain(balance_ratio, -1.0f, 1.0f);               \
+        int volume1 = clampedVolume * (1.0f - ratio) * 0.5f;               \
+        int volume2 = clampedVolume * (1.0f + ratio) * 0.5f;               \
+        device1->volume = constrain(volume1, 0, 100);                      \
+        device2->volume = constrain(volume2, 0, 100);                      \
+        ESP_LOGI(TAG, "Balance distribute: %d -> dev1:%d, dev2:%d",        \
+                 clampedVolume, device1->volume, device2->volume);         \
+    } while (0)
+
+// =============================================================================
+// LVGL STYLING MACROS - Eliminate repetitive styling
+// =============================================================================
+
+/**
+ * Set common object size and position in one call
+ */
+#define LVGL_SET_SIZE_POS(obj, w, h, x, y) \
+    do {                                   \
+        if (obj) {                         \
+            lv_obj_set_size(obj, w, h);    \
+            lv_obj_set_pos(obj, x, y);     \
+        }                                  \
+    } while (0)
+
+/**
+ * Set common object size and alignment
+ */
+#define LVGL_SET_SIZE_ALIGN(obj, w, h, align) \
+    do {                                      \
+        if (obj) {                            \
+            lv_obj_set_size(obj, w, h);       \
+            lv_obj_set_align(obj, align);     \
+        }                                     \
+    } while (0)
+
+/**
+ * Apply common button styling with color
+ */
+#define LVGL_STYLE_BUTTON(btn, bg_color, text_color)                                  \
+    do {                                                                              \
+        if (btn) {                                                                    \
+            lv_obj_set_style_bg_color(btn, lv_color_hex(bg_color), LV_PART_MAIN);     \
+            lv_obj_set_style_text_color(btn, lv_color_hex(text_color), LV_PART_MAIN); \
+            lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);                            \
+            lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);                      \
+        }                                                                             \
+    } while (0)
+
+/**
+ * Apply common panel styling
+ */
+#define LVGL_STYLE_PANEL(panel, bg_opa, border_opa)                       \
+    do {                                                                  \
+        if (panel) {                                                      \
+            lv_obj_set_style_bg_opa(panel, bg_opa, LV_PART_MAIN);         \
+            lv_obj_set_style_border_opa(panel, border_opa, LV_PART_MAIN); \
+            lv_obj_set_style_pad_all(panel, 0, LV_PART_MAIN);             \
+        }                                                                 \
+    } while (0)
+
+/**
+ * Set common text label styling
+ */
+#define LVGL_STYLE_LABEL(label, font, color, align)                                \
+    do {                                                                           \
+        if (label) {                                                               \
+            lv_obj_set_style_text_font(label, font, LV_PART_MAIN);                 \
+            lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN); \
+            lv_obj_set_style_text_align(label, align, LV_PART_MAIN);               \
+        }                                                                          \
+    } while (0)
+
+/**
+ * Apply common input field styling
+ */
+#define LVGL_STYLE_INPUT_FIELD(field, bg_color, border_color, focus_color)                     \
+    do {                                                                                       \
+        if (field) {                                                                           \
+            lv_obj_set_style_bg_color(field, lv_color_hex(bg_color), LV_PART_MAIN);            \
+            lv_obj_set_style_border_width(field, 2, LV_PART_MAIN);                             \
+            lv_obj_set_style_border_color(field, lv_color_hex(border_color), LV_PART_MAIN);    \
+            lv_obj_set_style_border_color(field, lv_color_hex(focus_color), LV_STATE_FOCUSED); \
+            lv_obj_set_style_radius(field, 8, LV_PART_MAIN);                                   \
+            lv_obj_set_style_pad_all(field, 12, LV_PART_MAIN);                                 \
+        }                                                                                      \
+    } while (0)
+
+/**
+ * Set common progress bar styling
+ */
+#define LVGL_STYLE_PROGRESS_BAR(bar, bg_color, indicator_color)                               \
+    do {                                                                                      \
+        if (bar) {                                                                            \
+            lv_obj_set_style_bg_color(bar, lv_color_hex(bg_color), LV_PART_MAIN);             \
+            lv_obj_set_style_bg_color(bar, lv_color_hex(indicator_color), LV_PART_INDICATOR); \
+            lv_obj_set_style_radius(bar, 10, LV_PART_MAIN);                                   \
+            lv_obj_set_style_radius(bar, 10, LV_PART_INDICATOR);                              \
+        }                                                                                     \
+    } while (0)
+
+/**
+ * Create flex container with common alignment
+ */
+#define LVGL_SETUP_FLEX_CONTAINER(container, flow, main_place, cross_place, track_place) \
+    do {                                                                                 \
+        if (container) {                                                                 \
+            lv_obj_set_flex_flow(container, flow);                                       \
+            lv_obj_set_flex_align(container, main_place, cross_place, track_place);      \
+        }                                                                                \
+    } while (0)
+
+// =============================================================================
+// MULTI-DEVICE PATTERN MACROS
+// =============================================================================
+
+/**
+ * Iterate over multiple devices with operation
+ */
+#define FOR_EACH_DEVICE(device_array, count, operation) \
+    do {                                                \
+        for (size_t i = 0; i < count; i++) {            \
+            if (device_array[i]) {                      \
+                operation(device_array[i], i);          \
+            }                                           \
+        }                                               \
+    } while (0)
+
+/**
+ * Validate multiple devices are available
+ */
+#define VALIDATE_MULTIPLE_DEVICES(device_array, count, return_value) \
+    do {                                                             \
+        for (size_t i = 0; i < count; i++) {                         \
+            if (!device_array[i]) {                                  \
+                ESP_LOGW(TAG, "Device %zu not available", i);        \
+                return return_value;                                 \
+            }                                                        \
+        }                                                            \
+    } while (0)
+
+/**
+ * Apply operation to multiple resources with error handling
+ */
+#define MULTI_RESOURCE_OPERATION(resource_array, count, operation, error_handler) \
+    do {                                                                          \
+        bool allSucceeded = true;                                                 \
+        for (size_t i = 0; i < count; i++) {                                      \
+            if (resource_array[i] && !operation(resource_array[i])) {             \
+                ESP_LOGW(TAG, "Operation failed for resource %zu", i);            \
+                allSucceeded = false;                                             \
+            }                                                                     \
+        }                                                                         \
+        if (!allSucceeded) {                                                      \
+            error_handler;                                                        \
+        }                                                                         \
+    } while (0)
+
+// =============================================================================
+// MANAGER PATTERN MACROS
+// =============================================================================
+
+/**
+ * Complete manager initialization pattern
+ */
+#define MANAGER_INIT_PATTERN(manager_name, init_flag, init_code) \
+    bool init() {                                                \
+        INIT_GUARD(manager_name, init_flag, TAG);                \
+        ESP_LOGI(TAG, "Initializing " manager_name);             \
+        init_code                                                \
+            init_flag = true;                                    \
+        ESP_LOGI(TAG, manager_name " initialized successfully"); \
+        return true;                                             \
+    }
+
+/**
+ * Complete manager deinitialization pattern
+ */
+#define MANAGER_DEINIT_PATTERN(manager_name, init_flag, deinit_code) \
+    void deinit() {                                                  \
+        if (!init_flag) return;                                      \
+        ESP_LOGI(TAG, "Deinitializing " manager_name);               \
+        deinit_code                                                  \
+            init_flag = false;                                       \
+    }
+
+/**
+ * Standard manager operation with init check
+ */
+#define MANAGER_OPERATION(operation_name, init_flag, return_value, code) \
+    REQUIRE_INIT(operation_name, init_flag, TAG, return_value);          \
+    code
+
+#define MANAGER_OPERATION_VOID(operation_name, init_flag, code) \
+    REQUIRE_INIT_VOID(operation_name, init_flag, TAG);          \
+    code
+
+// =============================================================================
+// COMPACT BRACKET STYLE ENFORCEMENT MACROS
+// =============================================================================
+
+/**
+ * Conditional execution with compact bracket style
+ */
+#define IF_THEN(condition, code) \
+    if (condition) {             \
+        code                     \
+    }
+
+#define IF_ELSE(condition, if_code, else_code) \
+    if (condition) {                           \
+        if_code                                \
+    } else {                                   \
+        else_code                              \
+    }
+
+/**
+ * For loop with compact bracket style
+ */
+#define FOR_EACH(init, condition, increment, code) \
+    for (init; condition; increment) {             \
+        code                                       \
+    }

@@ -56,11 +56,19 @@ class AudioManager {
     void setVolumeForCurrentDevice(int volume);
     void setDeviceVolume(const String& deviceName, int volume);
 
+    // Balance-specific volume control (NEW)
+    void setBalanceVolume(int volume, float balance_ratio = 0.0f);
+    void setBalanceDeviceVolumes(int device1Volume, int device2Volume);
+
     // Mute control
     void muteCurrentDevice();
     void unmuteCurrentDevice();
     void muteDevice(const String& deviceName);
     void unmuteDevice(const String& deviceName);
+
+    // Balance-specific mute control (NEW)
+    void muteBalanceDevices();
+    void unmuteBalanceDevices();
 
     // Tab management
     void setCurrentTab(Events::UI::TabState tab);

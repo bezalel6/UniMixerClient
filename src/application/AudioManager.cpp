@@ -8,6 +8,8 @@
 #include <algorithm>
 #include "ui/ui.h"
 #include "logo/LogoManager.h"
+#include "../../include/ManagerMacros.h"
+
 static const char* TAG = "AudioManager";
 
 namespace Application {
@@ -19,10 +21,7 @@ AudioManager& AudioManager::getInstance() {
 }
 
 bool AudioManager::init() {
-    if (initialized) {
-        ESP_LOGW(TAG, "AudioManager already initialized");
-        return true;
-    }
+    INIT_GUARD("AudioManager", initialized, TAG);
 
     ESP_LOGI(TAG, "Initializing AudioManager");
 
@@ -90,10 +89,8 @@ const AudioLevel* AudioManager::getDevice(const String& processName) const {
 // === EXTERNAL DATA INPUT ===
 
 void AudioManager::onAudioStatusReceived(const AudioStatus& newStatus) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+
     ESP_LOGI(TAG, "Received audio status with %d devices - triggering reactive updates", newStatus.getDeviceCount());
 
     // Store current device selections by name (before hash map gets replaced)
@@ -154,15 +151,8 @@ void AudioManager::selectDevice(const String& deviceName) {
 }
 
 void AudioManager::selectDevice(AudioLevel* device) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
-
-    if (!device) {
-        ESP_LOGW(TAG, "Cannot select null device");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+    VALIDATE_PARAM_VOID(device, TAG, "device");
 
     AudioLevel* oldSelection = state.getCurrentSelectedDevice();
 
@@ -189,43 +179,85 @@ void AudioManager::selectDevice(AudioLevel* device) {
     ESP_LOGI(TAG, "Selected device: %s in tab: %d", device->processName.c_str(), (int)state.currentTab);
 
     // Notify listeners if selection actually changed
-    if (oldSelection != device) {
-        notifyStateChange(AudioStateChangeEvent::selectionChanged(device->processName));
-    }
+    NOTIFY_STATE_CHANGE_IF_DIFFERENT(oldSelection, device, selectionChanged);
 }
 
 void AudioManager::selectBalanceDevices(const String& device1Name, const String& device2Name) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
     if (!state.isInBalanceTab()) {
         ESP_LOGW(TAG, "Can only select balance devices in balance tab");
         return;
     }
 
-    AudioLevel* device1 = state.findDevice(device1Name);
-    AudioLevel* device2 = state.findDevice(device2Name);
+    UPDATE_BALANCE_SELECTION(device1Name, device2Name);
+    NOTIFY_STATE_CHANGE_IF_DIFFERENT(nullptr, state.selectedDevice1, selectionChanged);
+}
 
-    if (!device1 || !device2) {
-        ESP_LOGW(TAG, "One or both balance devices not found: %s, %s", device1Name.c_str(), device2Name.c_str());
-        return;
-    }
+// === NEW BALANCE VOLUME METHODS ===
 
-    state.selectedDevice1 = device1;
-    state.selectedDevice2 = device2;
+void AudioManager::setBalanceVolume(int volume, float balance_ratio) {
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+    VALIDATE_BALANCE_DEVICES_VOID(state.selectedDevice1, state.selectedDevice2);
 
-    ESP_LOGI(TAG, "Selected balance devices: %s, %s", device1Name.c_str(), device2Name.c_str());
+    BALANCE_VOLUME_DISTRIBUTE(volume, state.selectedDevice1, state.selectedDevice2, balance_ratio);
 
-    notifyStateChange(AudioStateChangeEvent::selectionChanged(device1Name));
+    // Update timestamps and notify
+    updateTimestamp();
+    notifyStateChange(AudioStateChangeEvent::volumeChanged("balance", volume));
+    publishStatusUpdate();
+}
+
+void AudioManager::setBalanceDeviceVolumes(int device1Volume, int device2Volume) {
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+    VALIDATE_BALANCE_DEVICES_VOID(state.selectedDevice1, state.selectedDevice2);
+
+    state.selectedDevice1->volume = constrain(device1Volume, 0, 100);
+    state.selectedDevice2->volume = constrain(device2Volume, 0, 100);
+
+    ESP_LOGI(TAG, "Set balance device volumes: %s=%d, %s=%d",
+             state.selectedDevice1->processName.c_str(), state.selectedDevice1->volume,
+             state.selectedDevice2->processName.c_str(), state.selectedDevice2->volume);
+
+    updateTimestamp();
+    notifyStateChange(AudioStateChangeEvent::volumeChanged("balance", device1Volume));
+    publishStatusUpdate();
+}
+
+void AudioManager::muteBalanceDevices() {
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+    VALIDATE_BALANCE_DEVICES_VOID(state.selectedDevice1, state.selectedDevice2);
+
+    state.selectedDevice1->isMuted = true;
+    state.selectedDevice2->isMuted = true;
+
+    ESP_LOGI(TAG, "Muted balance devices: %s, %s",
+             state.selectedDevice1->processName.c_str(),
+             state.selectedDevice2->processName.c_str());
+
+    updateTimestamp();
+    notifyStateChange(AudioStateChangeEvent::muteChanged("balance"));
+    publishStatusUpdate();
+}
+
+void AudioManager::unmuteBalanceDevices() {
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+    VALIDATE_BALANCE_DEVICES_VOID(state.selectedDevice1, state.selectedDevice2);
+
+    state.selectedDevice1->isMuted = false;
+    state.selectedDevice2->isMuted = false;
+
+    ESP_LOGI(TAG, "Unmuted balance devices: %s, %s",
+             state.selectedDevice1->processName.c_str(),
+             state.selectedDevice2->processName.c_str());
+
+    updateTimestamp();
+    notifyStateChange(AudioStateChangeEvent::muteChanged("balance"));
+    publishStatusUpdate();
 }
 
 void AudioManager::setVolumeForCurrentDevice(int volume) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
     if (state.isInMasterTab()) {
         // Master tab controls the default device directly
@@ -235,60 +267,56 @@ void AudioManager::setVolumeForCurrentDevice(int volume) {
         } else {
             ESP_LOGW(TAG, "No default device available for master volume control");
         }
-    } else {
-        // Single/Balance tabs use selected devices
+    } else if (state.isInSingleTab()) {
         AudioLevel* currentDevice = state.getCurrentSelectedDevice();
-        if (currentDevice) {
-            ESP_LOGI(TAG, "%s tab: Setting session device '%s' volume to %d",
-                     getTabName(state.currentTab), currentDevice->processName.c_str(), volume);
-            setDeviceVolume(currentDevice->processName, volume);
-        } else {
-            ESP_LOGW(TAG, "No device selected for volume control in current tab: %s", getTabName(state.currentTab));
-        }
+        VALIDATE_DEVICE_SELECTION_VOID(currentDevice, "Single");
+
+        ESP_LOGI(TAG, "%s tab: Setting session device '%s' volume to %d",
+                 getTabName(state.currentTab), currentDevice->processName.c_str(), volume);
+        setDeviceVolume(currentDevice->processName, volume);
+    } else if (state.isInBalanceTab()) {
+        // FIXED: Proper balance volume control
+        setBalanceVolume(volume, 0.0f);  // Even balance by default
     }
 }
 
 void AudioManager::setDeviceVolume(const String& deviceName, int volume) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
     // Clamp volume
     volume = constrain(volume, 0, 100);
 
-    // Determine target based on deviceName parameter, NOT current tab
-    if (deviceName.isEmpty()) {
-        // Empty deviceName = update default device
-        if (state.currentStatus.hasDefaultDevice) {
-            state.currentStatus.defaultDevice.volume = volume;
-            ESP_LOGI(TAG, "Set default device volume to %d", volume);
-        } else {
-            ESP_LOGW(TAG, "No default device available for volume control");
-            return;
-        }
-    } else {
-        // Non-empty deviceName = update specific session device
-        AudioLevel* device = getDevice(deviceName);
-        if (device) {
-            device->volume = volume;
-            device->lastUpdate = Hardware::Device::getMillis();
-            device->stale = false;
-            ESP_LOGI(TAG, "Updated session device volume: %s = %d", deviceName.c_str(), volume);
-        } else {
-            // Create new device entry
-            AudioLevel newDevice;
-            newDevice.processName = deviceName;
-            newDevice.friendlyName = deviceName;
-            newDevice.volume = volume;
-            newDevice.lastUpdate = Hardware::Device::getMillis();
-            newDevice.stale = false;
-            newDevice.isMuted = false;
+    EXECUTE_DEVICE_OPERATION(deviceName,
+                             // Non-empty deviceName = update specific session device
+                             {
+            AudioLevel* device = getDevice(deviceName);
+            if (device) {
+                device->volume = volume;
+                device->lastUpdate = Hardware::Device::getMillis();
+                device->stale = false;
+                ESP_LOGI(TAG, "Updated session device volume: %s = %d", deviceName.c_str(), volume);
+            } else {
+                // Create new device entry
+                AudioLevel newDevice;
+                newDevice.processName = deviceName;
+                newDevice.friendlyName = deviceName;
+                newDevice.volume = volume;
+                newDevice.lastUpdate = Hardware::Device::getMillis();
+                newDevice.stale = false;
+                newDevice.isMuted = false;
 
-            state.currentStatus.addOrUpdateDevice(newDevice);
-            ESP_LOGI(TAG, "Added new session device: %s = %d", deviceName.c_str(), volume);
-        }
-    }
+                state.currentStatus.addOrUpdateDevice(newDevice);
+                ESP_LOGI(TAG, "Added new session device: %s = %d", deviceName.c_str(), volume);
+            } },
+                             // Empty deviceName = update default device
+                             {
+            if (state.currentStatus.hasDefaultDevice) {
+                state.currentStatus.defaultDevice.volume = volume;
+                ESP_LOGI(TAG, "Set default device volume to %d", volume);
+            } else {
+                ESP_LOGW(TAG, "No default device available for volume control");
+                return;
+            } });
 
     // Update timestamp and notify
     updateTimestamp();
@@ -302,6 +330,8 @@ void AudioManager::muteCurrentDevice() {
     AudioLevel* currentDevice = state.getCurrentSelectedDevice();
     if (currentDevice) {
         muteDevice(currentDevice->processName);
+    } else if (state.isInBalanceTab()) {
+        muteBalanceDevices();
     } else {
         ESP_LOGW(TAG, "No device selected for mute control");
     }
@@ -311,38 +341,36 @@ void AudioManager::unmuteCurrentDevice() {
     AudioLevel* currentDevice = state.getCurrentSelectedDevice();
     if (currentDevice) {
         unmuteDevice(currentDevice->processName);
+    } else if (state.isInBalanceTab()) {
+        unmuteBalanceDevices();
     } else {
         ESP_LOGW(TAG, "No device selected for unmute control");
     }
 }
 
 void AudioManager::muteDevice(const String& deviceName) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
-    // Determine target based on deviceName parameter, NOT current tab
-    if (deviceName.isEmpty()) {
-        // Empty deviceName = mute default device
-        if (state.currentStatus.hasDefaultDevice) {
-            state.currentStatus.defaultDevice.isMuted = true;
-            ESP_LOGI(TAG, "Muted default device");
-        } else {
-            ESP_LOGW(TAG, "No default device available for mute control");
-            return;
-        }
-    } else {
-        // Non-empty deviceName = mute specific session device
-        AudioLevel* device = getDevice(deviceName);
-        if (device) {
-            device->isMuted = true;
-            ESP_LOGI(TAG, "Muted session device: %s", deviceName.c_str());
-        } else {
-            ESP_LOGW(TAG, "Session device not found for mute: %s", deviceName.c_str());
-            return;
-        }
-    }
+    EXECUTE_DEVICE_OPERATION(deviceName,
+                             // Non-empty deviceName = mute specific session device
+                             {
+            AudioLevel* device = getDevice(deviceName);
+            if (device) {
+                device->isMuted = true;
+                ESP_LOGI(TAG, "Muted session device: %s", deviceName.c_str());
+            } else {
+                ESP_LOGW(TAG, "Session device not found for mute: %s", deviceName.c_str());
+                return;
+            } },
+                             // Empty deviceName = mute default device
+                             {
+            if (state.currentStatus.hasDefaultDevice) {
+                state.currentStatus.defaultDevice.isMuted = true;
+                ESP_LOGI(TAG, "Muted default device");
+            } else {
+                ESP_LOGW(TAG, "No default device available for mute control");
+                return;
+            } });
 
     // Update timestamp and notify
     updateTimestamp();
@@ -351,32 +379,28 @@ void AudioManager::muteDevice(const String& deviceName) {
 }
 
 void AudioManager::unmuteDevice(const String& deviceName) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
-    // Determine target based on deviceName parameter, NOT current tab
-    if (deviceName.isEmpty()) {
-        // Empty deviceName = unmute default device
-        if (state.currentStatus.hasDefaultDevice) {
-            state.currentStatus.defaultDevice.isMuted = false;
-            ESP_LOGI(TAG, "Unmuted default device");
-        } else {
-            ESP_LOGW(TAG, "No default device available for unmute control");
-            return;
-        }
-    } else {
-        // Non-empty deviceName = unmute specific session device
-        AudioLevel* device = getDevice(deviceName);
-        if (device) {
-            device->isMuted = false;
-            ESP_LOGI(TAG, "Unmuted session device: %s", deviceName.c_str());
-        } else {
-            ESP_LOGW(TAG, "Session device not found for unmute: %s", deviceName.c_str());
-            return;
-        }
-    }
+    EXECUTE_DEVICE_OPERATION(deviceName,
+                             // Non-empty deviceName = unmute specific session device
+                             {
+            AudioLevel* device = getDevice(deviceName);
+            if (device) {
+                device->isMuted = false;
+                ESP_LOGI(TAG, "Unmuted session device: %s", deviceName.c_str());
+            } else {
+                ESP_LOGW(TAG, "Session device not found for unmute: %s", deviceName.c_str());
+                return;
+            } },
+                             // Empty deviceName = unmute default device
+                             {
+            if (state.currentStatus.hasDefaultDevice) {
+                state.currentStatus.defaultDevice.isMuted = false;
+                ESP_LOGI(TAG, "Unmuted default device");
+            } else {
+                ESP_LOGW(TAG, "No default device available for unmute control");
+                return;
+            } });
 
     // Update timestamp and notify
     updateTimestamp();
@@ -385,10 +409,7 @@ void AudioManager::unmuteDevice(const String& deviceName) {
 }
 
 void AudioManager::setCurrentTab(Events::UI::TabState tab) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
     Events::UI::TabState oldTab = state.currentTab;
     state.currentTab = tab;
@@ -412,10 +433,7 @@ void AudioManager::subscribeToStateChanges(StateChangeCallback callback) {
 // === EXTERNAL COMMUNICATION ===
 
 void AudioManager::publishStatusUpdate() {
-    if (!Messaging::MessageAPI::isHealthy()) {
-        ESP_LOGW(TAG, "Cannot publish status update: Messaging system not healthy");
-        return;
-    }
+    REQUIRE_HEALTHY_VOID(Messaging::MessageAPI::isHealthy(), TAG, "Messaging system");
 
     // Convert AudioStatus to AudioStatusData and publish
     Messaging::AudioStatusData statusData;
@@ -429,28 +447,21 @@ void AudioManager::publishStatusUpdate() {
     String statusJson = Messaging::Json::createStatusResponse(statusData);
     bool published = Messaging::MessageAPI::publish(statusJson);
 
-    if (published) {
-        ESP_LOGI(TAG, "Published status update with %d sessions", state.currentStatus.getDeviceCount());
-    } else {
-        ESP_LOGE(TAG, "Failed to publish status update");
-    }
+    LOG_INFO_IF(published, TAG, "Published status update with %d sessions", state.currentStatus.getDeviceCount());
+    LOG_ERROR_IF(!published, TAG, "Failed to publish status update");
 }
 
 void AudioManager::publishStatusRequest(bool delayed) {
-    if (!delayed && !Messaging::MessageAPI::isHealthy()) {
-        ESP_LOGW(TAG, "Cannot publish status request: Messaging system not healthy");
-        return;
+    if (!delayed) {
+        REQUIRE_HEALTHY_VOID(Messaging::MessageAPI::isHealthy(), TAG, "Messaging system");
     }
 
     // For now, treat delayed requests the same as immediate requests
     // The MessageAPI handles connection management automatically
     bool published = Messaging::MessageAPI::requestAudioStatus();
 
-    if (published) {
-        ESP_LOGI(TAG, "Published %sstatus request", delayed ? "delayed " : "");
-    } else {
-        ESP_LOGE(TAG, "Failed to publish %sstatus request", delayed ? "delayed " : "");
-    }
+    LOG_INFO_IF(published, TAG, "Published %sstatus request", delayed ? "delayed " : "");
+    LOG_ERROR_IF(!published, TAG, "Failed to publish %sstatus request", delayed ? "delayed " : "");
 }
 
 // === UTILITY ===
@@ -471,10 +482,7 @@ const char* AudioManager::getTabName(Events::UI::TabState tab) const {
 // === SMART BEHAVIOR ===
 
 void AudioManager::performSmartAutoSelection() {
-    if (!initialized) {
-        ESP_LOGW(TAG, "AudioManager not initialized");
-        return;
-    }
+    REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 
     ESP_LOGI(TAG, "Performing smart auto-selection for tab: %s", getTabName(state.currentTab));
 
@@ -701,11 +709,8 @@ void AudioManager::refreshDevicePointers(const String& primaryDeviceName, const 
     // Refresh primary device pointer
     if (!primaryDeviceName.isEmpty()) {
         state.primaryAudioDevice = state.findDevice(primaryDeviceName);
-        if (state.primaryAudioDevice) {
-            ESP_LOGD(TAG, "Refreshed primary device pointer: %s", primaryDeviceName.c_str());
-        } else {
-            ESP_LOGW(TAG, "Failed to refresh primary device pointer: %s (device not found)", primaryDeviceName.c_str());
-        }
+        LOG_DEBUG_IF(state.primaryAudioDevice, TAG, "Refreshed primary device pointer: %s", primaryDeviceName.c_str());
+        LOG_WARN_IF(!state.primaryAudioDevice, TAG, "Failed to refresh primary device pointer: %s (device not found)", primaryDeviceName.c_str());
     } else {
         state.primaryAudioDevice = nullptr;
     }
@@ -713,11 +718,8 @@ void AudioManager::refreshDevicePointers(const String& primaryDeviceName, const 
     // Refresh single device pointer
     if (!singleDeviceName.isEmpty()) {
         state.selectedSingleDevice = state.findDevice(singleDeviceName);
-        if (state.selectedSingleDevice) {
-            ESP_LOGD(TAG, "Refreshed single device pointer: %s", singleDeviceName.c_str());
-        } else {
-            ESP_LOGW(TAG, "Failed to refresh single device pointer: %s (device not found)", singleDeviceName.c_str());
-        }
+        LOG_DEBUG_IF(state.selectedSingleDevice, TAG, "Refreshed single device pointer: %s", singleDeviceName.c_str());
+        LOG_WARN_IF(!state.selectedSingleDevice, TAG, "Failed to refresh single device pointer: %s (device not found)", singleDeviceName.c_str());
     } else {
         state.selectedSingleDevice = nullptr;
     }
@@ -725,11 +727,8 @@ void AudioManager::refreshDevicePointers(const String& primaryDeviceName, const 
     // Refresh device1 pointer (balance tab)
     if (!device1Name.isEmpty()) {
         state.selectedDevice1 = state.findDevice(device1Name);
-        if (state.selectedDevice1) {
-            ESP_LOGD(TAG, "Refreshed device1 pointer: %s", device1Name.c_str());
-        } else {
-            ESP_LOGW(TAG, "Failed to refresh device1 pointer: %s (device not found)", device1Name.c_str());
-        }
+        LOG_DEBUG_IF(state.selectedDevice1, TAG, "Refreshed device1 pointer: %s", device1Name.c_str());
+        LOG_WARN_IF(!state.selectedDevice1, TAG, "Failed to refresh device1 pointer: %s (device not found)", device1Name.c_str());
     } else {
         state.selectedDevice1 = nullptr;
     }
@@ -737,11 +736,8 @@ void AudioManager::refreshDevicePointers(const String& primaryDeviceName, const 
     // Refresh device2 pointer (balance tab)
     if (!device2Name.isEmpty()) {
         state.selectedDevice2 = state.findDevice(device2Name);
-        if (state.selectedDevice2) {
-            ESP_LOGD(TAG, "Refreshed device2 pointer: %s", device2Name.c_str());
-        } else {
-            ESP_LOGW(TAG, "Failed to refresh device2 pointer: %s (device not found)", device2Name.c_str());
-        }
+        LOG_DEBUG_IF(state.selectedDevice2, TAG, "Refreshed device2 pointer: %s", device2Name.c_str());
+        LOG_WARN_IF(!state.selectedDevice2, TAG, "Failed to refresh device2 pointer: %s (device not found)", device2Name.c_str());
     } else {
         state.selectedDevice2 = nullptr;
     }
@@ -776,7 +772,9 @@ void AudioManager::checkAndRequestLogosForAudioProcesses(const Messaging::AudioS
 }
 
 void AudioManager::checkSingleProcessLogo(const char* processName) {
-    if (!processName || strlen(processName) == 0) {
+    VALIDATE_PARAM_VOID(processName, TAG, "processName");
+
+    if (strlen(processName) == 0) {
         return;
     }
 
@@ -802,18 +800,12 @@ void AudioManager::checkSingleProcessLogo(const char* processName) {
 
     // Request logo asynchronously
     bool requested = logoSupplier.requestLogo(processName, [processName](const Application::LogoAssets::AssetResponse& response) {
-        if (response.success) {
-            ESP_LOGI(TAG, "Successfully received logo for process: %s", processName);
-        } else {
-            ESP_LOGW(TAG, "Failed to receive logo for process: %s - %s", processName, response.errorMessage.c_str());
-        }
+        LOG_INFO_IF(response.success, TAG, "Successfully received logo for process: %s", processName);
+        LOG_WARN_IF(!response.success, TAG, "Failed to receive logo for process: %s - %s", processName, response.errorMessage.c_str());
     });
 
-    if (requested) {
-        ESP_LOGD(TAG, "Logo request submitted for process: %s", processName);
-    } else {
-        ESP_LOGW(TAG, "Failed to submit logo request for process: %s", processName);
-    }
+    LOG_DEBUG_IF(requested, TAG, "Logo request submitted for process: %s", processName);
+    LOG_WARN_IF(!requested, TAG, "Failed to submit logo request for process: %s", processName);
 }
 
 }  // namespace Audio

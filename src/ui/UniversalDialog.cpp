@@ -1,4 +1,6 @@
 #include "UniversalDialog.h"
+#include "../../include/ManagerMacros.h"
+#include "../../include/UIConstants.h"
 #include <esp_log.h>
 #include <Arduino.h>
 
@@ -6,6 +8,7 @@ static const char* TAG = "UniversalDialog";
 
 namespace UI {
 namespace Dialog {
+#define HEX(clr) lv_color_hex(clr)
 
 // Static member definitions
 lv_obj_t* UniversalDialog::currentDialog = nullptr;
@@ -24,19 +27,19 @@ static bool modalBackground = true;
 lv_color_t UniversalDialog::getThemeColor(DialogTheme theme, bool isBackground) {
     switch (theme) {
         case DialogTheme::LIGHT:
-            return isBackground ? lv_color_hex(0xF8F9FA) : lv_color_hex(0x495057);
+            return isBackground ? HEX(0xF8F9FA) : HEX(0x495057);
         case DialogTheme::DARK:
-            return isBackground ? lv_color_hex(0x2C3E50) : lv_color_hex(0xECF0F1);
+            return isBackground ? HEX(0x2C3E50) : HEX(0xECF0F1);
         case DialogTheme::SUCCESS:
-            return isBackground ? lv_color_hex(0xD4EDDA) : lv_color_hex(0x155724);
+            return isBackground ? HEX(0xD4EDDA) : HEX(0x155724);
         case DialogTheme::WARNING:
-            return isBackground ? lv_color_hex(0xFFF3CD) : lv_color_hex(0x856404);
+            return isBackground ? HEX(0xFFF3CD) : HEX(0x856404);
         case DialogTheme::ERROR:
-            return isBackground ? lv_color_hex(0xF8D7DA) : lv_color_hex(0x721C24);
+            return isBackground ? HEX(0xF8D7DA) : HEX(0x721C24);
         case DialogTheme::INFO:
-            return isBackground ? lv_color_hex(0xD1ECF1) : lv_color_hex(0x0C5460);
+            return isBackground ? HEX(0xD1ECF1) : HEX(0x0C5460);
         default:
-            return lv_color_hex(0xFFFFFF);
+            return HEX(0xFFFFFF);
     }
 }
 
@@ -89,12 +92,11 @@ lv_obj_t* UniversalDialog::createOverlay(lv_obj_t* parent) {
     }
 
     lv_obj_t* overlay = lv_obj_create(parent);
-    lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_pos(overlay, 0, 0);
+    LVGL_SET_SIZE_POS(overlay, LV_PCT(100), LV_PCT(100), 0, 0);
 
     // Modal background styling
     if (modalBackground) {
-        lv_obj_set_style_bg_color(overlay, lv_color_hex(0x000000), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(overlay, HEX(0x000000), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(overlay, 128, LV_PART_MAIN);
     } else {
         lv_obj_set_style_bg_opa(overlay, LV_OPA_TRANSP, LV_PART_MAIN);
@@ -112,14 +114,13 @@ lv_obj_t* UniversalDialog::createDialogContainer(lv_obj_t* parent, DialogSize si
     getDialogDimensions(size, &width, &height);
 
     lv_obj_t* dialog = lv_obj_create(parent);
-    lv_obj_set_size(dialog, width, height);
-    lv_obj_set_align(dialog, LV_ALIGN_CENTER);
+    LVGL_SET_SIZE_ALIGN(dialog, width, height, LV_ALIGN_CENTER);
 
-    // Modern dialog styling with shadows and rounded corners
+    // Modern dialog styling with shadows and rounded corners using new approach
     applyTheme(dialog, theme);
     lv_obj_set_style_radius(dialog, 16, LV_PART_MAIN);
     lv_obj_set_style_shadow_width(dialog, 20, LV_PART_MAIN);
-    lv_obj_set_style_shadow_color(dialog, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(dialog, HEX(0x000000), LV_PART_MAIN);
     lv_obj_set_style_shadow_opa(dialog, 100, LV_PART_MAIN);
     lv_obj_set_style_shadow_spread(dialog, 2, LV_PART_MAIN);
     lv_obj_set_style_pad_all(dialog, 24, LV_PART_MAIN);
@@ -135,7 +136,7 @@ lv_obj_t* UniversalDialog::createTitle(lv_obj_t* parent, const String& title, Di
     lv_obj_set_align(titleLabel, LV_ALIGN_TOP_MID);
     lv_obj_set_y(titleLabel, 0);
 
-    // Title styling
+    // Title styling with theme-based color - simplified approach
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(titleLabel, getThemeColor(theme, false), LV_PART_MAIN);
     lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -149,7 +150,7 @@ lv_obj_t* UniversalDialog::createMessage(lv_obj_t* parent, const String& message
     lv_obj_set_align(messageLabel, LV_ALIGN_CENTER);
     lv_obj_set_y(messageLabel, -20);
 
-    // Message styling
+    // Message styling with theme-based color - simplified approach
     lv_obj_set_style_text_font(messageLabel, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(messageLabel, getThemeColor(theme, false), LV_PART_MAIN);
     lv_obj_set_style_text_align(messageLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -161,56 +162,48 @@ lv_obj_t* UniversalDialog::createMessage(lv_obj_t* parent, const String& message
 
 lv_obj_t* UniversalDialog::createButtonPanel(lv_obj_t* parent, const std::vector<DialogButton>& buttons) {
     lv_obj_t* panel = lv_obj_create(parent);
-    lv_obj_set_size(panel, LV_PCT(100), 60);
-    lv_obj_set_align(panel, LV_ALIGN_BOTTOM_MID);
+    LVGL_SET_SIZE_ALIGN(panel, LV_PCT(100), 60, LV_ALIGN_BOTTOM_MID);
     lv_obj_set_y(panel, 0);
 
-    // Panel styling
-    lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(panel, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(panel, 0, LV_PART_MAIN);
+    // Use new panel styling macro
+    LVGL_STYLE_PANEL(panel, LV_OPA_TRANSP, LV_OPA_TRANSP);
 
-    // Flexbox layout for buttons
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    // Setup as flex container using new macro
+    LVGL_SETUP_FLEX_CONTAINER(panel, LV_FLEX_FLOW_ROW,
+                              LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     // Create buttons
     for (const auto& buttonConfig : buttons) {
         lv_obj_t* btn = lv_btn_create(panel);
         lv_obj_set_size(btn, 100, 40);
 
-        // Button styling based on theme and default status
+        // Use new button styling based on properties
         if (buttonConfig.isDefault) {
             // Primary button styling
             switch (buttonConfig.theme) {
                 case DialogTheme::SUCCESS:
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(0x28A745), LV_PART_MAIN);
+                    LVGL_STYLE_BUTTON(btn, 0x28A745, 0xFFFFFF);
                     break;
                 case DialogTheme::ERROR:
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(0xDC3545), LV_PART_MAIN);
+                    LVGL_STYLE_BUTTON(btn, 0xDC3545, 0xFFFFFF);
                     break;
                 case DialogTheme::WARNING:
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFC107), LV_PART_MAIN);
+                    LVGL_STYLE_BUTTON(btn, 0xFFC107, 0x000000);
                     break;
                 default:
-                    lv_obj_set_style_bg_color(btn, lv_color_hex(0x007BFF), LV_PART_MAIN);
+                    LVGL_STYLE_BUTTON(btn, 0x007BFF, 0xFFFFFF);
                     break;
             }
-            lv_obj_set_style_text_color(btn, lv_color_white(), LV_PART_MAIN);
         } else {
             // Secondary button styling
-            lv_obj_set_style_bg_color(btn, lv_color_hex(0x6C757D), LV_PART_MAIN);
-            lv_obj_set_style_text_color(btn, lv_color_white(), LV_PART_MAIN);
+            LVGL_STYLE_BUTTON(btn, 0x6C757D, 0xFFFFFF);
         }
-
-        lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
-        lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
 
         // Button label
         lv_obj_t* label = lv_label_create(btn);
         lv_label_set_text(label, buttonConfig.text.c_str());
         lv_obj_center(label);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_14, LV_PART_MAIN);
+        LVGL_STYLE_LABEL(label, &lv_font_montserrat_14, 0xFFFFFF, LV_TEXT_ALIGN_CENTER);
 
         // Store callback in user data and add event handler
         static std::vector<std::function<void()>> callbacks;
@@ -232,15 +225,11 @@ lv_obj_t* UniversalDialog::createButtonPanel(lv_obj_t* parent, const std::vector
 lv_obj_t* UniversalDialog::createProgressSection(lv_obj_t* parent, const ProgressConfig& config) {
     // Progress bar
     currentProgressBar = lv_bar_create(parent);
-    lv_obj_set_size(currentProgressBar, LV_PCT(80), 20);
-    lv_obj_set_align(currentProgressBar, LV_ALIGN_CENTER);
+    LVGL_SET_SIZE_ALIGN(currentProgressBar, LV_PCT(80), 20, LV_ALIGN_CENTER);
     lv_obj_set_y(currentProgressBar, -10);
 
-    // Progress bar styling
-    lv_obj_set_style_bg_color(currentProgressBar, lv_color_hex(0xE9ECEF), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(currentProgressBar, lv_color_hex(0x007BFF), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(currentProgressBar, 10, LV_PART_MAIN);
-    lv_obj_set_style_radius(currentProgressBar, 10, LV_PART_INDICATOR);
+    // Use new progress bar styling macro
+    LVGL_STYLE_PROGRESS_BAR(currentProgressBar, 0xE9ECEF, 0x007BFF);
 
     // Set initial value
     lv_bar_set_range(currentProgressBar, 0, config.max);
@@ -256,8 +245,7 @@ lv_obj_t* UniversalDialog::createProgressSection(lv_obj_t* parent, const Progres
     lv_label_set_text(currentStatusLabel, config.message.c_str());
     lv_obj_set_align(currentStatusLabel, LV_ALIGN_CENTER);
     lv_obj_set_y(currentStatusLabel, 20);
-    lv_obj_set_style_text_font(currentStatusLabel, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_align(currentStatusLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    LVGL_STYLE_LABEL(currentStatusLabel, &lv_font_montserrat_12, 0x000000, LV_TEXT_ALIGN_CENTER);
     lv_label_set_long_mode(currentStatusLabel, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(currentStatusLabel, LV_PCT(90));
 
@@ -270,28 +258,22 @@ lv_obj_t* UniversalDialog::createInputSection(lv_obj_t* parent, const InputConfi
     lv_label_set_text(inputLabel, config.message.c_str());
     lv_obj_set_align(inputLabel, LV_ALIGN_CENTER);
     lv_obj_set_y(inputLabel, -40);
-    lv_obj_set_style_text_font(inputLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+    LVGL_STYLE_LABEL(inputLabel, &lv_font_montserrat_14, 0x000000, LV_TEXT_ALIGN_CENTER);
 
     // Input field
     if (config.multiline) {
         currentInputField = lv_textarea_create(parent);
-        lv_obj_set_size(currentInputField, LV_PCT(80), 100);
+        LVGL_SET_SIZE_ALIGN(currentInputField, LV_PCT(80), 100, LV_ALIGN_CENTER);
     } else {
         currentInputField = lv_textarea_create(parent);
-        lv_obj_set_size(currentInputField, LV_PCT(80), 40);
+        LVGL_SET_SIZE_ALIGN(currentInputField, LV_PCT(80), 40, LV_ALIGN_CENTER);
         lv_textarea_set_one_line(currentInputField, true);
     }
 
-    lv_obj_set_align(currentInputField, LV_ALIGN_CENTER);
     lv_obj_set_y(currentInputField, 0);
 
-    // Input field styling
-    lv_obj_set_style_bg_color(currentInputField, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_border_width(currentInputField, 2, LV_PART_MAIN);
-    lv_obj_set_style_border_color(currentInputField, lv_color_hex(0xCED4DA), LV_PART_MAIN);
-    lv_obj_set_style_border_color(currentInputField, lv_color_hex(0x007BFF), LV_STATE_FOCUSED);
-    lv_obj_set_style_radius(currentInputField, 8, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(currentInputField, 12, LV_PART_MAIN);
+    // Use new input field styling macro
+    LVGL_STYLE_INPUT_FIELD(currentInputField, 0xFFFFFF, 0xCED4DA, 0x007BFF);
 
     // Set placeholder and default value
     if (!config.placeholder.isEmpty()) {
@@ -307,7 +289,9 @@ lv_obj_t* UniversalDialog::createInputSection(lv_obj_t* parent, const InputConfi
     }
 
     // Max length
-    lv_textarea_set_max_length(currentInputField, config.maxLength);
+    if (config.maxLength > 0) {
+        lv_textarea_set_max_length(currentInputField, config.maxLength);
+    }
 
     return currentInputField;
 }
