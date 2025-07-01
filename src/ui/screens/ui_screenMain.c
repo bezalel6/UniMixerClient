@@ -97,6 +97,9 @@ void ui_event_pnlSettings(lv_event_t * e)
     if(event_code == LV_EVENT_LONG_PRESSED) {
         slideOutOfFrame_Animation(ui_pnlSettings, 0);
     }
+    if(event_code == LV_EVENT_DEFOCUSED) {
+        slideOutOfFrame_Animation(ui_pnlSettings, 0);
+    }
 }
 
 void ui_event_btnGOTOLog_btn(lv_event_t * e)
@@ -398,10 +401,11 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_flex_flow(ui_statusView, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(ui_statusView, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_SPACE_BETWEEN);
     lv_obj_remove_flag(ui_statusView, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_obj_set_style_border_color(ui_statusView, lv_color_hex(0xFFF9F9), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_opa(ui_statusView, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_width(ui_statusView, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_side(ui_statusView, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_outline_color(ui_statusView, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_outline_opa(ui_statusView, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_outline_width(ui_statusView, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_outline_pad(ui_statusView, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(ui_statusView, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_right(ui_statusView, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_top(ui_statusView, 0, LV_PART_MAIN | LV_STATE_DEFAULT);

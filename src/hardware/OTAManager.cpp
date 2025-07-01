@@ -13,7 +13,7 @@ static const char* TAG = "OTAManager";
 // =============================================================================
 
 #define OTA_LOG_STATE_CHANGE(oldState, newState, message) \
-    ESP_LOGI(TAG, "[STATE] %s -> %s: %s",                 \
+    ESP_LOGW(TAG, "[STATE] %s -> %s: %s",                 \
              getStateString(oldState), getStateString(newState), message)
 
 #define OTA_LOG_PROGRESS(progress, message) \
@@ -220,7 +220,7 @@ void OTAManager::updateProgress(uint8_t progress, const char* message) {
 }
 
 void OTAManager::completeOTA(OTAResult result, const char* message) {
-    ESP_LOGI(TAG, "[COMPLETE] OTA finished with result: %d - %s", result, message ? message : "");
+    ESP_LOGW(TAG, "[COMPLETE] OTA finished with result: %d - %s", result, message ? message : "");
 
     if (message) {
         strncpy(stateMessage, message, sizeof(stateMessage) - 1);
@@ -258,7 +258,7 @@ void OTAManager::completeOTA(OTAResult result, const char* message) {
         }
 
         if (!userCancelRequested) {
-            ESP_LOGI(TAG, "[REBOOT] Restarting system...");
+            ESP_LOGW(TAG, "[REBOOT] Restarting system...");
             ESP.restart();
         }
     }
@@ -323,7 +323,7 @@ bool OTAManager::checkUserCancel(void) {
     if (!userCancelRequested) return false;
 
     if (canCancel()) {
-        ESP_LOGI(TAG, "[CANCEL] Processing user cancellation");
+        ESP_LOGW(TAG, "[CANCEL] Processing user cancellation");
         completeOTA(OTA_RESULT_CANCELLED, "Cancelled by user");
         return true;
     }
@@ -375,7 +375,7 @@ bool OTAManager::startNetwork(void) {
     static bool networkInitialized = false;
 
     if (!networkInitialized) {
-        ESP_LOGI(TAG, "[NETWORK] Starting minimal network for OTA");
+        ESP_LOGW(TAG, "[NETWORK] Starting minimal network for OTA");
 
         WiFi.mode(WIFI_STA);
         WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
@@ -387,7 +387,7 @@ bool OTAManager::startNetwork(void) {
     feedWatchdogAndYield("network connection");
 
     if (WiFi.status() == WL_CONNECTED) {
-        ESP_LOGI(TAG, "[NETWORK] WiFi connected: %s", WiFi.localIP().toString().c_str());
+        ESP_LOGW(TAG, "[NETWORK] WiFi connected: %s", WiFi.localIP().toString().c_str());
         updateProgress(20, "WiFi connected");
         return true;
     }
@@ -406,13 +406,13 @@ bool OTAManager::startNetwork(void) {
 }
 
 void OTAManager::stopNetwork(void) {
-    ESP_LOGI(TAG, "[NETWORK] Stopping network - returning to network-free mode");
+    ESP_LOGW(TAG, "[NETWORK] Stopping network - returning to network-free mode");
 
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     safeDelay(100, "network shutdown");
 
-    ESP_LOGI(TAG, "[NETWORK-FREE] Network disabled - back to network-free operation");
+    ESP_LOGW(TAG, "[NETWORK-FREE] Network disabled - back to network-free operation");
 }
 
 bool OTAManager::isNetworkReady(void) {
@@ -458,7 +458,7 @@ void OTAManager::onHTTPUpdateProgress(int current, int total) {
 bool OTAManager::downloadAndInstall(void) {
     if (!isNetworkReady()) return false;
 
-    ESP_LOGI(TAG, "[DOWNLOAD] Starting firmware download from: %s", OTA_SERVER_URL);
+    ESP_LOGW(TAG, "[DOWNLOAD] Starting firmware download from: %s", OTA_SERVER_URL);
 
     setupHTTPUpdateCallbacks();
     feedWatchdogAndYield("pre-download");
@@ -476,12 +476,12 @@ bool OTAManager::downloadAndInstall(void) {
             return false;
 
         case HTTP_UPDATE_NO_UPDATES:
-            ESP_LOGI(TAG, "[DOWNLOAD] No updates available");
+            ESP_LOGW(TAG, "[DOWNLOAD] No updates available");
             completeOTA(OTA_RESULT_SUCCESS, "Already up to date");
             return true;
 
         case HTTP_UPDATE_OK:
-            ESP_LOGI(TAG, "[DOWNLOAD] Download completed successfully");
+            ESP_LOGW(TAG, "[DOWNLOAD] Download completed successfully");
             updateProgress(80, "Download complete, installing...");
             return true;
 
@@ -546,12 +546,16 @@ void OTAManager::processStateMachine(void) {
 }
 
 void OTAManager::cleanup(void) {
-    ESP_LOGI(TAG, "[CLEANUP] Cleaning up OTA resources");
+    ESP_LOGW(TAG, "[CLEANUP] Cleaning up OTA resources");
 
     stopNetwork();
     userCancelRequested = false;
     otaStartTime = 0;
     resetMonitoring();
+
+    // CRITICAL FIX: Destroy OTA tasks and return to network-free mode
+    ESP_LOGI(TAG, "[CORE-FIX] Destroying OTA tasks and returning to network-free mode");
+    Application::TaskManager::destroyOTATasks();
 
     enterState(OTA_IDLE, "Returned to network-free mode");
     Application::LVGLMessageHandler::hideOtaScreen();
@@ -562,7 +566,7 @@ void OTAManager::cleanup(void) {
 // =============================================================================
 
 bool OTAManager::init(void) {
-    ESP_LOGI(TAG, "[INIT] Initializing Unified OTA Manager");
+    ESP_LOGW(TAG, "[INIT] Initializing Unified OTA Manager");
 
     currentState = OTA_IDLE;
     currentProgress = 0;
@@ -572,12 +576,12 @@ bool OTAManager::init(void) {
 
     resetMonitoring();
 
-    ESP_LOGI(TAG, "[INIT] Unified OTA Manager initialized successfully");
+    ESP_LOGW(TAG, "[INIT] Unified OTA Manager initialized successfully");
     return true;
 }
 
 void OTAManager::deinit(void) {
-    ESP_LOGI(TAG, "[DEINIT] Deinitializing Unified OTA Manager");
+    ESP_LOGW(TAG, "[DEINIT] Deinitializing Unified OTA Manager");
 
     if (isActive()) {
         cancelOTA();
@@ -599,7 +603,7 @@ void OTAManager::update(void) {
 }
 
 bool OTAManager::startOTA(void) {
-    ESP_LOGI(TAG, "[START] User initiated OTA");
+    ESP_LOGW(TAG, "[START] User initiated OTA");
 
     if (currentState != OTA_IDLE) {
         ESP_LOGW(TAG, "[START] OTA already active");
@@ -610,14 +614,23 @@ bool OTAManager::startOTA(void) {
     otaStartTime = millis();
     resetMonitoring();
 
+    // CRITICAL FIX: Create OTA tasks on Core 1 to prevent blocking Core 0
+    ESP_LOGI(TAG, "[CORE-FIX] Creating OTA tasks on Core 1 to prevent watchdog timeout");
+    if (!Application::TaskManager::createOTATasks()) {
+        ESP_LOGE(TAG, "[CORE-FIX] Failed to create OTA tasks - OTA cannot proceed safely");
+        completeOTA(OTA_RESULT_UNKNOWN_ERROR, "Failed to create OTA tasks");
+        return false;
+    }
+
     enterState(OTA_USER_INITIATED, "OTA started by user");
     Application::LVGLMessageHandler::showOtaScreen();
 
+    ESP_LOGI(TAG, "[CORE-FIX] OTA tasks created successfully on Core 1 - safe to proceed");
     return true;
 }
 
 void OTAManager::cancelOTA(void) {
-    ESP_LOGI(TAG, "[CANCEL] User requested OTA cancellation");
+    ESP_LOGW(TAG, "[CANCEL] User requested OTA cancellation");
 
     if (!isActive()) {
         ESP_LOGW(TAG, "[CANCEL] No active OTA to cancel");

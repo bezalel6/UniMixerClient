@@ -263,10 +263,6 @@ static void handleRequestData(const LVGLMessage_t *msg) {
 static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "OTA: Showing OTA screen");
 
-    // Save current screen for restoration later
-    static lv_obj_t *previousScreen = nullptr;
-    previousScreen = lv_scr_act();
-
     // Switch to OTA screen with smooth animation
     if (lv_scr_act() != ui_screenOTA) {
         _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, ui_screenOTA_screen_init);
@@ -1127,11 +1123,6 @@ void processMessageQueue(lv_timer_t *timer) {
     if (processingTime > 30 || messagesProcessed >= maxMessages) {
         ESP_LOGD(TAG, "Processed %d messages in %ums (queue: %d→%d)",
                  messagesProcessed, processingTime, queueSize, uxQueueMessagesWaiting(lvglMessageQueue));
-    }
-
-    // Update OTA state machine if OTA is active
-    if (Hardware::OTA::OTAManager::isActive()) {
-        Hardware::OTA::OTAManager::update();
     }
 
     // OPTIMIZED: Queue overflow protection
