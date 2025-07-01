@@ -24,8 +24,8 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
     lv_obj_t * cui_VolumeSlider;
     cui_VolumeSlider = lv_obj_create(comp_parent);
     lv_obj_remove_style_all(cui_VolumeSlider);
-    lv_obj_set_width(cui_VolumeSlider, 325);
-    lv_obj_set_height(cui_VolumeSlider, 325);
+    lv_obj_set_width(cui_VolumeSlider, 300);
+    lv_obj_set_height(cui_VolumeSlider, 300);
     lv_obj_set_align(cui_VolumeSlider, LV_ALIGN_TOP_MID);
     lv_obj_add_flag(cui_VolumeSlider, LV_OBJ_FLAG_OVERFLOW_VISIBLE | LV_OBJ_FLAG_EVENT_BUBBLE);     /// Flags
     lv_obj_remove_flag(cui_VolumeSlider, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -42,10 +42,10 @@ lv_obj_t * ui_VolumeSlider_create(lv_obj_t * comp_parent)
 
     lv_obj_t * cui_primaryVolumeSlider;
     cui_primaryVolumeSlider = lv_arc_create(cui_VolumeSlider);
-    lv_obj_set_width(cui_primaryVolumeSlider, 320);
-    lv_obj_set_height(cui_primaryVolumeSlider, 320);
+    lv_obj_set_width(cui_primaryVolumeSlider, 300);
+    lv_obj_set_height(cui_primaryVolumeSlider, 300);
     lv_obj_set_x(cui_primaryVolumeSlider, 0);
-    lv_obj_set_y(cui_primaryVolumeSlider, -10);
+    lv_obj_set_y(cui_primaryVolumeSlider, 25);
     lv_obj_set_align(cui_primaryVolumeSlider, LV_ALIGN_BOTTOM_MID);
     lv_obj_add_flag(cui_primaryVolumeSlider,
                     LV_OBJ_FLAG_ADV_HITTEST | LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_OVERFLOW_VISIBLE);   /// Flags
