@@ -29,7 +29,7 @@
 #include "../hardware/NetworkManager.h"
 #include "../hardware/MqttManager.h"
 #include "../hardware/SDManager.h"
-#include "../hardware/OnDemandOTAManager.h"
+#include "../hardware/OTAManager.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "../display/DisplayManager.h"
@@ -610,19 +610,19 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
                 updateOtaScreenProgress(0, "Initializing OTA mode...");
                 
                 // Setup OTA callbacks for UI integration
-                Hardware::OnDemandOTA::OnDemandOTAManager::setStateCallback([](Hardware::OnDemandOTA::OTAState state, const char* message) {
+                Hardware::OTA::OTAManager::setStateCallback([](Hardware::OTA::OTAState state, const char* message) {
                     ESP_LOGI(TAG, "OTA State: %d - %s", (int)state, message ? message : "");
-                    updateOtaScreenProgress(Hardware::OnDemandOTA::OnDemandOTAManager::getProgress(), message ? message : "");
+                    updateOtaScreenProgress(Hardware::OTA::OTAManager::getProgress(), message ? message : "");
                 });
                 
-                Hardware::OnDemandOTA::OnDemandOTAManager::setProgressCallback([](uint8_t progress, const char* message) {
+                Hardware::OTA::OTAManager::setProgressCallback([](uint8_t progress, const char* message) {
                     ESP_LOGI(TAG, "OTA Progress: %d%% - %s", progress, message ? message : "");
                     updateOtaScreenProgress(progress, message ? message : "");
                 });
                 
-                Hardware::OnDemandOTA::OnDemandOTAManager::setCompleteCallback([](Hardware::OnDemandOTA::OTAResult result, const char* message) {
+                Hardware::OTA::OTAManager::setCompleteCallback([](Hardware::OTA::OTAResult result, const char* message) {
                     ESP_LOGI(TAG, "OTA Complete: %d - %s", (int)result, message ? message : "");
-                    if (result == Hardware::OnDemandOTA::OTA_RESULT_SUCCESS) {
+                    if (result == Hardware::OTA::OTA_RESULT_SUCCESS) {
                         updateOtaScreenProgress(100, "OTA completed successfully! Restarting...");
                         vTaskDelay(pdMS_TO_TICKS(2000));
                         esp_restart();
@@ -634,7 +634,7 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
                 });
                 
                 // Start OTA mode
-                if (!Hardware::OnDemandOTA::OnDemandOTAManager::startOTAMode()) {
+                if (!Hardware::OTA::OTAManager::startOTA()) {
                     ESP_LOGE(TAG, "Failed to start OTA mode");
                     updateOtaScreenProgress(0, "Failed to start OTA mode");
                     vTaskDelay(pdMS_TO_TICKS(2000));
@@ -1130,8 +1130,8 @@ void processMessageQueue(lv_timer_t *timer) {
     }
 
     // Update OTA state machine if OTA is active
-    if (Hardware::OnDemandOTA::OnDemandOTAManager::isOTAActive()) {
-        Hardware::OnDemandOTA::OnDemandOTAManager::update();
+    if (Hardware::OTA::OTAManager::isActive()) {
+        Hardware::OTA::OTAManager::update();
     }
 
     // OPTIMIZED: Queue overflow protection

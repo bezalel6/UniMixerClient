@@ -18,13 +18,9 @@
 #include <esp_task_wdt.h>
 #include <ui/ui.h>
 
-// NETWORK-FREE ARCHITECTURE: Only include network components when needed
-#if OTA_ON_DEMAND_ONLY
-#include "../hardware/OnDemandOTAManager.h"
-#else
+// Unified OTA System
 #include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
-#endif
 
 // Private variables
 static const char *TAG = "AppController";
@@ -76,9 +72,8 @@ bool init(void) {
 
     INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::init());
 
-    // Network architecture logic
+    // Network architecture logic - Network-free by default, OTA on-demand
     INIT_STEP("Configuring Network Architecture", {
-#if OTA_ON_DEMAND_ONLY
         ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
         ESP_LOGI(TAG, "[NETWORK-FREE] Network will only be activated for OTA when requested by user");
         bool networkNeeded = false;
@@ -86,28 +81,20 @@ bool init(void) {
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
         ESP_LOGW(TAG, "[NETWORK-FREE] MQTT transport requested but network-free mode enabled");
         ESP_LOGW(TAG, "[NETWORK-FREE] Disabling MQTT transport in favor of Serial-only");
+        networkNeeded = false;  // Force network-free for MQTT
 #endif
 
-#else
-        bool networkNeeded = false;
-
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-        networkNeeded = true;
-#endif
-
-#if OTA_ENABLE_UPDATES
-        networkNeeded = true;
-#endif
-
+        // Network will be initialized on-demand by OTA system when needed
         if (networkNeeded) {
-            ESP_LOGI(TAG, "Network required for MQTT/OTA - initializing network manager");
+            ESP_LOGI(TAG, "Network required - initializing network manager");
             if (!Hardware::Network::init()) {
                 ESP_LOGE(TAG, "Failed to initialize network manager");
                 return false;
             }
             Hardware::Network::enableAutoReconnect(true);
+        } else {
+            ESP_LOGI(TAG, "[NETWORK-FREE] Skipping network initialization - will be done on-demand for OTA");
         }
-#endif
     });
 
     // Transport configuration
@@ -170,23 +157,17 @@ bool init(void) {
                            Application::Audio::AudioUI::getInstance().init());
 
 #if OTA_ENABLE_UPDATES
-#if OTA_ON_DEMAND_ONLY
-    INIT_STEP_CRITICAL("Initializing On-Demand OTA Manager (Network-Free)",
-                       Hardware::OnDemandOTA::OnDemandOTAManager::init());
-    ESP_LOGI(TAG, "On-Demand OTA Manager initialized successfully - network-free mode active");
-#else
-    INIT_STEP_CRITICAL("Initializing OTA Manager", Hardware::OTA::init());
-    ESP_LOGI(TAG, "OTA manager initialized successfully");
-#endif
+    INIT_STEP_CRITICAL("Initializing Unified OTA Manager (Network-Free)",
+                       Hardware::OTA::OTAManager::init());
+    ESP_LOGI(TAG, "Unified OTA Manager initialized successfully - network-free mode active");
 #endif
 
     INIT_STEP("Setting up UI components", { setupUiComponents(); });
 
-    // Task Manager initialization
+    // Task Manager initialization - Network-free mode for maximum performance
     INIT_STEP("Initializing Task Manager", {
         Serial.println("AppController: About to initialize TaskManager...");
-#if OTA_ON_DEMAND_ONLY
-        Serial.println("AppController: OTA_ON_DEMAND_ONLY is defined - calling initNetworkFreeTasks()");
+        Serial.println("AppController: Using network-free mode - calling initNetworkFreeTasks()");
         ESP_LOGI(TAG, "[NETWORK-FREE] Initializing network-free task manager");
         ESP_LOGE(TAG, "[DEBUG] About to call TaskManager::initNetworkFreeTasks()");
         if (!TaskManager::initNetworkFreeTasks()) {
@@ -196,16 +177,6 @@ bool init(void) {
         }
         ESP_LOGI(TAG, "[NETWORK-FREE] Task manager initialized - maximum UI/audio performance enabled");
         Serial.println("AppController: TaskManager::initNetworkFreeTasks() succeeded!");
-#else
-        Serial.println("AppController: OTA_ON_DEMAND_ONLY not defined - calling init()");
-        ESP_LOGE(TAG, "[DEBUG] About to call TaskManager::init()");
-        if (!TaskManager::init()) {
-            ESP_LOGE(TAG, "Failed to initialize task manager");
-            Serial.println("ERROR: TaskManager::init() returned false!");
-            return false;
-        }
-        Serial.println("AppController: TaskManager::init() succeeded!");
-#endif
     });
 
     // Send initial status request
@@ -245,11 +216,7 @@ void deinit(void) {
     Logo::LogoManager::getInstance().deinit();
 
 #if OTA_ENABLE_UPDATES
-#if OTA_ON_DEMAND_ONLY
-    Hardware::OnDemandOTA::OnDemandOTAManager::deinit();
-#else
-    Hardware::OTA::deinit();
-#endif
+    Hardware::OTA::OTAManager::deinit();
 #endif
 
     // Shutdown transports
@@ -261,8 +228,7 @@ void deinit(void) {
     Messaging::MessageAPI::shutdown();
 
     // Deinitialize network manager if it was initialized
-#if !OTA_ON_DEMAND_ONLY && (MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || \
-                            OTA_ENABLE_UPDATES)
+#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
     Hardware::Network::deinit();
 #endif
 
@@ -324,12 +290,8 @@ void setupUiComponents(void) {
     // NETWORK-FREE ARCHITECTURE: OTA UI SETUP
     // =========================================================================
 #if OTA_ENABLE_UPDATES
-#if OTA_ON_DEMAND_ONLY
     Application::LVGLMessageHandler::updateOTAProgress(0, false, false, "OTA Ready (Network-Free Mode)");
     ESP_LOGI(TAG, "[NETWORK-FREE] OTA UI configured for on-demand operation");
-#else
-    Application::LVGLMessageHandler::updateOTAProgress(0, false, false, "OTA Ready");
-#endif
 #endif
 
     // =========================================================================

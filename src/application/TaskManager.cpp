@@ -261,8 +261,7 @@ bool init(void) {
         return false;
     }
 
-    // Create network tasks unless OTA_ON_DEMAND_ONLY is defined
-#ifdef OTA_ON_DEMAND_ONLY
+    // Network-free architecture - network tasks created on-demand for OTA only
     ESP_LOGI(TAG, "[INIT] Network-free mode: Skipping network tasks (will be created on-demand for OTA)");
 
     // Update task configuration for network-free mode
@@ -271,14 +270,8 @@ bool init(void) {
         taskSystemConfig.networkTasksActive = false;
         xSemaphoreGiveRecursive(taskConfigMutex);
     }
-#else
-    // Traditional always-on network mode
-    if (!createNetworkTasks()) {
-        return false;
-    }
-#endif
 
-    printInitializationSummary(false);  // false = not network-free (unless OTA_ON_DEMAND_ONLY)
+    printInitializationSummary(true);  // true = network-free mode
 
     return true;
 }
