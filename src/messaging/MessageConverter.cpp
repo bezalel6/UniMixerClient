@@ -81,7 +81,7 @@ std::vector<InternalMessage> MessageConverter::externalToInternal(const External
     switch (external.messageType) {
         case MessageProtocol::ExternalMessageType::STATUS_UPDATE: {
             // Audio status update -> Multiple internal messages
-            AudioStatusData audioData = Json::parseStatusResponse(external);
+            AudioStatusData audioData = parseStatusResponse(external);
 
             // Create internal message for audio manager
             InternalMessage audioMsg(MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE);

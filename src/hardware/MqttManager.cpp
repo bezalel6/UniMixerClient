@@ -439,8 +439,11 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
     ESP_LOGI(TAG, "Received message - Topic: %s, Payload: %s", topic, payloadStr);
 
-    // Forward to new messaging system (no topic needed - messageType is in JSON)
-    Messaging::MessageAPI::handleIncomingMessage(String(payloadStr));
+    // Forward to new messaging system using external message handling
+    Messaging::ExternalMessage externalMsg = Messaging::MessageParser::parseExternalMessage(String(payloadStr));
+    if (externalMsg.messageType != MessageProtocol::ExternalMessageType::INVALID) {
+        Messaging::MessageCore::getInstance().handleExternalMessage(externalMsg);
+    }
 
     // Also handle through legacy system for backwards compatibility
     Handler* handler = findHandlerByTopic(topic);

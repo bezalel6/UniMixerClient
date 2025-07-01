@@ -7,7 +7,7 @@
 namespace Messaging {
 
 /**
- * Clean API interface for the messageType-based messaging system
+ * Clean API interface for the dual architecture messaging system
  *
  * This is the ONLY header that application components should include.
  * It provides a simple, stable interface while hiding implementation details.
@@ -17,14 +17,16 @@ namespace Messaging {
  *   // Initialize
  *   MessageAPI::init();
  *
- *   // Subscribe to specific message types
- *   MessageAPI::subscribeToType("StatusUpdate", [](const Message& msg) {
- *       // Handle status update
+ *   // Subscribe to external messages (cross-transport boundaries)
+ *   MessageAPI::subscribeToExternal(MessageProtocol::ExternalMessageType::STATUS_UPDATE,
+ *       [](const ExternalMessage& msg) {
+ *           // Handle external status update
  *   });
  *
- *   // Subscribe to audio updates (specialized)
- *   MessageAPI::onAudioStatus([](const AudioStatusData& data) {
- *       // Handle audio data
+ *   // Subscribe to internal messages (ESP32 internal communication)
+ *   MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::UI_UPDATE,
+ *       [](const InternalMessage& msg) {
+ *           // Handle internal UI update
  *   });
  *
  *   // Request audio status
@@ -79,7 +81,7 @@ class MessageAPI {
     // =============================================================================
 
     /**
-     * Register MQTT transport (simplified - no topics)
+     * Register MQTT transport
      */
     static void registerMqttTransport(
         std::function<bool(const String& payload)> sendFunction,
@@ -87,7 +89,7 @@ class MessageAPI {
         std::function<void()> updateFunction = nullptr,
         std::function<String()> getStatusFunction = nullptr) {
         TransportInterface transport;
-        transport.send = sendFunction;
+        transport.sendRaw = sendFunction;
         transport.isConnected = isConnectedFunction;
         transport.update = updateFunction;
         transport.getStatus = getStatusFunction;
@@ -96,14 +98,14 @@ class MessageAPI {
     }
 
     /**
-     * Register Serial transport (simplified - no topics)
+     * Register Serial transport
      */
     static void registerSerialTransport(
         std::function<bool(const String& payload)> sendFunction,
         std::function<bool()> isConnectedFunction,
         std::function<void()> updateFunction = nullptr) {
         TransportInterface transport;
-        transport.send = sendFunction;
+        transport.sendRaw = sendFunction;
         transport.isConnected = isConnectedFunction;
         transport.update = updateFunction;
 
@@ -125,7 +127,7 @@ class MessageAPI {
     }
 
     // =============================================================================
-    // NEW DUAL MESSAGE TYPE SYSTEM - External/Internal Separation
+    // DUAL MESSAGE TYPE SYSTEM - External/Internal Separation
     // =============================================================================
 
     /**
@@ -142,6 +144,13 @@ class MessageAPI {
     static void subscribeToInternal(MessageProtocol::InternalMessageType messageType,
                                     std::function<void(const InternalMessage&)> callback) {
         MessageCore::getInstance().subscribeToInternal(messageType, callback);
+    }
+
+    /**
+     * Subscribe to all internal messages (wildcard)
+     */
+    static void subscribeToAllInternal(std::function<void(const InternalMessage&)> callback) {
+        MessageCore::getInstance().subscribeToAllInternal(callback);
     }
 
     /**
@@ -173,166 +182,93 @@ class MessageAPI {
     }
 
     // =============================================================================
-    // LEGACY MESSAGE HANDLING (Deprecated)
+    // CONVENIENCE METHODS
     // =============================================================================
 
     /**
-     * @deprecated Use subscribeToExternal or subscribeToInternal instead
-     * Subscribe to messages by messageType
-     */
-    [[deprecated("Use subscribeToExternal or subscribeToInternal instead")]]
-    static void subscribeToType(const String& messageType, MessageCallback callback) {
-        MessageCore::getInstance().subscribeToType(messageType, callback);
-    }
-
-    /**
-     * Subscribe to all messages (wildcard)
-     */
-    static void subscribeToAll(MessageCallback callback) {
-        MessageCore::getInstance().subscribeToAll(callback);
-    }
-
-    /**
-     * Unsubscribe from a messageType
-     */
-    static void unsubscribeFromType(const String& messageType) {
-        MessageCore::getInstance().unsubscribeFromType(messageType);
-    }
-
-    /**
-     * Publish a message object
-     */
-    static bool publish(const Message& message) {
-        return MessageCore::getInstance().publish(message);
-    }
-
-    /**
-     * Publish raw JSON payload (messageType will be extracted)
-     */
-    static bool publish(const String& jsonPayload) {
-        return MessageCore::getInstance().publish(jsonPayload);
-    }
-
-    /**
-     * Create and publish a message
-     */
-    static bool publishMessage(const String& messageType, const String& jsonPayload) {
-        return MessageCore::getInstance().publishMessage(messageType, jsonPayload);
-    }
-
-    /**
-     * Handle incoming message from external source (e.g., MQTT callback, Serial)
-     */
-    static void handleIncomingMessage(const String& jsonPayload) {
-        MessageCore::getInstance().handleIncomingMessage(jsonPayload);
-    }
-
-    // =============================================================================
-    // AUDIO MESSAGING (Specialized)
-    // =============================================================================
-
-    /**
-     * Request current audio status from the PC
+     * Request audio status from external system
      */
     static bool requestAudioStatus() {
         return MessageCore::getInstance().requestAudioStatus();
     }
 
     /**
-     * Send audio control command to PC
+     * Send audio command to external system
      */
-    static bool sendAudioCommand(const String& command, const String& target = "", int value = -1) {
-        JsonDocument doc;
-        doc["messageType"] = command;
-        doc["requestId"] = Config::generateRequestId();
-        doc["deviceId"] = Config::DEVICE_ID;
-
-        if (!target.isEmpty()) {
-            doc["target"] = target;
-        }
-
-        if (value >= 0) {
-            doc["value"] = value;
-        }
-
-        String payload;
-        serializeJson(doc, payload);
-
-        return MessageCore::getInstance().publish(payload);
+    static bool sendAudioCommand(MessageProtocol::ExternalMessageType commandType,
+                                 const String& target = "", int value = -1) {
+        return MessageCore::getInstance().sendAudioCommand(commandType, target, value);
     }
 
     /**
-     * Set volume for a specific process
+     * Publish internal UI update
      */
-    static bool setProcessVolume(const String& processName, int volume) {
-        return sendAudioCommand(Config::MESSAGE_TYPE_SET_VOLUME, processName, volume);
+    static bool publishUIUpdate(const String& component, const String& data) {
+        return MessageCore::getInstance().publishUIUpdate(component, data);
     }
 
     /**
-     * Mute/unmute a specific process
+     * Publish internal audio volume update
      */
-    static bool setProcessMute(const String& processName, bool muted) {
-        return sendAudioCommand(muted ? Config::MESSAGE_TYPE_MUTE_PROCESS : Config::MESSAGE_TYPE_UNMUTE_PROCESS, processName);
-    }
-
-    /**
-     * Set master volume
-     */
-    static bool setMasterVolume(int volume) {
-        return sendAudioCommand(Config::MESSAGE_TYPE_SET_MASTER_VOLUME, "", volume);
-    }
-
-    /**
-     * Mute/unmute master
-     */
-    static bool setMasterMute(bool muted) {
-        return sendAudioCommand(muted ? Config::MESSAGE_TYPE_MUTE_MASTER : Config::MESSAGE_TYPE_UNMUTE_MASTER);
+    static bool publishAudioVolumeUpdate(const String& processName, int volume) {
+        return MessageCore::getInstance().publishAudioVolumeUpdate(processName, volume);
     }
 
     // =============================================================================
-    // UTILITIES
+    // STATISTICS & DIAGNOSTICS
     // =============================================================================
 
     /**
-     * Get subscription count
+     * Get total number of active subscriptions
      */
     static size_t getSubscriptionCount() {
         return MessageCore::getInstance().getSubscriptionCount();
     }
 
     /**
-     * Get transport count
+     * Get number of registered transports
      */
     static size_t getTransportCount() {
         return MessageCore::getInstance().getTransportCount();
     }
 
+    // =============================================================================
+    // MESSAGE PARSING UTILITIES
+    // =============================================================================
+
     /**
-     * Create message object
+     * Parse external message from JSON payload
      */
-    static Message createMessage(const String& messageType, const String& jsonPayload) {
-        return Message(messageType, jsonPayload);
+    static ExternalMessage parseExternalMessage(const String& jsonPayload) {
+        return MessageParser::parseExternalMessage(jsonPayload);
     }
 
     /**
-     * Parse JSON safely to Message object
+     * Parse external message type from JSON payload
      */
-    static Message parseMessage(const String& jsonPayload) {
-        return MessageParser::parseMessage(jsonPayload);
+    static MessageProtocol::ExternalMessageType parseExternalMessageType(const String& jsonPayload) {
+        return MessageParser::parseExternalMessageType(jsonPayload);
     }
 
     /**
-     * Parse audio status from Message
+     * Check if external message should be ignored
      */
-    static AudioStatusData parseAudioStatus(const Message& message) {
-        return Json::parseStatusResponse(message);
-    }
-
-    /**
-     * Check if message should be ignored
-     */
-    static bool shouldIgnoreMessage(const Message& message) {
+    static bool shouldIgnoreMessage(const ExternalMessage& message) {
         return MessageParser::shouldIgnoreMessage(message);
+    }
+
+    /**
+     * Parse audio status response from external message
+     */
+    static AudioStatusData parseAudioStatus(const ExternalMessage& message) {
+        return parseStatusResponse(message);
+    }
+
+    /**
+     * Create status response JSON from audio status data
+     */
+    static String createStatusResponse(const AudioStatusData& data) {
+        return Messaging::createStatusResponse(data);
     }
 
    private:

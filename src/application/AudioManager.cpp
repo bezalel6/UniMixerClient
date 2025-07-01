@@ -35,7 +35,7 @@ bool AudioManager::init() {
                                                    ESP_LOGD(TAG, "Received external audio status update from device: %s", message.deviceId.c_str());
 
                                                    // Parse the audio status data directly from the external message
-                                                   Messaging::AudioStatusData data = Messaging::Json::parseStatusResponse(message);
+                                                   Messaging::AudioStatusData data = Messaging::parseStatusResponse(message);
 
                                                    ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
 
@@ -50,8 +50,8 @@ bool AudioManager::init() {
 
                                                    // Convert AudioStatusData to AudioStatus
                                                    AudioStatus status;
-                                                   status.setAudioLevels(data.audioLevels);
-                                                   status.defaultDevice = data.defaultDevice;
+                                                   status.setAudioLevels(data.getCompatibleAudioLevels());
+                                                   status.defaultDevice = data.getCompatibleDefaultDevice();
                                                    status.hasDefaultDevice = data.hasDefaultDevice;
                                                    status.timestamp = data.timestamp;
 
@@ -439,15 +439,38 @@ void AudioManager::publishStatusUpdate() {
 
     // Convert AudioStatus to AudioStatusData and publish
     Messaging::AudioStatusData statusData;
-    statusData.audioLevels = state.currentStatus.getAudioLevels();
-    statusData.defaultDevice = state.currentStatus.defaultDevice;
-    statusData.hasDefaultDevice = state.currentStatus.hasDefaultDevice;
+
+    // Convert audio levels to session status format
+    std::vector<Application::Audio::AudioLevel> audioLevels = state.currentStatus.getAudioLevels();
+    for (const auto& level : audioLevels) {
+        Messaging::SessionStatusData session;
+        session.processId = 0;  // We don't track process IDs currently
+        session.processName = level.processName;
+        session.displayName = level.friendlyName.isEmpty() ? level.processName : level.friendlyName;
+        session.volume = static_cast<float>(level.volume);
+        session.isMuted = level.isMuted;
+        session.state = level.state;
+        statusData.sessions.push_back(session);
+    }
+
+    // Convert default device
+    if (state.currentStatus.hasDefaultDevice) {
+        statusData.defaultDevice.friendlyName = state.currentStatus.defaultDevice.friendlyName;
+        statusData.defaultDevice.volume = static_cast<float>(state.currentStatus.defaultDevice.volume);
+        statusData.defaultDevice.isMuted = state.currentStatus.defaultDevice.isMuted;
+        statusData.defaultDevice.dataFlow = "Render";     // Default to render for now
+        statusData.defaultDevice.deviceRole = "Console";  // Default to console for now
+        statusData.hasDefaultDevice = true;
+    }
+
+    statusData.activeSessionCount = statusData.sessions.size();
     statusData.timestamp = state.currentStatus.timestamp;
     statusData.reason = Messaging::Config::REASON_UPDATE_RESPONSE;
     statusData.originatingDeviceId = Messaging::Config::DEVICE_ID;
 
-    String statusJson = Messaging::Json::createStatusResponse(statusData);
-    bool published = Messaging::MessageAPI::publish(statusJson);
+    String statusJson = Messaging::MessageAPI::createStatusResponse(statusData);
+    Messaging::ExternalMessage externalMsg = Messaging::MessageParser::parseExternalMessage(statusJson);
+    bool published = Messaging::MessageAPI::publishExternal(externalMsg);
 
     LOG_INFO_IF(published, TAG, "Published status update with %d sessions", state.currentStatus.getDeviceCount());
     LOG_ERROR_IF(!published, TAG, "Failed to publish status update");
@@ -758,18 +781,18 @@ void AudioManager::checkAndRequestLogosForAudioProcesses(const Messaging::AudioS
         return;
     }
 
-    ESP_LOGD(TAG, "Checking logos for %d audio processes", statusData.audioLevels.size());
+    ESP_LOGD(TAG, "Checking logos for %d audio sessions", statusData.sessions.size());
 
     // Check each audio session process
-    for (const auto& audioLevel : statusData.audioLevels) {
-        if (!audioLevel.processName.isEmpty()) {
-            checkSingleProcessLogo(audioLevel.processName.c_str());
+    for (const auto& session : statusData.sessions) {
+        if (!session.processName.isEmpty()) {
+            checkSingleProcessLogo(session.processName.c_str());
         }
     }
 
     // Check default device if present
-    if (statusData.hasDefaultDevice && !statusData.defaultDevice.processName.isEmpty()) {
-        checkSingleProcessLogo(statusData.defaultDevice.processName.c_str());
+    if (statusData.hasDefaultDevice && !statusData.defaultDevice.friendlyName.isEmpty()) {
+        checkSingleProcessLogo(statusData.defaultDevice.friendlyName.c_str());
     }
 }
 

@@ -16,27 +16,101 @@ namespace Messaging {
 // =============================================================================
 
 /**
- * Audio status data - simplified from complex AudioStatusResponse
+ * Default audio device data (matches C# DefaultAudioDevice)
+ */
+struct DefaultAudioDeviceData {
+    String friendlyName;
+    float volume = 0.0f;
+    bool isMuted = false;
+    String dataFlow;    // "Render" or "Capture"
+    String deviceRole;  // "Console", "Multimedia", "Communications"
+
+    DefaultAudioDeviceData() = default;
+    DefaultAudioDeviceData(const String& name, float vol, bool muted)
+        : friendlyName(name), volume(vol), isMuted(muted) {}
+
+    void clear() {
+        friendlyName = "";
+        volume = 0.0f;
+        isMuted = false;
+        dataFlow = "";
+        deviceRole = "";
+    }
+};
+
+/**
+ * Session status data (matches C# SessionStatus)
+ */
+struct SessionStatusData {
+    int processId = 0;
+    String processName;
+    String displayName;
+    float volume = 0.0f;
+    bool isMuted = false;
+    String state;
+
+    SessionStatusData() = default;
+    SessionStatusData(const String& process, const String& display, float vol, bool muted)
+        : processName(process), displayName(display), volume(vol), isMuted(muted) {}
+};
+
+/**
+ * Audio status data - updated to match new C# protocol structure
  */
 struct AudioStatusData {
-    std::vector<Application::Audio::AudioLevel> audioLevels;
-    Application::Audio::AudioLevel defaultDevice;
+    std::vector<SessionStatusData> sessions;
+    DefaultAudioDeviceData defaultDevice;
     bool hasDefaultDevice = false;
     unsigned long timestamp = 0;
     String reason;
     String originatingDeviceId;
+    String originatingRequestId;
+    int activeSessionCount = 0;
 
     void clear() {
-        audioLevels.clear();
-        defaultDevice = Application::Audio::AudioLevel();
+        sessions.clear();
+        defaultDevice.clear();
         hasDefaultDevice = false;
         timestamp = 0;
         reason = "";
         originatingDeviceId = "";
+        originatingRequestId = "";
+        activeSessionCount = 0;
     }
 
     bool isEmpty() const {
-        return audioLevels.empty() && !hasDefaultDevice;
+        return sessions.empty() && !hasDefaultDevice;
+    }
+
+    // Compatibility method to convert to old AudioLevel format for existing code
+    std::vector<Application::Audio::AudioLevel> getCompatibleAudioLevels() const {
+        std::vector<Application::Audio::AudioLevel> levels;
+
+        // Convert sessions to AudioLevel format
+        for (const auto& session : sessions) {
+            Application::Audio::AudioLevel level;
+            level.processName = session.processName;
+            level.friendlyName = session.displayName.isEmpty() ? session.processName : session.displayName;
+            level.volume = static_cast<int>(session.volume);
+            level.isMuted = session.isMuted;
+            level.state = session.state;
+            level.lastUpdate = timestamp;
+            levels.push_back(level);
+        }
+
+        return levels;
+    }
+
+    // Get default device as AudioLevel for compatibility
+    Application::Audio::AudioLevel getCompatibleDefaultDevice() const {
+        Application::Audio::AudioLevel level;
+        level.processName = "DefaultDevice";
+        level.friendlyName = defaultDevice.friendlyName;
+        level.volume = static_cast<int>(defaultDevice.volume);
+        level.isMuted = defaultDevice.isMuted;
+        level.state = defaultDevice.dataFlow + "/" + defaultDevice.deviceRole;
+        level.lastUpdate = timestamp;
+        return level;
     }
 };
 
@@ -53,6 +127,39 @@ struct AudioDeviceData {
     AudioDeviceData(const String& id, const String& name, const String& deviceState = "Active")
         : deviceId(id), friendlyName(name), state(deviceState) {}
 };
+
+// =============================================================================
+// TRANSPORT INTERFACE - For External Message Transport
+// =============================================================================
+
+/**
+ * Transport interface for external message communication
+ * Handles sending and receiving messages across transport boundaries
+ */
+struct TransportInterface {
+    std::function<bool(const String& payload)> sendRaw;  // Send raw JSON payload
+    std::function<bool()> isConnected;                   // Check connection status
+    std::function<void()> update;                        // Update transport state
+    std::function<String()> getStatus;                   // Get transport status
+    std::function<bool()> init;                          // Initialize transport
+    std::function<void()> deinit;                        // Cleanup transport
+};
+
+// Forward Declarations
+struct ExternalMessage;
+struct InternalMessage;
+
+// =============================================================================
+// CALLBACK TYPE DEFINITIONS
+// =============================================================================
+
+using ExternalMessageCallback = std::function<void(const ExternalMessage& message)>;
+using InternalMessageCallback = std::function<void(const InternalMessage& message)>;
+
+// Specific callback types for better type safety
+using AudioStatusCallback = std::function<void(const AudioStatusData& data)>;
+using NetworkStatusCallback = std::function<void(const String& status, bool connected)>;
+using SDStatusCallback = std::function<void(const String& status, bool mounted)>;
 
 // =============================================================================
 // EXTERNAL MESSAGE TYPES - For messages received over transports
@@ -196,69 +303,6 @@ InternalMessage createCoreToCoreSyncMessage(uint8_t fromCore, uint8_t toCore);
 }  // namespace MessageConverter
 
 // =============================================================================
-// LEGACY COMPATIBILITY - WILL BE REMOVED
-// =============================================================================
-
-/**
- * LEGACY: Original Message struct for backward compatibility
- * This will be removed once all code is migrated
- * @deprecated Use ExternalMessage or InternalMessage instead
- */
-struct Message {
-    MessageProtocol::MessageType messageType;  // LEGACY: Unified enum for compatibility
-    String payload;                            // Raw JSON string
-    String requestId;
-    String deviceId;
-    unsigned long timestamp;
-
-    // Parsed content (populated on demand)
-    mutable JsonDocument parsedContent;
-    mutable bool contentParsed = false;
-
-    Message() {
-        messageType = MessageProtocol::MessageType::INVALID;
-        timestamp = millis();
-        deviceId = Config::getDeviceId();
-        requestId = Config::generateRequestId();
-    }
-
-    Message(MessageProtocol::MessageType type, const String& data) : messageType(type), payload(data) {
-        timestamp = millis();
-        deviceId = Config::getDeviceId();
-        requestId = Config::generateRequestId();
-    }
-
-    // LEGACY: String-based constructor for compatibility
-    [[deprecated("Use Message(MessageProtocol::MessageType, String) instead")]]
-    Message(const String& messageTypeStr, const String& data) : payload(data) {
-        messageType = MessageProtocol::stringToMessageType(messageTypeStr);
-        timestamp = millis();
-        deviceId = Config::getDeviceId();
-        requestId = Config::generateRequestId();
-    }
-
-    // Convert to new message types for migration
-    ExternalMessage toExternalMessage() const;
-    InternalMessage toInternalMessage() const;
-
-    // Legacy methods with deprecation warnings
-    [[deprecated("Use get() on ExternalMessage instead")]]
-    const String& get(const String& field) const;
-
-    [[deprecated("Use validate() on ExternalMessage instead")]]
-    bool isValid() const;
-
-    [[deprecated("Use getCategory() on new message types instead")]]
-    String getCategory() const;
-
-    [[deprecated("Use shouldRouteToCore1() on InternalMessage instead")]]
-    bool shouldRouteToCore1() const;
-
-   private:
-    void ensureParsed() const;
-};
-
-// =============================================================================
 // NAMESPACE ALIASES FOR CONVENIENCE
 // =============================================================================
 
@@ -275,239 +319,183 @@ using IntMsgType = MessageProtocol::InternalMessageType;
 namespace MessageParser {
 
 /**
- * Parse external message type from raw JSON string
+ * Parse external message type from JSON payload
+ * EFFICIENT: Direct string comparison with enum mapping
  */
 inline MessageProtocol::ExternalMessageType parseExternalMessageType(const String& jsonPayload) {
     JsonDocument doc;
     if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
         return MessageProtocol::ExternalMessageType::INVALID;
     }
-    String typeStr = doc["messageType"] | "";
+
+    String typeStr = doc["MessageType"] | "";
     return MessageProtocol::stringToExternalMessageType(typeStr);
 }
 
 /**
- * Create ExternalMessage object from raw JSON payload - SECURE PARSING
+ * Parse complete external message from JSON payload
+ * EFFICIENT: Single JSON parse, direct field extraction
  */
 inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
-    MessageProtocol::ExternalMessageType type = parseExternalMessageType(jsonPayload);
-    ExternalMessage message(type);
-
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonPayload) == DeserializationError::Ok) {
-        message.requestId = doc["requestId"] | "";
-        message.deviceId = doc["deviceId"] | "";
-        message.originatingDeviceId = doc["originatingDeviceId"] | "";
-        message.timestamp = doc["timestamp"] | millis();
-
-        // Copy parsed data (everything except metadata)
-        message.parsedData = doc["data"];
-    }
-
-    message.validate();  // Security validation
-    return message;
-}
-
-/**
- * LEGACY: Parse messageType from raw JSON string - RETURNS LEGACY ENUM
- * @deprecated Use parseExternalMessageType instead
- */
-[[deprecated("Use parseExternalMessageType() instead")]]
-inline MessageProtocol::MessageType parseMessageType(const String& jsonPayload) {
     JsonDocument doc;
     if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
-        return MessageProtocol::MessageType::INVALID;
+        return ExternalMessage();
     }
-    String typeStr = doc["messageType"] | "";
-    return MessageProtocol::stringToMessageType(typeStr);
-}
 
-/**
- * LEGACY: Create Message object from raw JSON payload - ENUM OPTIMIZED
- * @deprecated Use parseExternalMessage instead
- */
-[[deprecated("Use parseExternalMessage() instead")]]
-inline Message parseMessage(const String& jsonPayload) {
-    Message message;
-    message.payload = jsonPayload;
+    String typeStr = doc["MessageType"] | "";
+    MessageProtocol::ExternalMessageType type = MessageProtocol::stringToExternalMessageType(typeStr);
 
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonPayload.c_str()) == DeserializationError::Ok) {
-        String typeStr = doc["messageType"] | "";
-        message.messageType = MessageProtocol::stringToMessageType(typeStr);
-        message.requestId = doc["requestId"] | "";
-        message.deviceId = doc["deviceId"] | "";
-        message.timestamp = doc["timestamp"] | millis();
+    if (type == MessageProtocol::ExternalMessageType::INVALID) {
+        return ExternalMessage();
     }
+
+    ExternalMessage message(type,
+                            doc["RequestId"] | "",
+                            doc["DeviceId"] | "");
+    message.originatingDeviceId = doc["OriginatingDeviceId"] | "";
+    message.timestamp = doc["Timestamp"] | millis();
+    message.parsedData = doc;  // Store the parsed JSON data
 
     return message;
 }
 
 /**
- * Check if external message should be ignored (self-originated)
+ * Check if message should be ignored (self-originated, invalid, etc.)
  */
 inline bool shouldIgnoreMessage(const ExternalMessage& message, const String& myDeviceId = Config::DEVICE_ID) {
-    return message.isSelfOriginated();
-}
+    // Ignore invalid messages
+    if (message.messageType == MessageProtocol::ExternalMessageType::INVALID) {
+        return true;
+    }
 
-/**
- * LEGACY: Check if message should be ignored (self-originated)
- * @deprecated Use shouldIgnoreMessage(ExternalMessage) instead
- */
-[[deprecated("Use shouldIgnoreMessage(ExternalMessage) instead")]]
-inline bool shouldIgnoreMessage(const Message& message, const String& myDeviceId = Config::DEVICE_ID) {
-    return message.deviceId == myDeviceId;
+    // Ignore self-originated messages
+    if (message.deviceId == myDeviceId) {
+        return true;
+    }
+
+    // Ignore messages from our own device ID in originatingDeviceId
+    if (!message.originatingDeviceId.isEmpty() && message.originatingDeviceId == myDeviceId) {
+        return true;
+    }
+
+    return false;
 }
 
 }  // namespace MessageParser
 
 // =============================================================================
-// JSON UTILITIES - Type-Safe Serialization
+// MESSAGE SERIALIZATION UTILITIES
 // =============================================================================
 
-namespace Json {
-
 /**
- * Serialize ExternalMessage to JSON for transport
+ * Serialize ExternalMessage to JSON string
  */
 String serializeExternalMessage(const ExternalMessage& message);
 
 /**
- * Serialize InternalMessage to JSON for debugging
+ * Serialize InternalMessage to JSON string (for debugging/logging)
  */
 String serializeInternalMessage(const InternalMessage& message);
 
+// =============================================================================
+// AUDIO DATA PARSING UTILITIES
+// =============================================================================
+
 /**
- * PERFORMANCE: Parse audio status response from external message
+ * Parse audio status response from external message
  */
 inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
     AudioStatusData data;
 
-    // Use the parsedData from the external message
-    const JsonDocument& doc = message.parsedData;
+    if (message.messageType != MessageProtocol::ExternalMessageType::STATUS_UPDATE &&
+        message.messageType != MessageProtocol::ExternalMessageType::STATUS_MESSAGE) {
+        return data;
+    }
 
-    data.timestamp = doc["timestamp"] | millis();
-    data.reason = doc["reason"] | "";
-    data.originatingDeviceId = doc["originatingDeviceId"] | "";
+    // Extract sessions from parsed data (matches C# Sessions field)
+    if (message.parsedData["Sessions"].is<JsonArray>()) {
+        size_t sessionCount = message.parsedData["Sessions"].size();
+        for (size_t i = 0; i < sessionCount; i++) {
+            auto sessionVar = message.parsedData["Sessions"][i];
+            SessionStatusData session;
+            session.processId = sessionVar["ProcessId"] | 0;
+            session.processName = sessionVar["ProcessName"] | "";
+            session.displayName = sessionVar["DisplayName"] | "";
+            session.volume = sessionVar["Volume"] | 0.0f;
+            session.isMuted = sessionVar["IsMuted"] | false;
+            session.state = sessionVar["State"] | "";
+            data.sessions.push_back(session);
+        }
+    }
 
-    // Parse default device
-    if (doc["defaultDevice"].is<JsonObject>()) {
-        JsonObject defaultDev = doc["defaultDevice"];
-        data.defaultDevice.processName = defaultDev["processName"] | "";
-        data.defaultDevice.friendlyName = defaultDev["friendlyName"] | "";
-        data.defaultDevice.volume = defaultDev["volume"] | 0;
-        data.defaultDevice.isMuted = defaultDev["isMuted"] | false;
+    // Extract default device information (matches C# DefaultDevice field)
+    if (message.parsedData["DefaultDevice"].is<JsonObject>()) {
+        auto defaultVar = message.parsedData["DefaultDevice"];
+        data.defaultDevice.friendlyName = defaultVar["FriendlyName"] | "";
+        data.defaultDevice.volume = defaultVar["Volume"] | 0.0f;
+        data.defaultDevice.isMuted = defaultVar["IsMuted"] | false;
+        data.defaultDevice.dataFlow = defaultVar["DataFlow"] | "";
+        data.defaultDevice.deviceRole = defaultVar["DeviceRole"] | "";
         data.hasDefaultDevice = true;
     }
 
-    // Parse audio levels array
-    if (doc["audioLevels"].is<JsonArray>()) {
-        JsonArray levels = doc["audioLevels"];
-        for (JsonObject levelObj : levels) {
-            Application::Audio::AudioLevel level;
-            level.processName = levelObj["processName"] | "";
-            level.friendlyName = levelObj["friendlyName"] | "";
-            level.volume = levelObj["volume"] | 0;
-            level.isMuted = levelObj["isMuted"] | false;
-            level.lastUpdate = millis();
-            level.stale = false;
-            data.audioLevels.push_back(level);
-        }
-    }
+    // Extract metadata
+    data.timestamp = message.timestamp;
+    data.reason = message.get<String>("Reason", "");
+    data.originatingDeviceId = message.get<String>("OriginatingDeviceId", "");
+    data.originatingRequestId = message.get<String>("OriginatingRequestId", "");
+    data.activeSessionCount = message.get<int>("ActiveSessionCount", 0);
 
     return data;
 }
 
 /**
- * PERFORMANCE: Parse device list response from external message
- */
-std::vector<AudioDeviceData> parseDeviceListResponse(const ExternalMessage& message);
-
-/**
- * Create JSON status response from audio status data
+ * Create status response JSON from audio status data
  */
 inline String createStatusResponse(const AudioStatusData& data) {
     JsonDocument doc;
+    doc["MessageType"] = MessageProtocol::externalMessageTypeToString(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
+    doc["DeviceId"] = Config::getDeviceId();
+    doc["Timestamp"] = data.timestamp;
+    doc["ActiveSessionCount"] = data.activeSessionCount;
 
-    doc["messageType"] = MessageProtocol::externalMessageTypeToString(MessageProtocol::ExternalMessageType::STATUS_UPDATE);
-    doc["timestamp"] = data.timestamp;
-    doc["reason"] = data.reason;
-    doc["originatingDeviceId"] = data.originatingDeviceId;
+    if (!data.reason.isEmpty()) {
+        doc["Reason"] = data.reason;
+    }
 
-    // Default device
+    if (!data.originatingDeviceId.isEmpty()) {
+        doc["OriginatingDeviceId"] = data.originatingDeviceId;
+    }
+
+    if (!data.originatingRequestId.isEmpty()) {
+        doc["OriginatingRequestId"] = data.originatingRequestId;
+    }
+
+    // Serialize sessions (matches C# Sessions structure)
+    JsonArray sessionsArray = doc["Sessions"].to<JsonArray>();
+    for (const auto& session : data.sessions) {
+        JsonObject sessionObj = sessionsArray.add<JsonObject>();
+        sessionObj["ProcessId"] = session.processId;
+        sessionObj["ProcessName"] = session.processName;
+        sessionObj["DisplayName"] = session.displayName;
+        sessionObj["Volume"] = session.volume;
+        sessionObj["IsMuted"] = session.isMuted;
+        sessionObj["State"] = session.state;
+    }
+
+    // Serialize default device (matches C# DefaultDevice structure)
     if (data.hasDefaultDevice) {
-        JsonObject defaultDev = doc["defaultDevice"].to<JsonObject>();
-        defaultDev["processName"] = data.defaultDevice.processName;
-        defaultDev["friendlyName"] = data.defaultDevice.friendlyName;
-        defaultDev["volume"] = data.defaultDevice.volume;
-        defaultDev["isMuted"] = data.defaultDevice.isMuted;
+        JsonObject defaultObj = doc["DefaultDevice"].to<JsonObject>();
+        defaultObj["FriendlyName"] = data.defaultDevice.friendlyName;
+        defaultObj["Volume"] = data.defaultDevice.volume;
+        defaultObj["IsMuted"] = data.defaultDevice.isMuted;
+        defaultObj["DataFlow"] = data.defaultDevice.dataFlow;
+        defaultObj["DeviceRole"] = data.defaultDevice.deviceRole;
     }
 
-    // Audio levels array
-    JsonArray levels = doc["audioLevels"].to<JsonArray>();
-    for (const auto& level : data.audioLevels) {
-        JsonObject levelObj = levels.add<JsonObject>();
-        levelObj["processName"] = level.processName;
-        levelObj["friendlyName"] = level.friendlyName;
-        levelObj["volume"] = level.volume;
-        levelObj["isMuted"] = level.isMuted;
-    }
-
-    String result;
-    serializeJson(doc, result);
-    return result;
+    String jsonString;
+    serializeJson(doc, jsonString);
+    return jsonString;
 }
-
-/**
- * LEGACY: JSON utilities for backward compatibility
- * @deprecated Use type-specific functions instead
- */
-[[deprecated("Use serializeExternalMessage or serializeInternalMessage instead")]]
-String serialize(const Message& message);
-
-[[deprecated("Use parseStatusResponse(ExternalMessage) instead")]]
-AudioStatusData parseStatusResponse(const Message& message);
-
-[[deprecated("Use parseDeviceListResponse(ExternalMessage) instead")]]
-std::vector<AudioDeviceData> parseDeviceListResponse(const Message& message);
-
-}  // namespace Json
-
-// =============================================================================
-// TRANSPORT INTERFACE - Simplified for Dual Architecture
-// =============================================================================
-
-/**
- * Simplified transport interface - handles external messages only
- * Internal messages never cross transport boundaries
- */
-struct TransportInterface {
-    std::function<bool(const ExternalMessage& message)> send;  // Type-safe external message sending
-    std::function<bool()> isConnected;
-    std::function<void()> update;
-    std::function<String()> getStatus;
-    std::function<bool()> init;
-    std::function<void()> deinit;
-
-    // Legacy support for raw payload sending (deprecated)
-    [[deprecated("Use send(ExternalMessage) instead")]]
-    std::function<bool(const String& payload)> sendRaw;
-};
-
-// =============================================================================
-// CALLBACK TYPES - Type-Safe Message Handling
-// =============================================================================
-
-using ExternalMessageCallback = std::function<void(const ExternalMessage& message)>;
-using InternalMessageCallback = std::function<void(const InternalMessage& message)>;
-
-// Specific callback types for better type safety
-using AudioStatusCallback = std::function<void(const AudioStatusData& data)>;
-using NetworkStatusCallback = std::function<void(const String& status, bool connected)>;
-using SDStatusCallback = std::function<void(const String& status, bool mounted)>;
-
-// LEGACY COMPATIBILITY - Will be removed
-//[[deprecated("Use ExternalMessageCallback or InternalMessageCallback instead")]]
-using MessageCallback = std::function<void(const Message& message)>;
 
 }  // namespace Messaging

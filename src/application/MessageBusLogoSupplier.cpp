@@ -193,8 +193,10 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::ExternalMessage& m
 
     ESP_LOGD(TAG, "Received external asset response from device: %s", message.deviceId.c_str());
 
-    // Parse response from the JSON payload
-    AssetResponse response = parseAssetResponse(message.payload);
+    // Parse response from the message parsed data
+    String jsonPayload;
+    serializeJson(message.parsedData, jsonPayload);
+    AssetResponse response = parseAssetResponse(jsonPayload);
     if (response.requestId.isEmpty()) {
         ESP_LOGW(TAG, "Invalid asset response - missing request ID");
         return;
@@ -218,7 +220,9 @@ bool MessageBusLogoSupplier::sendAssetRequest(const AssetRequest& request) {
         Messaging::Config::EXT_MSG_GET_ASSETS,
         request.requestId,
         request.deviceId);
-    externalMessage.payload = jsonPayload;
+
+    // Parse the JSON into the message's parsedData
+    deserializeJson(externalMessage.parsedData, jsonPayload);
 
     return Messaging::MessageAPI::publishExternal(externalMessage);
 }
