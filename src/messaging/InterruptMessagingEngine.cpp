@@ -1,4 +1,4 @@
-#include "InterruptMessagingEngine.h"
+THIS SHOULD BE A LINTER ERROR#include "InterruptMessagingEngine.h"
 #include "MessageAPI.h"
 #include "MessageConfig.h"
 #include "MessageData.h"
@@ -61,7 +61,7 @@ bool InterruptMessagingEngine::init() {
         return true;
     }
 
-    ESP_LOGW(TAG, "Initializing Core 1 Binary Protocol Messaging Engine");
+    ESP_LOGI(TAG, "Initializing Core 1 Binary Protocol Messaging Engine");
 
     // Get MessageCore instance
     messageCore = &MessageCore::getInstance();
@@ -78,7 +78,7 @@ bool InterruptMessagingEngine::init() {
     }
 
     // Binary protocol initialized - using working CRC-16-MODBUS algorithm from previous SerialBridge
-    ESP_LOGW(TAG, "Binary protocol framer ready with compatible CRC-16-MODBUS algorithm");
+    ESP_LOGI(TAG, "Binary protocol framer ready with compatible CRC-16-MODBUS algorithm");
 
     // Create synchronization objects
     uartMutex = xSemaphoreCreateMutex();
@@ -121,7 +121,7 @@ bool InterruptMessagingEngine::init() {
     rxBufferPos = 0;
 
     initialized = true;
-    ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine initialized successfully");
+    ESP_LOGI(TAG, "Core 1 Binary Protocol Messaging Engine initialized successfully");
     return true;
 }
 
@@ -136,7 +136,7 @@ bool InterruptMessagingEngine::start() {
         return true;
     }
 
-    ESP_LOGW(TAG, "Starting Core 1 Binary Protocol Messaging Engine task");
+    ESP_LOGI(TAG, "Starting Core 1 Binary Protocol Messaging Engine task");
 
     // CRITICAL: Set running = true BEFORE creating task to avoid race condition
     running = true;
@@ -158,7 +158,7 @@ bool InterruptMessagingEngine::start() {
         return false;
     }
 
-    ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine started successfully");
+    ESP_LOGI(TAG, "Core 1 Binary Protocol Messaging Engine started successfully");
 
     // Log from Core 1 to demonstrate logging filter is working
     ESP_LOGI(TAG, "Core 1 messaging active - logging filter allows Core 1 output");
@@ -273,66 +273,25 @@ void InterruptMessagingEngine::processIncomingData() {
     }
 
     if (length > 0) {
-        ESP_LOGW(TAG, "Received %d bytes from UART", length);
-
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGW(TAG, "=== BINARY FRAME RECEPTION DEBUG ===");
-        ESP_LOGW(TAG, "Received %d bytes from UART", length);
-
-#if BINARY_PROTOCOL_DEBUG_HEX_DUMP
-        // Print what we received
-        ESP_LOGW(TAG, "Received data hex dump:");
-        for (int i = 0; i < length; i += 16) {
-            char hexLine[64] = {0};
-            char asciiLine[20] = {0};
-            int hexPos = 0;
-            int asciiPos = 0;
-
-            for (int j = 0; j < 16 && (i + j) < length; j++) {
-                uint8_t byte = data[i + j];
-                hexPos += snprintf(hexLine + hexPos, sizeof(hexLine) - hexPos, "%02X ", byte);
-                asciiLine[asciiPos++] = (byte >= 32 && byte <= 126) ? byte : '.';
-            }
-            ESP_LOGW(TAG, "  %04X: %-48s |%s|", i, hexLine, asciiLine);
-        }
-#endif
-        ESP_LOGW(TAG, "=== END RECEPTION DEBUG ===");
-#endif
+        ESP_LOGD(TAG, "Received %d bytes from UART", length);
 
         // Process incoming bytes through binary protocol framer
         std::vector<String> decodedMessages = binaryFramer->processIncomingBytes(data, length);
 
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGW(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
-#else
         ESP_LOGD(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
-#endif
 
         // Process each decoded JSON message
         for (const String& jsonMessage : decodedMessages) {
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-            ESP_LOGW(TAG, "Decoded JSON: %s", jsonMessage.c_str());
-#else
             ESP_LOGD(TAG, "Decoded JSON: %s", jsonMessage.c_str());
-#endif
 
             // Log every received message payload to UI
             LOG_TO_UI(ui_txtAreaDebugLog, ("RX: " + jsonMessage).c_str());
 
-            // Enhanced logging for message parsing
-            ESP_LOGW(TAG, "=== PARSING MESSAGE ===");
-            ESP_LOGW(TAG, "JSON Length: %d characters", jsonMessage.length());
-            ESP_LOGW(TAG, "JSON Preview: %.100s%s", jsonMessage.c_str(),
-                     jsonMessage.length() > 100 ? "..." : "");
-
             ExternalMessage message;
             if (parseCompleteMessage(jsonMessage.c_str(), jsonMessage.length(), message)) {
                 messagesReceived++;
-                ESP_LOGW(TAG, "✓ Message parsed successfully:");
-                ESP_LOGW(TAG, "  - Type: %d", static_cast<int>(message.messageType));
-                ESP_LOGW(TAG, "  - Device ID: %s", message.deviceId.c_str());
-                ESP_LOGW(TAG, "  - Timestamp: %lu", message.timestamp);
-                ESP_LOGW(TAG, "  - Validated: %s", message.validated ? "YES" : "NO");
+                ESP_LOGD(TAG, "Message parsed successfully: Type=%d Device=%s", 
+                         static_cast<int>(message.messageType), message.deviceId.c_str());
 
                 // Log to UI with success indicator
                 LOG_TO_UI(ui_txtAreaDebugLog, ("✓ PARSED: Type=" + String(static_cast<int>(message.messageType)) +
@@ -340,35 +299,14 @@ void InterruptMessagingEngine::processIncomingData() {
                                                   .c_str());
 
                 routeExternalMessage(message);
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-                ESP_LOGW(TAG, "Message parsed and routed successfully");
-#else
                 ESP_LOGD(TAG, "Message parsed and routed successfully");
-#endif
             } else {
                 bufferOverruns++;
-                ESP_LOGW(TAG, "✗ PARSE FAILED for JSON message");
-                ESP_LOGW(TAG, "Failed JSON: %s", jsonMessage.c_str());
+                ESP_LOGD(TAG, "Parse failed for JSON message");
 
-                // Try to identify specific parsing issues
-                JsonDocument testDoc;
-                DeserializationError error = deserializeJson(testDoc, jsonMessage);
-                if (error) {
-                    ESP_LOGW(TAG, "JSON deserialization error: %s", error.c_str());
-                    LOG_TO_UI(ui_txtAreaDebugLog, ("✗ JSON ERROR: " + String(error.c_str())).c_str());
-                } else {
-                    ESP_LOGW(TAG, "JSON parsed OK, but message structure invalid");
-                    ESP_LOGW(TAG, "Available JSON fields:");
-                    for (JsonPair kv : testDoc.as<JsonObject>()) {
-                        ESP_LOGW(TAG, "  - %s: %s", kv.key().c_str(), kv.value().as<String>().c_str());
-                    }
-                    LOG_TO_UI(ui_txtAreaDebugLog, "✗ STRUCTURE ERROR: Valid JSON but invalid message");
-                }
-
-                // Also log parsing failures to UI
+                // Log parsing failures to UI
                 LOG_TO_UI(ui_txtAreaDebugLog, ("PARSE ERROR: " + jsonMessage).c_str());
             }
-            ESP_LOGW(TAG, "=== END PARSING ===");
         }
     }
 }
@@ -457,46 +395,22 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
         return false;
     }
 
-    // Debug logging for null bytes (keep existing debug code)
-    ESP_LOGW(TAG, "=== NULL BYTE DEBUG ===");
-    ESP_LOGW(TAG, "Checking %zu bytes for null bytes:", length);
-    int nullCount = 0;
-    for (size_t i = 0; i < length && i < 16; i++) {
-        uint8_t byte = static_cast<uint8_t>(data[i]);
-        if (byte == 0x00) {
-            ESP_LOGW(TAG, "  NULL BYTE at position %zu", i);
-            nullCount++;
-        }
-        ESP_LOGW(TAG, "  [%zu]: 0x%02X", i, byte);
-    }
-    ESP_LOGW(TAG, "Total null bytes in header: %d", nullCount);
-    ESP_LOGW(TAG, "=== END NULL BYTE DEBUG ===");
+
 
     if (xSemaphoreTake(uartMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         bool success = false;
 
-        // Use Arduino Serial.write() (same as working SerialBridge)
-        ESP_LOGW(TAG, "Using Arduino Serial.write() (working SerialBridge method)");
 
-        // CRITICAL DEBUG: Show exactly what we're trying to send
-        ESP_LOGW(TAG, "=== PRE-TRANSMISSION BYTE VERIFICATION ===");
-        for (size_t i = 0; i < std::min(length, size_t(16)); i++) {
-            uint8_t byte = static_cast<uint8_t>(data[i]);
-            ESP_LOGW(TAG, "  TX[%zu]: 0x%02X ('%c') %s", i, byte,
-                     (byte >= 32 && byte <= 126) ? byte : '.',
-                     (byte == 0x00) ? "← NULL BYTE" : "");
-        }
-        ESP_LOGW(TAG, "=== END PRE-TRANSMISSION DEBUG ===");
 
         try {
             size_t written = Serial.write(reinterpret_cast<const uint8_t*>(data), length);
             Serial.flush();  // Ensure all bytes are transmitted
 
             if (written == length) {
-                ESP_LOGW(TAG, "Arduino Serial bulk transmission successful: %zu bytes", written);
+                ESP_LOGD(TAG, "Serial transmission successful: %zu bytes", written);
                 success = true;
             } else {
-                ESP_LOGW(TAG, "Arduino Serial bulk failed: %zu out of %zu bytes", written, length);
+                ESP_LOGD(TAG, "Serial transmission failed: %zu out of %zu bytes", written, length);
             }
 
             // ALWAYS try the exact SerialBridge method regardless of bulk success

@@ -93,16 +93,6 @@ BinaryProtocolFramer::BinaryProtocolFramer()
 }
 
 void BinaryProtocolFramer::resetStateMachine() {
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-    if (currentState_ != ReceiveState::WaitingForStart) {
-        ESP_LOGI(TAG, "Resetting state machine from state %d. Payload buffer had %zu bytes, expected %lu",
-                 static_cast<int>(currentState_), payloadBuffer_.size(), expectedPayloadLength_);
-        if (isEscapeNext_) {
-            ESP_LOGI(TAG, "WARNING: Reset while waiting for escaped byte!");
-        }
-    }
-#endif
-
     currentState_ = ReceiveState::WaitingForStart;
     headerBuffer_.clear();
     payloadBuffer_.clear();
@@ -130,20 +120,6 @@ std::vector<uint8_t> BinaryProtocolFramer::encodeMessage(const String& jsonPaylo
 
     // Calculate CRC16 of original payload
     uint16_t crc = CRC16Calculator::calculate(payloadBytes, payloadLength);
-
-#if BINARY_PROTOCOL_DEBUG_CRC_DETAILS
-    ESP_LOGI(TAG, "=== CRC CALCULATION DEBUG ===");
-    ESP_LOGI(TAG, "Payload length: %zu bytes", payloadLength);
-    ESP_LOGI(TAG, "Calculated CRC: 0x%04X", crc);
-    if (payloadLength <= 64) {
-        char hexDump[256] = {0};
-        for (size_t i = 0; i < payloadLength && i < 32; i++) {
-            snprintf(hexDump + (i * 3), sizeof(hexDump) - (i * 3), "%02X ", payloadBytes[i]);
-        }
-        ESP_LOGI(TAG, "First 32 bytes for CRC: %s", hexDump);
-    }
-    ESP_LOGI(TAG, "=== END CRC CALCULATION DEBUG ===");
-#endif
 
     // NEW APPROACH: Build frame exactly like working SerialBridge
     // Don't pre-escape payload - escape during transmission instead
@@ -317,10 +293,6 @@ bool BinaryProtocolFramer::transmitMessageDirect(const String& jsonPayload, std:
 std::vector<String> BinaryProtocolFramer::processIncomingBytes(const uint8_t* data, size_t length) {
     std::vector<String> messages;
 
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-    ESP_LOGI(TAG, "=== PROCESSING %zu INCOMING BYTES ===", length);
-#endif
-
     for (size_t i = 0; i < length; i++) {
         uint8_t byte = data[i];
 
@@ -331,11 +303,6 @@ std::vector<String> BinaryProtocolFramer::processIncomingBytes(const uint8_t* da
             resetStateMachine();
         }
 
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGI(TAG, "Processing byte[%zu]: 0x%02X ('%c') in state %d",
-                 i, byte, (byte >= 32 && byte <= 126) ? byte : '.', static_cast<int>(currentState_));
-#endif
-
         try {
             switch (currentState_) {
                 case ReceiveState::WaitingForStart:
@@ -345,27 +312,16 @@ std::vector<String> BinaryProtocolFramer::processIncomingBytes(const uint8_t* da
                         payloadBuffer_.clear();
                         messageStartTime_ = millis();
                         isEscapeNext_ = false;
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-                        ESP_LOGI(TAG, "*** START MARKER FOUND! Transitioning to ReadingHeader ***");
-#else
                         ESP_LOGD(TAG, "Found start marker, reading header");
-#endif
                     }
                     break;
 
                 case ReceiveState::ReadingHeader:
                     headerBuffer_.push_back(byte);
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-                    ESP_LOGI(TAG, "Header byte[%zu]: 0x%02X", headerBuffer_.size() - 1, byte);
-#endif
                     if (headerBuffer_.size() >= HEADER_SIZE) {
                         if (processHeader()) {
                             currentState_ = ReceiveState::ReadingPayload;
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-                            ESP_LOGI(TAG, "*** HEADER COMPLETE! Transitioning to ReadingPayload. Expected: %lu bytes ***", expectedPayloadLength_);
-#else
                             ESP_LOGD(TAG, "Header processed, reading payload of %lu bytes", expectedPayloadLength_);
-#endif
                         } else {
                             statistics_.incrementFramingErrors();
                             resetStateMachine();
@@ -375,19 +331,12 @@ std::vector<String> BinaryProtocolFramer::processIncomingBytes(const uint8_t* da
 
                 case ReceiveState::ReadingPayload:
                     if (byte == MSG_END_MARKER && !isEscapeNext_) {
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-                        ESP_LOGI(TAG, "*** END MARKER FOUND! Processing complete message ***");
-                        ESP_LOGI(TAG, "Payload buffer size: %zu, expected: %lu", payloadBuffer_.size(), expectedPayloadLength_);
-#endif
                         // Message complete
                         String decodedMessage = processCompleteMessage();
                         if (!decodedMessage.isEmpty()) {
                             messages.push_back(decodedMessage);
                             statistics_.incrementMessagesReceived();
                             statistics_.addBytesReceived(payloadBuffer_.size() + HEADER_SIZE + 2);  // +2 for start/end markers
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-                            ESP_LOGI(TAG, "*** MESSAGE SUCCESSFULLY DECODED! ***");
-#endif
                         }
                         resetStateMachine();
                     } else {
@@ -466,29 +415,14 @@ void BinaryProtocolFramer::processPayloadByte(uint8_t byte) {
         payloadBuffer_.push_back(unescaped);
         isEscapeNext_ = false;
 
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGI(TAG, "Un-escaped byte: 0x%02X -> 0x%02X (payload size now: %zu/%lu)",
-                 byte, unescaped, payloadBuffer_.size(), expectedPayloadLength_);
-#endif
-
     } else if (byte == MSG_ESCAPE_CHAR) {
         // Next byte should be un-escaped (like working SerialBridge)
         isEscapeNext_ = true;
-
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGI(TAG, "Escape char (0x%02X) found, waiting for escaped byte (payload size: %zu/%lu)",
-                 MSG_ESCAPE_CHAR, payloadBuffer_.size(), expectedPayloadLength_);
-#endif
 
         return;  // Don't add escape marker to payload
     } else {
         // Regular byte
         payloadBuffer_.push_back(byte);
-
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGI(TAG, "Normal byte: 0x%02X (payload size now: %zu/%lu)",
-                 byte, payloadBuffer_.size(), expectedPayloadLength_);
-#endif
     }
 
     // Check if we've received enough unescaped bytes
@@ -501,15 +435,6 @@ void BinaryProtocolFramer::processPayloadByte(uint8_t byte) {
 }
 String BinaryProtocolFramer::processCompleteMessage() {
     try {
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGI(TAG, "=== PROCESSING COMPLETE MESSAGE ===");
-        ESP_LOGI(TAG, "Payload buffer size: %zu bytes", payloadBuffer_.size());
-        ESP_LOGI(TAG, "Expected payload length: %lu bytes", expectedPayloadLength_);
-        ESP_LOGI(TAG, "Expected CRC: 0x%04X", expectedCrc_);
-        ESP_LOGI(TAG, "Message type: 0x%02X", messageType_);
-        ESP_LOGI(TAG, "Is escape next flag set: %s", isEscapeNext_ ? "YES" : "NO");
-#endif
-
         // CRITICAL CHECK: Verify we're not in the middle of an escape sequence
         if (isEscapeNext_) {
             ESP_LOGI(TAG, "Message ended with incomplete escape sequence - missing escaped byte");
@@ -521,25 +446,6 @@ String BinaryProtocolFramer::processCompleteMessage() {
         if (payloadBuffer_.size() != expectedPayloadLength_) {
             ESP_LOGI(TAG, "Payload length mismatch - received %zu bytes, expected %lu",
                      payloadBuffer_.size(), expectedPayloadLength_);
-
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-            // Log the difference to help debug
-            if (payloadBuffer_.size() < expectedPayloadLength_) {
-                ESP_LOGI(TAG, "*** MISSING %lu BYTES ***", expectedPayloadLength_ - payloadBuffer_.size());
-            } else {
-                ESP_LOGI(TAG, "*** EXTRA %zu BYTES ***", payloadBuffer_.size() - expectedPayloadLength_);
-            }
-
-            // Dump payload buffer for analysis (first 64 bytes max)
-            if (payloadBuffer_.size() > 0) {
-                char hexDump[256] = {0};
-                size_t dumpSize = std::min(payloadBuffer_.size(), static_cast<size_t>(32));
-                for (size_t i = 0; i < dumpSize; i++) {
-                    snprintf(hexDump + (i * 3), sizeof(hexDump) - (i * 3), "%02X ", payloadBuffer_[i]);
-                }
-                ESP_LOGI(TAG, "Payload buffer (first %zu bytes): %s", dumpSize, hexDump);
-            }
-#endif
 
             statistics_.incrementFramingErrors();
             return String();
@@ -571,38 +477,10 @@ String BinaryProtocolFramer::processCompleteMessage() {
         // Calculate CRC16 of the received payload
         uint16_t calculatedCrc = CRC16Calculator::calculate(payloadBuffer_.data(), payloadBuffer_.size());
 
-#if BINARY_PROTOCOL_DEBUG_CRC_DETAILS
-        ESP_LOGI(TAG, "=== CRC VERIFICATION DEBUG ===");
-        ESP_LOGI(TAG, "Payload size for CRC: %zu bytes", payloadBuffer_.size());
-        ESP_LOGI(TAG, "Expected CRC: 0x%04X", expectedCrc_);
-        ESP_LOGI(TAG, "Calculated CRC: 0x%04X", calculatedCrc);
-
-        // Dump payload for CRC debugging (limited to reasonable size)
-        if (payloadBuffer_.size() <= 128) {
-            char hexDump[512] = {0};
-            size_t dumpSize = std::min(payloadBuffer_.size(), static_cast<size_t>(64));
-            for (size_t i = 0; i < dumpSize; i++) {
-                snprintf(hexDump + (i * 3), sizeof(hexDump) - (i * 3), "%02X ", payloadBuffer_[i]);
-            }
-            ESP_LOGI(TAG, "Payload bytes for CRC (%zu bytes): %s%s",
-                     payloadBuffer_.size(), hexDump,
-                     (payloadBuffer_.size() > 64) ? "..." : "");
-        } else {
-            ESP_LOGI(TAG, "Payload too large for hex dump (%zu bytes)", payloadBuffer_.size());
-        }
-
-        ESP_LOGI(TAG, "CRC Match: %s", (calculatedCrc == expectedCrc_) ? "✓ YES" : "✗ NO");
-        ESP_LOGI(TAG, "=== END CRC VERIFICATION DEBUG ===");
-#endif
-
         // Verify CRC16
         if (calculatedCrc != expectedCrc_) {
             ESP_LOGI(TAG, "CRC mismatch - calculated 0x%04X, expected 0x%04X",
                      calculatedCrc, expectedCrc_);
-
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-            ESP_LOGI(TAG, "*** CRC FAILURE - MESSAGE REJECTED ***");
-#endif
 
             statistics_.incrementCrcErrors();
             return String();
@@ -677,17 +555,6 @@ String BinaryProtocolFramer::processCompleteMessage() {
             statistics_.incrementFramingErrors();
             return String();
         }
-
-#if BINARY_PROTOCOL_DEBUG_FRAMES
-        ESP_LOGI(TAG, "*** MESSAGE SUCCESSFULLY DECODED! ***");
-        ESP_LOGI(TAG, "Final JSON length: %u bytes", jsonMessage.length());
-        if (jsonMessage.length() <= 200) {
-            ESP_LOGI(TAG, "JSON content: %s", jsonMessage.c_str());
-        } else {
-            ESP_LOGI(TAG, "JSON preview (first 100 chars): %.100s...", jsonMessage.c_str());
-        }
-        ESP_LOGI(TAG, "=== END MESSAGE PROCESSING ===");
-#endif
 
         ESP_LOGD(TAG, "Successfully decoded message: %zu bytes, CRC OK", payloadBuffer_.size());
 
