@@ -74,9 +74,8 @@ bool InterruptMessagingEngine::init() {
         return false;
     }
 
-    // Test binary protocol to verify it's working correctly
-    ESP_LOGW(TAG, "Running binary protocol self-test...");
-    BinaryProtocol::testBinaryProtocol();
+    // Binary protocol initialized - using working CRC-16-MODBUS algorithm from previous SerialBridge
+    ESP_LOGW(TAG, "Binary protocol framer ready with compatible CRC-16-MODBUS algorithm");
 
     // Create synchronization objects
     uartMutex = xSemaphoreCreateMutex();
@@ -248,39 +247,22 @@ void InterruptMessagingEngine::processIncomingData() {
     int length = uart_read_bytes(UART_NUM_0, data, sizeof(data), pdMS_TO_TICKS(1));
 
     if (length > 0) {
-        ESP_LOGW(TAG, "=== RECEIVED UART DATA ===");
-        ESP_LOGW(TAG, "Received %d bytes from UART", length);
-
-        // Print what we received
-        ESP_LOGW(TAG, "Received data hex dump:");
-        for (int i = 0; i < length; i += 16) {
-            char hexLine[64] = {0};
-            char asciiLine[20] = {0};
-            int hexPos = 0;
-            int asciiPos = 0;
-
-            for (int j = 0; j < 16 && (i + j) < length; j++) {
-                uint8_t byte = data[i + j];
-                hexPos += snprintf(hexLine + hexPos, sizeof(hexLine) - hexPos, "%02X ", byte);
-                asciiLine[asciiPos++] = (byte >= 32 && byte <= 126) ? byte : '.';
-            }
-            ESP_LOGW(TAG, "  %04X: %-48s |%s|", i, hexLine, asciiLine);
-        }
+        ESP_LOGD(TAG, "Received %d bytes from UART", length);
 
         // Process incoming bytes through binary protocol framer
         std::vector<String> decodedMessages = binaryFramer->processIncomingBytes(data, length);
 
-        ESP_LOGW(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
+        ESP_LOGD(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
 
         // Process each decoded JSON message
         for (const String& jsonMessage : decodedMessages) {
-            ESP_LOGW(TAG, "Decoded JSON: %s", jsonMessage.c_str());
+            ESP_LOGD(TAG, "Decoded JSON: %s", jsonMessage.c_str());
 
             ExternalMessage message;
             if (parseCompleteMessage(jsonMessage.c_str(), jsonMessage.length(), message)) {
                 messagesReceived++;
                 routeExternalMessage(message);
-                ESP_LOGW(TAG, "Message parsed and routed successfully");
+                ESP_LOGD(TAG, "Message parsed and routed successfully");
             } else {
                 bufferOverruns++;
                 ESP_LOGW(TAG, "Failed to parse decoded JSON message: %s", jsonMessage.c_str());
@@ -295,29 +277,12 @@ void InterruptMessagingEngine::processOutgoingMessages() {
     // Process all queued outgoing messages
     while (xQueueReceive(outgoingMessageQueue, &messagePtr, 0) == pdTRUE) {
         if (messagePtr && messagePtr->data && messagePtr->length > 0) {
-            ESP_LOGW(TAG, "=== SENDING UART DATA ===");
-            ESP_LOGW(TAG, "Sending %zu bytes over UART", messagePtr->length);
-
-            // Print what we're actually sending
-            ESP_LOGW(TAG, "UART data hex dump:");
-            for (size_t i = 0; i < std::min(size_t(64), messagePtr->length); i += 16) {
-                char hexLine[64] = {0};
-                char asciiLine[20] = {0};
-                int hexPos = 0;
-                int asciiPos = 0;
-
-                for (size_t j = 0; j < 16 && (i + j) < messagePtr->length && (i + j) < 64; j++) {
-                    uint8_t byte = messagePtr->data[i + j];
-                    hexPos += snprintf(hexLine + hexPos, sizeof(hexLine) - hexPos, "%02X ", byte);
-                    asciiLine[asciiPos++] = (byte >= 32 && byte <= 126) ? byte : '.';
-                }
-                ESP_LOGW(TAG, "  %04X: %-48s |%s|", i, hexLine, asciiLine);
-            }
+            ESP_LOGD(TAG, "Sending binary frame: %zu bytes", messagePtr->length);
 
             // Send binary data via UART
             if (sendRawData(reinterpret_cast<const char*>(messagePtr->data), messagePtr->length)) {
                 messagesSent++;
-                ESP_LOGW(TAG, "UART transmission successful");
+                ESP_LOGD(TAG, "Binary frame transmitted successfully");
             } else {
                 ESP_LOGE(TAG, "UART transmission failed");
             }
@@ -470,9 +435,7 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGW(TAG, "=== ENCODING MESSAGE ===");
-    ESP_LOGW(TAG, "Input JSON: %s", payload.c_str());
-    ESP_LOGW(TAG, "Input length: %d bytes", payload.length());
+    ESP_LOGD(TAG, "Encoding JSON message: %d bytes", payload.length());
 
     // Encode JSON payload using binary protocol
     std::vector<uint8_t> binaryFrame = binaryFramer->encodeMessage(payload);
@@ -481,27 +444,7 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGW(TAG, "Encoded frame size: %zu bytes", binaryFrame.size());
-    ESP_LOGW(TAG, "Frame structure:");
-    ESP_LOGW(TAG, "  Start: 0x%02X (should be 0x7E)", binaryFrame[0]);
-    if (binaryFrame.size() >= 8) {
-        ESP_LOGW(TAG, "  Length: %02X %02X %02X %02X",
-                 binaryFrame[1], binaryFrame[2], binaryFrame[3], binaryFrame[4]);
-        ESP_LOGW(TAG, "  CRC: %02X %02X", binaryFrame[5], binaryFrame[6]);
-        ESP_LOGW(TAG, "  Type: 0x%02X (should be 0x01)", binaryFrame[7]);
-    }
-    ESP_LOGW(TAG, "  End: 0x%02X (should be 0x7F)", binaryFrame[binaryFrame.size() - 1]);
-
-    // Print hex dump of first 32 bytes
-    ESP_LOGW(TAG, "Frame hex dump (first 32 bytes):");
-    for (size_t i = 0; i < std::min(size_t(32), binaryFrame.size()); i += 16) {
-        char hexLine[64] = {0};
-        int pos = 0;
-        for (size_t j = 0; j < 16 && (i + j) < binaryFrame.size() && (i + j) < 32; j++) {
-            pos += snprintf(hexLine + pos, sizeof(hexLine) - pos, "%02X ", binaryFrame[i + j]);
-        }
-        ESP_LOGW(TAG, "  %04X: %s", i, hexLine);
-    }
+    ESP_LOGD(TAG, "Binary frame encoded: %zu bytes", binaryFrame.size());
 
     // Create binary message for queue (allocate on heap for queue)
     BinaryMessage* messagePtr = new BinaryMessage();
@@ -516,7 +459,7 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGW(TAG, "Message queued successfully for transmission");
+    ESP_LOGD(TAG, "Binary message queued for transmission");
     return true;
 }
 

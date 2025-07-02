@@ -75,12 +75,6 @@ class CRC16Calculator {
     static uint16_t calculate(const uint8_t* data, size_t length);
     static uint16_t calculate(const std::vector<uint8_t>& data);
     static uint16_t calculate(const String& data);
-
-   private:
-    static const uint16_t CRC16_POLYNOMIAL = 0x1021;  // CRC-16-CCITT
-    static uint16_t crc16Table[256];
-    static bool tableInitialized;
-    static void initializeTable();
 };
 
 // =============================================================================
@@ -158,5 +152,8 @@ bool validateFrame(const uint8_t* frame, size_t frameLength);
 
 // Test function for debugging binary protocol
 void testBinaryProtocol();
+
+// Function to update CRC algorithm based on test results
+void updateCRCAlgorithm(uint16_t polynomial, uint16_t initial, bool reflect = false);
 
 }  // namespace BinaryProtocol

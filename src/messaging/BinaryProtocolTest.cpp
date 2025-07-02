@@ -25,6 +25,39 @@ void printHexDump(const char* title, const uint8_t* data, size_t length) {
     }
 }
 
+// Test multiple CRC-16 variants to find the one that matches the server
+uint16_t calculateCRC16Variant(const uint8_t* data, size_t length, uint16_t polynomial, uint16_t initial, bool reflect = false) {
+    uint16_t crc = initial;
+
+    for (size_t i = 0; i < length; i++) {
+        uint8_t byte = data[i];
+        if (reflect) {
+            // Reflect the byte
+            byte = ((byte & 0x01) << 7) | ((byte & 0x02) << 5) | ((byte & 0x04) << 3) | ((byte & 0x08) << 1) |
+                   ((byte & 0x10) >> 1) | ((byte & 0x20) >> 3) | ((byte & 0x40) >> 5) | ((byte & 0x80) >> 7);
+        }
+
+        crc ^= (byte << 8);
+        for (int j = 0; j < 8; j++) {
+            if (crc & 0x8000) {
+                crc = (crc << 1) ^ polynomial;
+            } else {
+                crc = crc << 1;
+            }
+        }
+    }
+
+    if (reflect) {
+        // Reflect the result
+        crc = ((crc & 0x0001) << 15) | ((crc & 0x0002) << 13) | ((crc & 0x0004) << 11) | ((crc & 0x0008) << 9) |
+              ((crc & 0x0010) << 7) | ((crc & 0x0020) << 5) | ((crc & 0x0040) << 3) | ((crc & 0x0080) << 1) |
+              ((crc & 0x0100) >> 1) | ((crc & 0x0200) >> 3) | ((crc & 0x0400) >> 5) | ((crc & 0x0800) >> 7) |
+              ((crc & 0x1000) >> 9) | ((crc & 0x2000) >> 11) | ((crc & 0x4000) >> 13) | ((crc & 0x8000) >> 15);
+    }
+
+    return crc;
+}
+
 void testBinaryProtocol() {
     ESP_LOGI(TAG, "=== Binary Protocol Test ===");
 
@@ -33,6 +66,42 @@ void testBinaryProtocol() {
 
     ESP_LOGI(TAG, "Original JSON: %s", testJson.c_str());
     ESP_LOGI(TAG, "JSON Length: %d bytes", testJson.length());
+
+    // Test different CRC-16 variants to find the one that matches server expectation (0xB93F)
+    const uint8_t* testData = reinterpret_cast<const uint8_t*>(testJson.c_str());
+    size_t testLength = testJson.length();
+
+    ESP_LOGI(TAG, "\n=== CRC-16 Variant Testing ===");
+    ESP_LOGI(TAG, "Server expects: 0xB93F, Server calculated: 0x2E15");
+
+    struct CRCVariant {
+        const char* name;
+        uint16_t polynomial;
+        uint16_t initial;
+        bool reflect;
+    };
+
+    CRCVariant variants[] = {
+        {"CRC-16-CCITT (0x0000)", 0x1021, 0x0000, false},
+        {"CRC-16-CCITT (0xFFFF)", 0x1021, 0xFFFF, false},
+        {"CRC-16-CCITT (0x1D0F)", 0x1021, 0x1D0F, false},
+        {"CRC-16-IBM/ANSI", 0x8005, 0x0000, false},
+        {"CRC-16-IBM/ANSI (reflected)", 0x8005, 0x0000, true},
+        {"CRC-16-MODBUS", 0x8005, 0xFFFF, false},
+        {"CRC-16-XMODEM", 0x1021, 0x0000, false},
+        {"CRC-16-ARC", 0x8005, 0x0000, true},
+    };
+
+    for (const auto& variant : variants) {
+        uint16_t crc = calculateCRC16Variant(testData, testLength, variant.polynomial, variant.initial, variant.reflect);
+        ESP_LOGI(TAG, "%s: 0x%04X %s", variant.name, crc,
+                 (crc == 0xB93F) ? "*** MATCH! ***" : "");
+    }
+
+    // Also test our current implementation
+    uint16_t ourCrc = CRC16Calculator::calculate(testData, testLength);
+    ESP_LOGI(TAG, "Our current implementation: 0x%04X %s", ourCrc,
+             (ourCrc == 0xB93F) ? "*** MATCH! ***" : "");
 
     // Create framer and encode
     BinaryProtocolFramer framer;

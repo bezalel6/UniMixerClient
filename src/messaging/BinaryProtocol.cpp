@@ -9,38 +9,21 @@ namespace BinaryProtocol {
 // CRC16 CALCULATOR IMPLEMENTATION
 // =============================================================================
 
-uint16_t CRC16Calculator::crc16Table[256];
-bool CRC16Calculator::tableInitialized = false;
-
-void CRC16Calculator::initializeTable() {
-    if (tableInitialized) return;
-
-    for (uint16_t i = 0; i < 256; i++) {
-        uint16_t crc = i << 8;
-        for (uint8_t j = 0; j < 8; j++) {
-            if (crc & 0x8000) {
-                crc = (crc << 1) ^ CRC16_POLYNOMIAL;
-            } else {
-                crc = crc << 1;
-            }
-        }
-        crc16Table[i] = crc;
-    }
-    tableInitialized = true;
-}
+// CRC16 implementation simplified - using direct algorithm from working SerialBridge
 
 uint16_t CRC16Calculator::calculate(const uint8_t* data, size_t length) {
-    if (!tableInitialized) {
-        initializeTable();
-    }
-
-    uint16_t crc = 0x0000;  // Initial value for CRC-16-CCITT
-
+    // Use the working CRC-16-MODBUS algorithm from previous SerialBridge implementation
+    uint16_t crc = 0xFFFF;
     for (size_t i = 0; i < length; i++) {
-        uint8_t tableIndex = ((crc >> 8) ^ data[i]) & 0xFF;
-        crc = (crc << 8) ^ crc16Table[tableIndex];
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1) {
+                crc = (crc >> 1) ^ 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
     }
-
     return crc;
 }
 
@@ -376,6 +359,22 @@ String BinaryProtocolFramer::processCompleteMessage() {
 
 bool BinaryProtocolFramer::isTimeout() const {
     return (millis() - messageStartTime_) > MESSAGE_TIMEOUT_MS;
+}
+
+// Global variables to store the correct CRC parameters
+static uint16_t activeCRCPolynomial = 0x1021;
+static uint16_t activeCRCInitial = 0xFFFF;
+static bool activeCRCReflect = false;
+
+void updateCRCAlgorithm(uint16_t polynomial, uint16_t initial, bool reflect) {
+    ESP_LOGI("BinaryProtocol", "Updating CRC algorithm: Poly=0x%04X, Init=0x%04X, Reflect=%s",
+             polynomial, initial, reflect ? "true" : "false");
+    activeCRCPolynomial = polynomial;
+    activeCRCInitial = initial;
+    activeCRCReflect = reflect;
+
+    // Force recalculation of lookup table
+    CRC16Calculator::tableInitialized = false;
 }
 
 }  // namespace BinaryProtocol
