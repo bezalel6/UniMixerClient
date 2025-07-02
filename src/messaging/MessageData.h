@@ -322,20 +322,20 @@ namespace MessageParser {
 /**
  * Parse external message type from JSON payload
  * EFFICIENT: Direct string comparison with enum mapping
- * FIXED: Handles both "messageType" and "MessageType" field names
+ * FIXED: Handles both "messageType" and "MessageType" field names using constants
  */
 inline MessageProtocol::ExternalMessageType parseExternalMessageType(const String& jsonPayload) {
-    JsonDocument doc(4096);  // Larger buffer for Unicode support
+    JsonDocument doc;  // Use default dynamic allocation
     if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
         ESP_LOGW("MessageParser", "Failed to parse messageType from JSON: %s", jsonPayload.c_str());
         return MessageProtocol::ExternalMessageType::INVALID;
     }
 
-    // Try both field name cases for messageType
-    if (doc["MessageType"].is<int>()) {
-        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType", MessageProtocol::ExternalMessageType::INVALID);
-    } else if (doc["messageType"].is<int>()) {
-        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "messageType", MessageProtocol::ExternalMessageType::INVALID);
+    // Try both field name cases using constants
+    if (doc[MessageProtocol::JsonFields::OUTGOING_MESSAGE_TYPE].is<int>()) {
+        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, MessageProtocol::JsonFields::OUTGOING_MESSAGE_TYPE, MessageProtocol::ExternalMessageType::INVALID);
+    } else if (doc[MessageProtocol::JsonFields::INCOMING_MESSAGE_TYPE].is<int>()) {
+        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, MessageProtocol::JsonFields::INCOMING_MESSAGE_TYPE, MessageProtocol::ExternalMessageType::INVALID);
     }
 
     ESP_LOGW("MessageParser", "No valid messageType field found in JSON");
@@ -345,11 +345,13 @@ inline MessageProtocol::ExternalMessageType parseExternalMessageType(const Strin
 /**
  * Parse complete external message from JSON payload
  * EFFICIENT: Single JSON parse, direct field extraction
- * FIXED: Handles both "messageType" and "MessageType" field names + Unicode support
+ * FIXED: Uses constants for field names + Unicode support
  */
 inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
-    // Use larger JsonDocument to handle Unicode strings and complex messages
-    JsonDocument doc(8192);  // 8KB buffer for large messages with Unicode
+    using namespace MessageProtocol::JsonFields;
+
+    // Use default JsonDocument with automatic memory allocation for Unicode support
+    JsonDocument doc;
 
     DeserializationError error = deserializeJson(doc, jsonPayload);
     if (error) {
@@ -358,16 +360,16 @@ inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
         return ExternalMessage();
     }
 
-    // Try both field name cases for messageType (handle inconsistency)
+    // Parse messageType using constants (handle both formats)
     MessageProtocol::ExternalMessageType type = MessageProtocol::ExternalMessageType::INVALID;
 
-    // First try uppercase "MessageType" (existing standard)
-    if (doc["MessageType"].is<int>()) {
-        type = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType");
+    // First try uppercase format (outgoing standard)
+    if (doc[OUTGOING_MESSAGE_TYPE].is<int>()) {
+        type = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, OUTGOING_MESSAGE_TYPE);
     }
-    // Fall back to lowercase "messageType" (incoming message format)
-    else if (doc["messageType"].is<int>()) {
-        int typeNum = doc["messageType"] | static_cast<int>(MessageProtocol::ExternalMessageType::INVALID);
+    // Fall back to lowercase format (incoming format)
+    else if (doc[INCOMING_MESSAGE_TYPE].is<int>()) {
+        int typeNum = doc[INCOMING_MESSAGE_TYPE] | static_cast<int>(MessageProtocol::ExternalMessageType::INVALID);
         auto parsedType = static_cast<MessageProtocol::ExternalMessageType>(typeNum);
         type = MessageProtocol::isValidExternalMessageType(parsedType) ? parsedType : MessageProtocol::ExternalMessageType::INVALID;
     }
@@ -381,11 +383,11 @@ inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
         return ExternalMessage();
     }
 
-    // Try both field name cases for other fields as well
-    String requestId = doc["RequestId"] | doc["requestId"] | "";
-    String deviceId = doc["DeviceId"] | doc["deviceId"] | "";
-    String originatingDeviceId = doc["OriginatingDeviceId"] | doc["originatingDeviceId"] | "";
-    unsigned long timestamp = doc["Timestamp"] | doc["timestamp"] | millis();
+    // Parse other core fields using constants
+    String requestId = GET_STRING_FIELD_BOTH_CASES(doc, INCOMING_REQUEST_ID, OUTGOING_REQUEST_ID);
+    String deviceId = GET_STRING_FIELD_BOTH_CASES(doc, INCOMING_DEVICE_ID, OUTGOING_DEVICE_ID);
+    String originatingDeviceId = GET_STRING_FIELD_BOTH_CASES(doc, INCOMING_ORIGINATING_DEVICE_ID, OUTGOING_ORIGINATING_DEVICE_ID);
+    unsigned long timestamp = GET_INT_FIELD_BOTH_CASES(doc, INCOMING_TIMESTAMP, OUTGOING_TIMESTAMP, millis());
 
     ExternalMessage message(type, requestId, deviceId);
     message.originatingDeviceId = originatingDeviceId;
@@ -442,8 +444,11 @@ String serializeInternalMessage(const InternalMessage& message);
 
 /**
  * Parse audio status response from external message
+ * UPDATED: Uses constants for field names instead of hardcoded strings
  */
 inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
+    using namespace MessageProtocol::JsonFields;
+
     AudioStatusData data;
 
     if (message.messageType != MessageProtocol::ExternalMessageType::STATUS_UPDATE &&
@@ -451,85 +456,105 @@ inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
         return data;
     }
 
-    // Extract sessions from parsed data (matches C# Sessions field)
-    if (message.parsedData["Sessions"].is<JsonArray>()) {
-        size_t sessionCount = message.parsedData["Sessions"].size();
-        for (size_t i = 0; i < sessionCount; i++) {
-            auto sessionVar = message.parsedData["Sessions"][i];
-            SessionStatusData session;
-            session.processId = sessionVar["ProcessId"] | 0;
-            session.processName = sessionVar["ProcessName"] | "";
-            session.displayName = sessionVar["DisplayName"] | "";
-            session.volume = sessionVar["Volume"] | 0.0f;
-            session.isMuted = sessionVar["IsMuted"] | false;
-            session.state = sessionVar["State"] | "";
-            data.sessions.push_back(session);
+    // Extract sessions from parsed data using constants (handle both cases)
+    if (HAS_FIELD_EITHER_CASE(message.parsedData, SESSIONS, SESSIONS_CAPS)) {
+        JsonArray sessionsArray;
+        if (message.parsedData[SESSIONS].is<JsonArray>()) {
+            sessionsArray = message.parsedData[SESSIONS];
+        } else if (message.parsedData[SESSIONS_CAPS].is<JsonArray>()) {
+            sessionsArray = message.parsedData[SESSIONS_CAPS];
+        }
+
+        if (!sessionsArray.isNull()) {
+            size_t sessionCount = sessionsArray.size();
+            for (size_t i = 0; i < sessionCount; i++) {
+                auto sessionVar = sessionsArray[i];
+                SessionStatusData session;
+                session.processId = GET_INT_FIELD_BOTH_CASES(sessionVar, PROCESS_ID, PROCESS_ID_CAPS, 0);
+                session.processName = GET_STRING_FIELD_BOTH_CASES(sessionVar, PROCESS_NAME, PROCESS_NAME_CAPS);
+                session.displayName = GET_STRING_FIELD_BOTH_CASES(sessionVar, DISPLAY_NAME, DISPLAY_NAME_CAPS);
+                session.volume = GET_FLOAT_FIELD_BOTH_CASES(sessionVar, VOLUME, VOLUME_CAPS);
+                session.isMuted = GET_BOOL_FIELD_BOTH_CASES(sessionVar, IS_MUTED, IS_MUTED_CAPS);
+                session.state = GET_STRING_FIELD_BOTH_CASES(sessionVar, STATE, STATE_CAPS);
+                data.sessions.push_back(session);
+            }
         }
     }
 
-    // Extract default device information (matches C# DefaultDevice field)
-    if (message.parsedData["DefaultDevice"].is<JsonObject>()) {
-        auto defaultVar = message.parsedData["DefaultDevice"];
-        data.defaultDevice.friendlyName = defaultVar["FriendlyName"] | "";
-        data.defaultDevice.volume = defaultVar["Volume"] | 0.0f;
-        data.defaultDevice.isMuted = defaultVar["IsMuted"] | false;
-        data.defaultDevice.dataFlow = defaultVar["DataFlow"] | "";
-        data.defaultDevice.deviceRole = defaultVar["DeviceRole"] | "";
-        data.hasDefaultDevice = true;
+    // Extract default device information using constants (handle both cases)
+    if (HAS_FIELD_EITHER_CASE(message.parsedData, DEFAULT_DEVICE, DEFAULT_DEVICE_CAPS)) {
+        JsonObject defaultVar;
+        if (message.parsedData[DEFAULT_DEVICE].is<JsonObject>()) {
+            defaultVar = message.parsedData[DEFAULT_DEVICE];
+        } else if (message.parsedData[DEFAULT_DEVICE_CAPS].is<JsonObject>()) {
+            defaultVar = message.parsedData[DEFAULT_DEVICE_CAPS];
+        }
+
+        if (!defaultVar.isNull()) {
+            data.defaultDevice.friendlyName = GET_STRING_FIELD_BOTH_CASES(defaultVar, FRIENDLY_NAME, FRIENDLY_NAME_CAPS);
+            data.defaultDevice.volume = GET_FLOAT_FIELD_BOTH_CASES(defaultVar, VOLUME, VOLUME_CAPS);
+            data.defaultDevice.isMuted = GET_BOOL_FIELD_BOTH_CASES(defaultVar, IS_MUTED, IS_MUTED_CAPS);
+            data.defaultDevice.dataFlow = GET_STRING_FIELD_BOTH_CASES(defaultVar, DATA_FLOW, DATA_FLOW_CAPS);
+            data.defaultDevice.deviceRole = GET_STRING_FIELD_BOTH_CASES(defaultVar, DEVICE_ROLE, DEVICE_ROLE_CAPS);
+            data.hasDefaultDevice = true;
+        }
     }
 
-    // Extract metadata
+    // Extract metadata using constants
     data.timestamp = message.timestamp;
-    data.reason = message.get<String>("Reason", "");
-    data.originatingDeviceId = message.get<String>("OriginatingDeviceId", "");
-    data.originatingRequestId = message.get<String>("OriginatingRequestId", "");
-    data.activeSessionCount = message.get<int>("ActiveSessionCount", 0);
+    data.reason = GET_STRING_FIELD_BOTH_CASES(message.parsedData, REASON, REASON_CAPS);
+    data.originatingDeviceId = GET_STRING_FIELD_BOTH_CASES(message.parsedData, INCOMING_ORIGINATING_DEVICE_ID, OUTGOING_ORIGINATING_DEVICE_ID);
+    data.originatingRequestId = GET_STRING_FIELD_BOTH_CASES(message.parsedData, ORIGINATING_REQUEST_ID, ORIGINATING_REQUEST_ID_CAPS);
+    data.activeSessionCount = GET_INT_FIELD_BOTH_CASES(message.parsedData, ACTIVE_SESSION_COUNT, ACTIVE_SESSION_COUNT_CAPS, 0);
 
     return data;
 }
 
 /**
  * Create status response JSON from audio status data
+ * UPDATED: Uses constants for field names instead of hardcoded strings
  */
 inline String createStatusResponse(const AudioStatusData& data) {
+    using namespace MessageProtocol::JsonFields;
+
     JsonDocument doc;
-    doc["MessageType"] = SERIALIZE_EXTERNAL_MSG_TYPE(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
-    doc["DeviceId"] = Config::getDeviceId();
-    doc["Timestamp"] = data.timestamp;
-    doc["ActiveSessionCount"] = data.activeSessionCount;
+    doc[OUTGOING_MESSAGE_TYPE] = SERIALIZE_EXTERNAL_MSG_TYPE(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
+    doc[OUTGOING_DEVICE_ID] = Config::getDeviceId();
+    doc[OUTGOING_TIMESTAMP] = data.timestamp;
+    doc[ACTIVE_SESSION_COUNT_CAPS] = data.activeSessionCount;
 
     if (!data.reason.isEmpty()) {
-        doc["Reason"] = data.reason;
+        doc[REASON_CAPS] = data.reason;
     }
 
     if (!data.originatingDeviceId.isEmpty()) {
-        doc["OriginatingDeviceId"] = data.originatingDeviceId;
+        doc[OUTGOING_ORIGINATING_DEVICE_ID] = data.originatingDeviceId;
     }
 
     if (!data.originatingRequestId.isEmpty()) {
-        doc["OriginatingRequestId"] = data.originatingRequestId;
+        doc[ORIGINATING_REQUEST_ID_CAPS] = data.originatingRequestId;
     }
 
-    // Serialize sessions (matches C# Sessions structure)
-    JsonArray sessionsArray = doc["Sessions"].to<JsonArray>();
+    // Serialize sessions using constants (use capitalized version for outgoing)
+    JsonArray sessionsArray = doc[SESSIONS_CAPS].to<JsonArray>();
     for (const auto& session : data.sessions) {
         JsonObject sessionObj = sessionsArray.add<JsonObject>();
-        sessionObj["ProcessId"] = session.processId;
-        sessionObj["ProcessName"] = session.processName;
-        sessionObj["DisplayName"] = session.displayName;
-        sessionObj["Volume"] = session.volume;
-        sessionObj["IsMuted"] = session.isMuted;
-        sessionObj["State"] = session.state;
+        sessionObj[PROCESS_ID_CAPS] = session.processId;
+        sessionObj[PROCESS_NAME_CAPS] = session.processName;
+        sessionObj[DISPLAY_NAME_CAPS] = session.displayName;
+        sessionObj[VOLUME_CAPS] = session.volume;
+        sessionObj[IS_MUTED_CAPS] = session.isMuted;
+        sessionObj[STATE_CAPS] = session.state;
     }
 
-    // Serialize default device (matches C# DefaultDevice structure)
+    // Serialize default device using constants (use capitalized version for outgoing)
     if (data.hasDefaultDevice) {
-        JsonObject defaultObj = doc["DefaultDevice"].to<JsonObject>();
-        defaultObj["FriendlyName"] = data.defaultDevice.friendlyName;
-        defaultObj["Volume"] = data.defaultDevice.volume;
-        defaultObj["IsMuted"] = data.defaultDevice.isMuted;
-        defaultObj["DataFlow"] = data.defaultDevice.dataFlow;
-        defaultObj["DeviceRole"] = data.defaultDevice.deviceRole;
+        JsonObject defaultObj = doc[DEFAULT_DEVICE_CAPS].to<JsonObject>();
+        defaultObj[FRIENDLY_NAME_CAPS] = data.defaultDevice.friendlyName;
+        defaultObj[VOLUME_CAPS] = data.defaultDevice.volume;
+        defaultObj[IS_MUTED_CAPS] = data.defaultDevice.isMuted;
+        defaultObj[DATA_FLOW_CAPS] = data.defaultDevice.dataFlow;
+        defaultObj[DEVICE_ROLE_CAPS] = data.defaultDevice.deviceRole;
     }
 
     String jsonString;
