@@ -54,6 +54,9 @@ typedef enum {
     MSG_UPDATE_OTA_STATUS_INDICATOR,
     MSG_HIDE_OTA_STATUS_INDICATOR,
 
+    // Debug UI logging message
+    MSG_DEBUG_UI_LOG,
+
     // maximum message types, must be the last element
     NUM_OF_MSGS
 } LVGLMessageType_t;
@@ -178,6 +181,11 @@ typedef struct {
             bool is_error;
             bool pulsing;
         } ota_status_indicator;
+
+        // Debug UI log data
+        struct {
+            char message[256];
+        } debug_ui_log;
     } data;
 } LVGLMessage_t;
 
@@ -237,6 +245,9 @@ bool completeSDFormat(bool success, const char *message);
 bool showOTAStatusIndicator(uint8_t progress, const char *status, bool is_error = false, bool pulsing = false);
 bool updateOTAStatusIndicator(uint8_t progress, const char *status, bool is_error = false, bool pulsing = false);
 bool hideOTAStatusIndicator(void);
+
+// Helper function for debug UI logging
+bool sendDebugUILog(const char *message);
 
 }  // namespace LVGLMessageHandler
 }  // namespace Application

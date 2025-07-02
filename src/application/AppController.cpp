@@ -165,19 +165,17 @@ bool init(void) {
     INIT_STEP("Setting up UI components", { setupUiComponents(); });
 
     // Task Manager initialization - Network-free mode for maximum performance
-    INIT_STEP("Initializing Task Manager", {
-        Serial.println("AppController: About to initialize TaskManager...");
-        Serial.println("AppController: Using network-free mode - calling initNetworkFreeTasks()");
-        ESP_LOGI(TAG, "[NETWORK-FREE] Initializing network-free task manager");
-        ESP_LOGE(TAG, "[DEBUG] About to call TaskManager::initNetworkFreeTasks()");
-        if (!TaskManager::initNetworkFreeTasks()) {
-            ESP_LOGE(TAG, "Failed to initialize network-free task manager");
-            Serial.println("ERROR: TaskManager::initNetworkFreeTasks() returned false!");
-            return false;
-        }
-        ESP_LOGI(TAG, "[NETWORK-FREE] Task manager initialized - maximum UI/audio performance enabled");
-        Serial.println("AppController: TaskManager::initNetworkFreeTasks() succeeded!");
-    });
+    INIT_STEP_CRITICAL("Starting Task Manager", Application::TaskManager::init());
+
+    // Post-initialization debug test
+    ESP_LOGI(TAG, "AppController initialization complete - testing debug UI log");
+
+    // Test the new DEBUG_UI_LOG functionality
+    if (Messaging::MessageAPI::publishDebugUILog("AppController initialization complete")) {
+        ESP_LOGI(TAG, "DEBUG_UI_LOG test message sent successfully");
+    } else {
+        ESP_LOGW(TAG, "Failed to send DEBUG_UI_LOG test message");
+    }
 
     // Send initial status request
     INIT_STEP("Sending initial status request", {
@@ -270,6 +268,8 @@ void setupUiComponents(void) {
 
     // Settings button - ensures clickable state
     SETUP_CLICK_EVENT(ui_btnGOTOSettings, Events::UI::openSettings, "Settings button");
+
+    SETUP_CLICK_EVENT(ui_btnRequestStatus, Events::UI::btnRequestDataClickedHandler, "Send Status Request");
 
     // All audio dropdowns at once
     SETUP_ALL_AUDIO_DROPDOWNS(Events::UI::audioDeviceDropdownChangedHandler);

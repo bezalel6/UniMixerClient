@@ -46,8 +46,8 @@ bool ExternalMessage::validate() {
     }
 
     validated = true;
-    ESP_LOGD(TAG, "External message validated successfully: %s",
-             MessageProtocol::externalMessageTypeToString(messageType));
+    ESP_LOGD(TAG, "External message validated successfully: %d",
+             LOG_EXTERNAL_MSG_TYPE(messageType));
     return true;
 }
 
@@ -149,8 +149,8 @@ ExternalMessage MessageConverter::internalToExternal(const InternalMessage& inte
 
     external.validated = true;
 
-    ESP_LOGD(TAG, "Converted internal message to external: %s",
-             MessageProtocol::externalMessageTypeToString(external.messageType));
+    ESP_LOGD(TAG, "Converted internal message to external: %d",
+             LOG_EXTERNAL_MSG_TYPE(external.messageType));
 
     return external;
 }
@@ -321,6 +321,25 @@ InternalMessage MessageConverter::createCoreToCoreSyncMessage(uint8_t fromCore, 
     msg.dataSize = sizeof(CoreSyncData);
 
     ESP_LOGD(TAG, "Created core sync message: Core %d -> Core %d", fromCore, toCore);
+    return msg;
+}
+
+InternalMessage MessageConverter::createDebugUILogMessage(const String& logMessage) {
+    InternalMessage msg(MessageProtocol::InternalMessageType::DEBUG_UI_LOG);
+
+    // Create debug UI log data structure
+    struct DebugUILogData {
+        char message[256];
+    };
+
+    static DebugUILogData data;
+    strncpy(data.message, logMessage.c_str(), sizeof(data.message) - 1);
+    data.message[sizeof(data.message) - 1] = '\0';
+
+    msg.data = &data;
+    msg.dataSize = sizeof(DebugUILogData);
+
+    ESP_LOGD(TAG, "Created debug UI log message: %s", logMessage.c_str());
     return msg;
 }
 

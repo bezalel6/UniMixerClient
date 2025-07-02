@@ -110,7 +110,8 @@ static const char *messageTypeNames[] = {
     [MSG_FORMAT_SD_COMPLETE] = "FORMAT_SD_COMPLETE",
     [MSG_SHOW_OTA_STATUS_INDICATOR] = "SHOW_OTA_STATUS_INDICATOR",
     [MSG_UPDATE_OTA_STATUS_INDICATOR] = "UPDATE_OTA_STATUS_INDICATOR",
-    [MSG_HIDE_OTA_STATUS_INDICATOR] = "HIDE_OTA_STATUS_INDICATOR"};
+    [MSG_HIDE_OTA_STATUS_INDICATOR] = "HIDE_OTA_STATUS_INDICATOR",
+    [MSG_DEBUG_UI_LOG] = "DEBUG_UI_LOG"};
 
 // PERFORMANCE: O(1) message type name lookup
 static const char *getMessageTypeName(int messageType) {
@@ -424,6 +425,17 @@ static void handleHideOtaStatusIndicator(const LVGLMessage_t *msg) {
     if (otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
         lv_obj_del(otaStatusOverlay);
         otaStatusOverlay = nullptr;
+    }
+}
+
+static void handleDebugUILog(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.debug_ui_log;
+
+    if (ui_txtAreaDebugLog && lv_obj_is_valid(ui_txtAreaDebugLog)) {
+        LOG_TO_UI(ui_txtAreaDebugLog, data.message);
+        ESP_LOGD(TAG, "Debug UI log added: %s", data.message);
+    } else {
+        ESP_LOGW(TAG, "Debug UI log requested but ui_txtAreaDebugLog not available: %s", data.message);
     }
 }
 
@@ -991,7 +1003,8 @@ static void initializeMessageHandlers() {
         {MSG_FORMAT_SD_REQUEST, handleFormatSDRequest},
         {MSG_FORMAT_SD_CONFIRM, handleFormatSDConfirm},
         {MSG_FORMAT_SD_PROGRESS, handleFormatSDProgress},
-        {MSG_FORMAT_SD_COMPLETE, handleFormatSDComplete}};
+        {MSG_FORMAT_SD_COMPLETE, handleFormatSDComplete},
+        {MSG_DEBUG_UI_LOG, handleDebugUILog}};
 }
 
 // Queue handle
@@ -1605,6 +1618,24 @@ bool hideOTAStatusIndicator(void) {
     message.type = MSG_HIDE_OTA_STATUS_INDICATOR;
     message.data.ota_status_indicator.show = false;
     return sendMessage(&message);
+}
+
+// Helper function for debug UI logging
+bool sendDebugUILog(const char *message) {
+    if (!message) {
+        ESP_LOGW(TAG, "sendDebugUILog called with null message");
+        return false;
+    }
+
+    LVGLMessage_t lvglMessage;
+    lvglMessage.type = MSG_DEBUG_UI_LOG;
+
+    // Safely copy message string
+    strncpy(lvglMessage.data.debug_ui_log.message, message,
+            sizeof(lvglMessage.data.debug_ui_log.message) - 1);
+    lvglMessage.data.debug_ui_log.message[sizeof(lvglMessage.data.debug_ui_log.message) - 1] = '\0';
+
+    return sendMessage(&lvglMessage);
 }
 
 }  // namespace LVGLMessageHandler
