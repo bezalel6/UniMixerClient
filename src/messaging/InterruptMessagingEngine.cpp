@@ -421,15 +421,64 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
     return false;
 }
 
-bool InterruptMessagingEngine::queueMessageForTransmission(const String& payload) {
+bool InterruptMessagingEngine::sendMessageIntelligent(const String& payload) {
     if (!running || !binaryFramer) {
         return false;
     }
 
+    size_t payloadSize = payload.length();
+    
+    // Transmission strategy based on message characteristics
+    const size_t DIRECT_TRANSMISSION_THRESHOLD = 512; // bytes
+    
+    // Check queue congestion
+    UBaseType_t queueSpacesAvailable = uxQueueSpacesAvailable(outgoingMessageQueue);
+    bool queueCongested = queueSpacesAvailable < (MESSAGE_QUEUE_SIZE / 4); // Less than 25% space
+    
+    // Decision matrix:
+    // Small messages + low congestion = Direct transmission (fast)
+    // Large messages OR high congestion = Queue (reliable)
+    
+    bool useDirect = (payloadSize <= DIRECT_TRANSMISSION_THRESHOLD) && !queueCongested;
+    
+    if (useDirect) {
+        // Attempt direct transmission for speed
+        bool success = attemptDirectTransmission(payload);
+        if (success) {
+            messagesSent++;
+            return true;
+        }
+        // Direct failed, fall through to queuing
+    }
+    
+    // Use queued transmission for reliability
+    return queueMessageForTransmission(payload);
+}
+
+bool InterruptMessagingEngine::attemptDirectTransmission(const String& payload) {
+    bool success = binaryFramer->transmitMessageDirect(payload, [](uint8_t byte) -> bool {
+        size_t written = Serial.write(byte);
+        if (written == 1) {
+            if (byte == 0x00) {
+                Serial.flush();
+                delay(2);
+            }
+            return true;
+        }
+        return false;
+    });
+    
+    if (success) {
+        Serial.flush();
+    }
+    
+    return success;
+}
+
+bool InterruptMessagingEngine::queueMessageForTransmission(const String& payload) {
     // Encode the payload to binary format for queuing
     std::vector<uint8_t> binaryFrame = binaryFramer->encodeMessage(payload);
     if (binaryFrame.empty()) {
-        ESP_LOGE(TAG, "Failed to encode message for queuing");
         return false;
     }
 
@@ -441,13 +490,11 @@ bool InterruptMessagingEngine::queueMessageForTransmission(const String& payload
 
     // Queue the message (non-blocking)
     if (xQueueSend(outgoingMessageQueue, &message, 0) == pdTRUE) {
-        ESP_LOGD(TAG, "Message queued for transmission: %zu bytes", message->length);
         return true;
     } else {
         // Queue full - clean up and report failure
         delete[] message->data;
         delete message;
-        ESP_LOGD(TAG, "Failed to queue message - queue full");
         return false;
     }
 }
@@ -482,31 +529,10 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGD(TAG, "Sending JSON message: %d bytes", payload.length());
+    ESP_LOGD(TAG, "Sending message: %d bytes", payload.length());
 
-    // Try direct transmission first (immediate)
-    bool success = binaryFramer->transmitMessageDirect(payload, [](uint8_t byte) -> bool {
-        size_t written = Serial.write(byte);
-        if (written == 1) {
-            if (byte == 0x00) {
-                Serial.flush();
-                delay(2);
-            }
-            return true;
-        }
-        return false;
-    });
-
-    if (success) {
-        Serial.flush();
-        messagesSent++;
-        ESP_LOGD(TAG, "Direct transmission completed successfully");
-        return true;
-    }
-
-    // If direct transmission fails, queue for retry
-    ESP_LOGD(TAG, "Direct transmission failed, queuing for retry");
-    return queueMessageForTransmission(payload);
+    // Intelligent transmission strategy based on message characteristics
+    return sendMessageIntelligent(payload);
 }
 
 bool InterruptMessagingEngine::transportIsConnected() {

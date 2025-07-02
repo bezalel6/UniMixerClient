@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERROR#ifndef INTERRUPT_MESSAGING_ENGINE_H
+#ifndef INTERRUPT_MESSAGING_ENGINE_H
 #define INTERRUPT_MESSAGING_ENGINE_H
 
 #include <Arduino.h>
@@ -155,6 +155,11 @@ class InterruptMessagingEngine {
      * Send raw data via UART (interrupt-safe)
      */
     static bool sendRawData(const char* data, size_t length);
+
+    /**
+     * Queue message for transmission (with retry support)
+     */
+    static bool queueMessageForTransmission(const String& payload);
 
     // =============================================================================
     // MessageCore TRANSPORT INTEGRATION
