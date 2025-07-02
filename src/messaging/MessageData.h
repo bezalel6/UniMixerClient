@@ -435,7 +435,7 @@ String serializeInternalMessage(const InternalMessage& message);
 
 /**
  * Parse audio status response from external message
- * UPDATED: Uses simple camelCase constants for field names
+ * UPDATED: Uses basic JsonVariant operations compatible with ArduinoJson v7
  */
 inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
     using namespace MessageProtocol::JsonFields;
@@ -447,40 +447,42 @@ inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
         return data;
     }
 
-    // Extract sessions from parsed data using camelCase constant
-    if (message.parsedData[SESSIONS].is<JsonArray>()) {
-        auto sessionsVariant = message.parsedData[SESSIONS];
+    // Extract sessions using basic variant operations
+    auto sessionsVariant = message.parsedData[SESSIONS];
+    if (!sessionsVariant.isNull() && sessionsVariant.is<JsonVariant>()) {
         size_t sessionCount = sessionsVariant.size();
         for (size_t i = 0; i < sessionCount; i++) {
             auto sessionVar = sessionsVariant[i];
-            SessionStatusData session;
-            session.processId = sessionVar[PROCESS_ID] | 0;
-            session.processName = sessionVar[PROCESS_NAME] | "";
-            session.displayName = sessionVar[DISPLAY_NAME] | "";
-            session.volume = sessionVar[VOLUME] | 0.0f;
-            session.isMuted = sessionVar[IS_MUTED] | false;
-            session.state = sessionVar[STATE] | "";
-            data.sessions.push_back(session);
+            if (!sessionVar.isNull()) {
+                SessionStatusData session;
+                session.processId = sessionVar[PROCESS_ID].as<int>();
+                session.processName = sessionVar[PROCESS_NAME].as<String>();
+                session.displayName = sessionVar[DISPLAY_NAME].as<String>();
+                session.volume = sessionVar[VOLUME].as<float>();
+                session.isMuted = sessionVar[IS_MUTED].as<bool>();
+                session.state = sessionVar[STATE].as<String>();
+                data.sessions.push_back(session);
+            }
         }
     }
 
-    // Extract default device information using camelCase constant
-    if (message.parsedData[DEFAULT_DEVICE].is<JsonObject>()) {
-        auto defaultVar = message.parsedData[DEFAULT_DEVICE];
-        data.defaultDevice.friendlyName = defaultVar[FRIENDLY_NAME] | "";
-        data.defaultDevice.volume = defaultVar[VOLUME] | 0.0f;
-        data.defaultDevice.isMuted = defaultVar[IS_MUTED] | false;
-        data.defaultDevice.dataFlow = defaultVar[DATA_FLOW] | "";
-        data.defaultDevice.deviceRole = defaultVar[DEVICE_ROLE] | "";
+    // Extract default device using basic variant operations
+    auto defaultVar = message.parsedData[DEFAULT_DEVICE];
+    if (!defaultVar.isNull() && defaultVar.is<JsonVariant>()) {
+        data.defaultDevice.friendlyName = defaultVar[FRIENDLY_NAME].as<String>();
+        data.defaultDevice.volume = defaultVar[VOLUME].as<float>();
+        data.defaultDevice.isMuted = defaultVar[IS_MUTED].as<bool>();
+        data.defaultDevice.dataFlow = defaultVar[DATA_FLOW].as<String>();
+        data.defaultDevice.deviceRole = defaultVar[DEVICE_ROLE].as<String>();
         data.hasDefaultDevice = true;
     }
 
-    // Extract metadata using camelCase constants
+    // Extract metadata using basic operations
     data.timestamp = message.timestamp;
-    data.reason = message.parsedData[REASON] | "";
-    data.originatingDeviceId = message.parsedData[ORIGINATING_DEVICE_ID] | "";
-    data.originatingRequestId = message.parsedData[ORIGINATING_REQUEST_ID] | "";
-    data.activeSessionCount = message.parsedData[ACTIVE_SESSION_COUNT] | 0;
+    data.reason = message.parsedData[REASON].as<String>();
+    data.originatingDeviceId = message.parsedData[ORIGINATING_DEVICE_ID].as<String>();
+    data.originatingRequestId = message.parsedData[ORIGINATING_REQUEST_ID].as<String>();
+    data.activeSessionCount = message.parsedData[ACTIVE_SESSION_COUNT].as<int>();
 
     return data;
 }
