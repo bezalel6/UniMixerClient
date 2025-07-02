@@ -163,4 +163,9 @@
 #define GT911_TOUCH_CONFIG_INT 18
 #endif
 
+// >>> AUTO-GENERATED BUILD INFO BEGIN
+#define FIRMWARE_BUILD_NUMBER "f53fd1b"
+#define GIT_BRANCH "feature/binary-protocol-framing"
+#define BUILD_TIMESTAMP_NUM "20250702_074325"
+// <<< AUTO-GENERATED BUILD INFO END
 #endif

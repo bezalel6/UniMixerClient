@@ -9,6 +9,7 @@
 #include <driver/uart.h>
 #include "MessageCore.h"
 #include "MessageData.h"
+#include "../include/BinaryProtocol.h"
 
 namespace Messaging {
 namespace Core1 {
@@ -52,6 +53,11 @@ class InterruptMessagingEngine {
     static void getStats(uint32_t& messagesReceived, uint32_t& messagesSent,
                          uint32_t& bufferOverruns, uint32_t& core1Routed);
 
+    /**
+     * Get binary protocol statistics
+     */
+    static const BinaryProtocol::ProtocolStatistics& getBinaryStats();
+
    private:
     static bool initialized;
     static bool running;
@@ -59,6 +65,9 @@ class InterruptMessagingEngine {
 
     // MessageCore integration
     static MessageCore* messageCore;
+
+    // Binary protocol framing
+    static BinaryProtocol::BinaryProtocolFramer* binaryFramer;
 
     // Ring buffer configuration for interrupt-driven I/O
     static const size_t UART_RX_BUFFER_SIZE = 4096;
@@ -69,9 +78,17 @@ class InterruptMessagingEngine {
     // Task configuration
     static const size_t MESSAGING_TASK_STACK_SIZE = 8 * 1024;  // 8KB stack for Core 1 messaging
 
+   public:
+    // Binary-safe message structure for queue
+    struct BinaryMessage {
+        uint8_t* data;
+        size_t length;
+    };
+
+   private:
     // Inter-core communication queues
     static QueueHandle_t incomingDataQueue;       // Raw UART data
-    static QueueHandle_t outgoingMessageQueue;    // Messages to send
+    static QueueHandle_t outgoingMessageQueue;    // Binary messages to send
     static QueueHandle_t core1ProcessingQueue;    // Messages routed to Core 1
     static QueueHandle_t core0NotificationQueue;  // Notifications to Core 0
 

@@ -3,6 +3,7 @@
 #include "MessageConfig.h"
 #include "MessageData.h"
 #include "../include/MessagingConfig.h"
+#include "../include/BinaryProtocol.h"
 #include <esp_log.h>
 #include <driver/gpio.h>
 
@@ -10,6 +11,9 @@ static const char* TAG = "Core1::MessagingEngine";
 
 namespace Messaging {
 namespace Core1 {
+
+// Type alias for convenience
+using BinaryMessage = InterruptMessagingEngine::BinaryMessage;
 
 // =============================================================================
 // STATIC MEMBER DEFINITIONS
@@ -20,6 +24,9 @@ bool InterruptMessagingEngine::initialized = false;
 bool InterruptMessagingEngine::running = false;
 TaskHandle_t InterruptMessagingEngine::messagingTaskHandle = nullptr;
 MessageCore* InterruptMessagingEngine::messageCore = nullptr;
+
+// Binary protocol framing
+BinaryProtocol::BinaryProtocolFramer* InterruptMessagingEngine::binaryFramer = nullptr;
 
 // Queues and synchronization
 QueueHandle_t InterruptMessagingEngine::incomingDataQueue = nullptr;
@@ -51,7 +58,7 @@ bool InterruptMessagingEngine::init() {
         return true;
     }
 
-    ESP_LOGW(TAG, "Initializing Core 1 Interrupt Messaging Engine");
+    ESP_LOGW(TAG, "Initializing Core 1 Binary Protocol Messaging Engine");
 
     // Get MessageCore instance
     messageCore = &MessageCore::getInstance();
@@ -59,6 +66,17 @@ bool InterruptMessagingEngine::init() {
         ESP_LOGE(TAG, "Failed to get MessageCore instance");
         return false;
     }
+
+    // Initialize binary protocol framer
+    binaryFramer = new BinaryProtocol::BinaryProtocolFramer();
+    if (!binaryFramer) {
+        ESP_LOGE(TAG, "Failed to create binary protocol framer");
+        return false;
+    }
+
+    // Test binary protocol to verify it's working correctly
+    ESP_LOGW(TAG, "Running binary protocol self-test...");
+    BinaryProtocol::testBinaryProtocol();
 
     // Create synchronization objects
     uartMutex = xSemaphoreCreateMutex();
@@ -71,7 +89,7 @@ bool InterruptMessagingEngine::init() {
 
     // Create message queues
     incomingDataQueue = xQueueCreate(MESSAGE_QUEUE_SIZE, sizeof(char));
-    outgoingMessageQueue = xQueueCreate(MESSAGE_QUEUE_SIZE, sizeof(String*));
+    outgoingMessageQueue = xQueueCreate(MESSAGE_QUEUE_SIZE, sizeof(BinaryMessage*));
     core1ProcessingQueue = xQueueCreate(INTERNAL_MSG_QUEUE_SIZE, sizeof(ExternalMessage));
     core0NotificationQueue = xQueueCreate(INTERNAL_MSG_QUEUE_SIZE, sizeof(InternalMessage));
 
@@ -101,7 +119,7 @@ bool InterruptMessagingEngine::init() {
     rxBufferPos = 0;
 
     initialized = true;
-    ESP_LOGW(TAG, "Core 1 Messaging Engine initialized successfully");
+    ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine initialized successfully");
     return true;
 }
 
@@ -116,7 +134,7 @@ bool InterruptMessagingEngine::start() {
         return true;
     }
 
-    ESP_LOGW(TAG, "Starting Core 1 Messaging Engine task");
+    ESP_LOGW(TAG, "Starting Core 1 Binary Protocol Messaging Engine task");
 
     // CRITICAL: Set running = true BEFORE creating task to avoid race condition
     running = true;
@@ -138,7 +156,7 @@ bool InterruptMessagingEngine::start() {
         return false;
     }
 
-    ESP_LOGW(TAG, "Core 1 Messaging Engine started successfully");
+    ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine started successfully");
     return true;
 }
 
@@ -147,7 +165,7 @@ void InterruptMessagingEngine::stop() {
         return;
     }
 
-    ESP_LOGW(TAG, "Stopping Core 1 Messaging Engine");
+    ESP_LOGW(TAG, "Stopping Core 1 Binary Protocol Messaging Engine");
     running = false;
 
     if (messagingTaskHandle) {
@@ -155,7 +173,13 @@ void InterruptMessagingEngine::stop() {
         messagingTaskHandle = nullptr;
     }
 
-    ESP_LOGW(TAG, "Core 1 Messaging Engine stopped");
+    // Cleanup binary framer
+    if (binaryFramer) {
+        delete binaryFramer;
+        binaryFramer = nullptr;
+    }
+
+    ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine stopped");
 }
 
 bool InterruptMessagingEngine::isRunning() {
@@ -168,6 +192,16 @@ void InterruptMessagingEngine::getStats(uint32_t& msgReceived, uint32_t& msgSent
     msgSent = messagesSent;
     bufOverruns = bufferOverruns;
     core1Routed = core1RoutedMessages;
+}
+
+const BinaryProtocol::ProtocolStatistics& InterruptMessagingEngine::getBinaryStats() {
+    if (binaryFramer) {
+        return binaryFramer->getStatistics();
+    }
+
+    // Return a static empty stats if framer not initialized
+    static BinaryProtocol::ProtocolStatistics emptyStats;
+    return emptyStats;
 }
 
 // =============================================================================
@@ -204,54 +238,92 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
 }
 
 void InterruptMessagingEngine::processIncomingData() {
+    if (!binaryFramer) {
+        ESP_LOGE(TAG, "Binary framer not initialized");
+        return;
+    }
+
     // Use standard UART read instead of interrupt-based approach
     uint8_t data[64];
     int length = uart_read_bytes(UART_NUM_0, data, sizeof(data), pdMS_TO_TICKS(1));
 
     if (length > 0) {
-        for (int i = 0; i < length; i++) {
-            char byte = data[i];
+        ESP_LOGW(TAG, "=== RECEIVED UART DATA ===");
+        ESP_LOGW(TAG, "Received %d bytes from UART", length);
 
-            // Add to message buffer
-            if (rxBufferPos < UART_RX_BUFFER_SIZE - 1) {
-                rxBuffer[rxBufferPos++] = byte;
+        // Print what we received
+        ESP_LOGW(TAG, "Received data hex dump:");
+        for (int i = 0; i < length; i += 16) {
+            char hexLine[64] = {0};
+            char asciiLine[20] = {0};
+            int hexPos = 0;
+            int asciiPos = 0;
 
-                // Check for complete message (assuming newline termination)
-                if (byte == '\n' || byte == '\r') {
-                    rxBuffer[rxBufferPos] = '\0';
+            for (int j = 0; j < 16 && (i + j) < length; j++) {
+                uint8_t byte = data[i + j];
+                hexPos += snprintf(hexLine + hexPos, sizeof(hexLine) - hexPos, "%02X ", byte);
+                asciiLine[asciiPos++] = (byte >= 32 && byte <= 126) ? byte : '.';
+            }
+            ESP_LOGW(TAG, "  %04X: %-48s |%s|", i, hexLine, asciiLine);
+        }
 
-                    // Parse and route message
-                    ExternalMessage message;
-                    if (parseCompleteMessage(rxBuffer, rxBufferPos, message)) {
-                        messagesReceived++;
-                        routeExternalMessage(message);
-                    }
+        // Process incoming bytes through binary protocol framer
+        std::vector<String> decodedMessages = binaryFramer->processIncomingBytes(data, length);
 
-                    // Reset buffer for next message
-                    rxBufferPos = 0;
-                }
+        ESP_LOGW(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
+
+        // Process each decoded JSON message
+        for (const String& jsonMessage : decodedMessages) {
+            ESP_LOGW(TAG, "Decoded JSON: %s", jsonMessage.c_str());
+
+            ExternalMessage message;
+            if (parseCompleteMessage(jsonMessage.c_str(), jsonMessage.length(), message)) {
+                messagesReceived++;
+                routeExternalMessage(message);
+                ESP_LOGW(TAG, "Message parsed and routed successfully");
             } else {
-                // Buffer overflow - reset and count overrun
                 bufferOverruns++;
-                rxBufferPos = 0;
-                ESP_LOGW(TAG, "RX buffer overflow - message dropped");
+                ESP_LOGW(TAG, "Failed to parse decoded JSON message: %s", jsonMessage.c_str());
             }
         }
     }
 }
 
 void InterruptMessagingEngine::processOutgoingMessages() {
-    String* messagePtr;
+    BinaryMessage* messagePtr;
 
     // Process all queued outgoing messages
     while (xQueueReceive(outgoingMessageQueue, &messagePtr, 0) == pdTRUE) {
-        if (messagePtr) {
-            // Send via UART
-            if (sendRawData(messagePtr->c_str(), messagePtr->length())) {
+        if (messagePtr && messagePtr->data && messagePtr->length > 0) {
+            ESP_LOGW(TAG, "=== SENDING UART DATA ===");
+            ESP_LOGW(TAG, "Sending %zu bytes over UART", messagePtr->length);
+
+            // Print what we're actually sending
+            ESP_LOGW(TAG, "UART data hex dump:");
+            for (size_t i = 0; i < std::min(size_t(64), messagePtr->length); i += 16) {
+                char hexLine[64] = {0};
+                char asciiLine[20] = {0};
+                int hexPos = 0;
+                int asciiPos = 0;
+
+                for (size_t j = 0; j < 16 && (i + j) < messagePtr->length && (i + j) < 64; j++) {
+                    uint8_t byte = messagePtr->data[i + j];
+                    hexPos += snprintf(hexLine + hexPos, sizeof(hexLine) - hexPos, "%02X ", byte);
+                    asciiLine[asciiPos++] = (byte >= 32 && byte <= 126) ? byte : '.';
+                }
+                ESP_LOGW(TAG, "  %04X: %-48s |%s|", i, hexLine, asciiLine);
+            }
+
+            // Send binary data via UART
+            if (sendRawData(reinterpret_cast<const char*>(messagePtr->data), messagePtr->length)) {
                 messagesSent++;
+                ESP_LOGW(TAG, "UART transmission successful");
+            } else {
+                ESP_LOGE(TAG, "UART transmission failed");
             }
 
             // Clean up message
+            delete[] messagePtr->data;
             delete messagePtr;
         }
     }
@@ -394,18 +466,57 @@ bool InterruptMessagingEngine::registerWithMessageCore() {
 
 // Transport interface implementations
 bool InterruptMessagingEngine::transportSend(const String& payload) {
-    if (!running) {
+    if (!running || !binaryFramer) {
         return false;
     }
 
-    // Queue message for sending (allocate on heap for queue)
-    String* messagePtr = new String(payload + "\n");
+    ESP_LOGW(TAG, "=== ENCODING MESSAGE ===");
+    ESP_LOGW(TAG, "Input JSON: %s", payload.c_str());
+    ESP_LOGW(TAG, "Input length: %d bytes", payload.length());
+
+    // Encode JSON payload using binary protocol
+    std::vector<uint8_t> binaryFrame = binaryFramer->encodeMessage(payload);
+    if (binaryFrame.empty()) {
+        ESP_LOGE(TAG, "Failed to encode message with binary protocol");
+        return false;
+    }
+
+    ESP_LOGW(TAG, "Encoded frame size: %zu bytes", binaryFrame.size());
+    ESP_LOGW(TAG, "Frame structure:");
+    ESP_LOGW(TAG, "  Start: 0x%02X (should be 0x7E)", binaryFrame[0]);
+    if (binaryFrame.size() >= 8) {
+        ESP_LOGW(TAG, "  Length: %02X %02X %02X %02X",
+                 binaryFrame[1], binaryFrame[2], binaryFrame[3], binaryFrame[4]);
+        ESP_LOGW(TAG, "  CRC: %02X %02X", binaryFrame[5], binaryFrame[6]);
+        ESP_LOGW(TAG, "  Type: 0x%02X (should be 0x01)", binaryFrame[7]);
+    }
+    ESP_LOGW(TAG, "  End: 0x%02X (should be 0x7F)", binaryFrame[binaryFrame.size() - 1]);
+
+    // Print hex dump of first 32 bytes
+    ESP_LOGW(TAG, "Frame hex dump (first 32 bytes):");
+    for (size_t i = 0; i < std::min(size_t(32), binaryFrame.size()); i += 16) {
+        char hexLine[64] = {0};
+        int pos = 0;
+        for (size_t j = 0; j < 16 && (i + j) < binaryFrame.size() && (i + j) < 32; j++) {
+            pos += snprintf(hexLine + pos, sizeof(hexLine) - pos, "%02X ", binaryFrame[i + j]);
+        }
+        ESP_LOGW(TAG, "  %04X: %s", i, hexLine);
+    }
+
+    // Create binary message for queue (allocate on heap for queue)
+    BinaryMessage* messagePtr = new BinaryMessage();
+    messagePtr->length = binaryFrame.size();
+    messagePtr->data = new uint8_t[messagePtr->length];
+    memcpy(messagePtr->data, binaryFrame.data(), messagePtr->length);
 
     if (xQueueSend(outgoingMessageQueue, &messagePtr, pdMS_TO_TICKS(10)) != pdTRUE) {
+        delete[] messagePtr->data;
         delete messagePtr;
+        ESP_LOGE(TAG, "Failed to queue binary message");
         return false;
     }
 
+    ESP_LOGW(TAG, "Message queued successfully for transmission");
     return true;
 }
 
@@ -418,9 +529,19 @@ void InterruptMessagingEngine::transportUpdate() {
 }
 
 String InterruptMessagingEngine::transportGetStatus() {
-    return String("Core1 Interrupt Engine - Running: ") + (running ? "Yes" : "No") +
-           ", Messages RX: " + String(messagesReceived) +
-           ", Messages TX: " + String(messagesSent);
+    String status = String("Core1 Binary Protocol Engine - Running: ") + (running ? "Yes" : "No") +
+                    ", Messages RX: " + String(messagesReceived) +
+                    ", Messages TX: " + String(messagesSent);
+
+    if (binaryFramer) {
+        const auto& binaryStats = binaryFramer->getStatistics();
+        status += ", Binary RX: " + String(binaryStats.messagesReceived) +
+                  ", Binary TX: " + String(binaryStats.messagesSent) +
+                  ", CRC Errors: " + String(binaryStats.crcErrors) +
+                  ", Frame Errors: " + String(binaryStats.framingErrors);
+    }
+
+    return status;
 }
 
 // REMOVED: transportInit() method removed to prevent infinite recursion
