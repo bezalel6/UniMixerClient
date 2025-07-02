@@ -1,6 +1,6 @@
 #include "LogoSupplier.h"
 #include "../hardware/DeviceManager.h"
-#include "../messaging/MessageConfig.h"
+#include "../messaging/protocol/MessageConfig.h"
 #include <MessageProtocol.h>
 #include <esp_log.h>
 #include <algorithm>

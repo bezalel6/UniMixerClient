@@ -1,6 +1,6 @@
 #include "MessageCore.h"
-#include "MessageConfig.h"
-#include "MessageAPI.h"
+#include "../protocol/MessageConfig.h"
+#include "../MessageAPI.h"
 #include <esp_log.h>
 #include "ui/ui.h"
 #include "DebugUtils.h"

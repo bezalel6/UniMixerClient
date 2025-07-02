@@ -7,7 +7,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
-#include "../messaging/InterruptMessagingEngine.h"
+#include "../messaging/transport/SerialEngine.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "../logo/LogoManager.h"

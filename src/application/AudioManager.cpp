@@ -1,7 +1,7 @@
 #include "AudioManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../messaging/MessageAPI.h"
-#include "../messaging/MessageConfig.h"
+#include "../messaging/protocol/MessageConfig.h"
 #include "../logo/LogoManager.h"
 #include "MessageBusLogoSupplier.h"
 #include <esp_log.h>

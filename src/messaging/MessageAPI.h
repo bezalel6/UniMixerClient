@@ -1,8 +1,8 @@
 #pragma once
 
-#include "MessageCore.h"
-#include "MessageData.h"
-#include "MessageConfig.h"
+#include "system/MessageCore.h"
+#include "protocol/MessageData.h"
+#include "protocol/MessageConfig.h"
 
 namespace Messaging {
 

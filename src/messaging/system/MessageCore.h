@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MessageData.h"
+#include "../protocol/MessageData.h"
 #include <MessageProtocol.h>  // Direct import instead of relative path
 #include <map>
 #include <unordered_map>

@@ -2,7 +2,7 @@
 #include "DeviceManager.h"
 #include "../application/AudioManager.h"
 #include "../messaging/MessageAPI.h"
-#include "../messaging/MessageConfig.h"
+#include "../messaging/protocol/MessageConfig.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>

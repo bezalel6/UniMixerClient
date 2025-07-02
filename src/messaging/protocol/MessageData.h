@@ -5,7 +5,7 @@
 #include <vector>
 #include <functional>
 #include <esp_log.h>
-#include "../application/AudioData.h"
+#include "../../application/AudioData.h"
 #include "MessageConfig.h"
 #include <MessageProtocol.h>  // Direct import instead of relative path
 

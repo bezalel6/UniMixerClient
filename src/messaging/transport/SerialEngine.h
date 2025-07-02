@@ -7,9 +7,9 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <driver/uart.h>
-#include "MessageCore.h"
-#include "MessageData.h"
-#include "../include/BinaryProtocol.h"
+#include "../system/MessageCore.h"
+#include "../protocol/MessageData.h"
+#include "../../include/BinaryProtocol.h"
 
 namespace Messaging {
 namespace Core1 {

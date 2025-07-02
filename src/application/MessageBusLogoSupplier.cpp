@@ -1,5 +1,5 @@
 #include "MessageBusLogoSupplier.h"
-#include "../messaging/MessageConfig.h"
+#include "../messaging/protocol/MessageConfig.h"
 #include "../hardware/DeviceManager.h"
 #include "../logo/LogoManager.h"
 #include "../../include/ManagerMacros.h"
