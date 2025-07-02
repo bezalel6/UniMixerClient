@@ -68,7 +68,7 @@ const unsigned long MESSAGE_LOG_TRUNCATE_LENGTH = 1000;  // Characters
 // TRANSPORT NAMES
 // =============================================================================
 
-const char* TRANSPORT_NAME_MQTT = "MQTT";
+// MQTT transport removed - network-free architecture
 const char* TRANSPORT_NAME_SERIAL = "Serial";
 
 // =============================================================================

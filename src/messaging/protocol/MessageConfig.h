@@ -69,7 +69,7 @@ extern const unsigned long MESSAGE_LOG_TRUNCATE_LENGTH;
 // TRANSPORT NAMES
 // =============================================================================
 
-extern const char* TRANSPORT_NAME_MQTT;
+// MQTT transport removed - network-free architecture
 extern const char* TRANSPORT_NAME_SERIAL;
 
 String generateRequestId();

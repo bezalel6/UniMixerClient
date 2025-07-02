@@ -77,7 +77,7 @@ bool init(void) {
         ESP_LOGI(TAG, "[NETWORK-FREE] OTAManager will handle network communications on-demand");
 
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-        ESP_LOGW(TAG, "[NETWORK-FREE] MQTT transport requested but network-free mode enabled");
+        // MQTT completely removed - pure network-free architecture
         ESP_LOGW(TAG, "[NETWORK-FREE] Using Serial-only transport via InterruptMessagingEngine");
 #endif
 

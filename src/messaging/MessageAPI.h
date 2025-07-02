@@ -80,22 +80,7 @@ class MessageAPI {
     // TRANSPORT MANAGEMENT
     // =============================================================================
 
-    /**
-     * Register MQTT transport
-     */
-    static void registerMqttTransport(
-        std::function<bool(const String& payload)> sendFunction,
-        std::function<bool()> isConnectedFunction,
-        std::function<void()> updateFunction = nullptr,
-        std::function<String()> getStatusFunction = nullptr) {
-        TransportInterface transport;
-        transport.sendRaw = sendFunction;
-        transport.isConnected = isConnectedFunction;
-        transport.update = updateFunction;
-        transport.getStatus = getStatusFunction;
-
-        MessageCore::getInstance().registerTransport(Config::TRANSPORT_NAME_MQTT, transport);
-    }
+    // MQTT transport removed - network-free architecture
 
     /**
      * Register Serial transport

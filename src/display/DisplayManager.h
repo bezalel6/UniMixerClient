@@ -1,4 +1,4 @@
-#ifndef DISPLAY_MANAGER_H
+THIS SHOULD BE A LINTER ERROR#ifndef DISPLAY_MANAGER_H
 #define DISPLAY_MANAGER_H
 
 #include <esp32_smartdisplay.h>

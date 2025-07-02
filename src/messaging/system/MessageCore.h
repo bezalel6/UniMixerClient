@@ -48,7 +48,7 @@ class MessageCore {
     // =============================================================================
 
     /**
-     * Register a transport (MQTT, Serial, etc.)
+     * Register a transport (Serial only in network-free architecture)
      */
     void registerTransport(const String& name, TransportInterface transport);
 
