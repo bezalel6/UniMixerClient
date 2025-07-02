@@ -48,50 +48,49 @@ src/messaging/
 
 ```
 src/messaging/
+├── MessageAPI.h                 ← Main entry point (stays at root)
+│
 ├── protocol/                    ← Message definitions & data structures
 │   ├── MessageTypes.cpp        ← (MessageProtocol.cpp renamed)
 │   ├── MessageData.h           ← (unchanged - data structures)
 │   └── MessageConfig.cpp/.h    ← (unchanged - configuration)
 │
-├── core/                       ← Main messaging system logic
+├── system/                     ← Messaging system logic
 │   ├── MessageCore.cpp/.h      ← (unchanged - main system)
 │   └── MessageConverter.cpp    ← (unchanged - conversions)
 │
-├── transport/                  ← Low-level communication
-│   ├── BinaryProtocol.cpp      ← (unchanged - binary framing)
-│   └── EngineCore1.cpp/.h      ← (InterruptMessagingEngine renamed)
-│
-└── api/                        ← Public interfaces
-    └── MessageAPI.h            ← (unchanged - clean facade)
+└── transport/                  ← Low-level communication
+    ├── BinaryProtocol.cpp      ← (unchanged - binary framing)
+    └── SerialEngine.cpp/.h     ← (InterruptMessagingEngine renamed)
 ```
 
 ### **🎯 Benefits of New Structure**
 
 1. **Clear Separation of Concerns**:
    - `protocol/` = What messages look like (data structures, types)
-   - `core/` = How messaging works (system logic, conversions)  
-   - `transport/` = How messages are sent (binary protocol, engines)
-   - `api/` = How applications use messaging (public interface)
+   - `system/` = How messaging works (system logic, conversions)  
+   - `transport/` = How messages are sent (binary protocol, serial engines)
+   - `MessageAPI.h` = How applications use messaging (main entry point)
 
 2. **Better File Naming**:
    - `MessageTypes.cpp` (was `MessageProtocol.cpp`) - clearer purpose
-   - `EngineCore1.cpp` (was `InterruptMessagingEngine.cpp`) - shorter, clearer
+   - `SerialEngine.cpp` (was `InterruptMessagingEngine.cpp`) - describes what it actually does
    - Eliminates "Message" prefix confusion
+   - No unnecessary directories for single files
 
 3. **Logical Dependencies**:
-   - `api/` depends on `core/`
-   - `core/` depends on `protocol/` 
-   - `transport/` depends on `core/` and `protocol/`
-   - Clear dependency hierarchy
+   - `MessageAPI.h` depends on `system/`
+   - `system/` depends on `protocol/` 
+   - `transport/` depends on `system/` and `protocol/`
+   - Clear dependency hierarchy without "core" confusion
 
 ## **Detailed Refactoring Plan**
 
 ### **Phase 1: Create Directory Structure**
 ```bash
 mkdir src/messaging/protocol
-mkdir src/messaging/core  
+mkdir src/messaging/system  
 mkdir src/messaging/transport
-mkdir src/messaging/api
 ```
 
 ### **Phase 2: Move & Rename Files**
@@ -109,14 +108,14 @@ mv MessageConfig.cpp → protocol/MessageConfig.cpp
 mv MessageConfig.h → protocol/MessageConfig.h
 ```
 
-#### **Core Layer (System Logic)**
+#### **System Layer (Core Logic)**
 ```bash
 # Main messaging system
-mv MessageCore.cpp → core/MessageCore.cpp
-mv MessageCore.h → core/MessageCore.h
+mv MessageCore.cpp → system/MessageCore.cpp
+mv MessageCore.h → system/MessageCore.h
 
 # Message conversions and utilities
-mv MessageConverter.cpp → core/MessageConverter.cpp
+mv MessageConverter.cpp → system/MessageConverter.cpp
 ```
 
 #### **Transport Layer (Communication)**
@@ -124,15 +123,15 @@ mv MessageConverter.cpp → core/MessageConverter.cpp
 # Binary protocol framing
 mv BinaryProtocol.cpp → transport/BinaryProtocol.cpp
 
-# Core 1 messaging engine
-mv InterruptMessagingEngine.cpp → transport/EngineCore1.cpp
-mv InterruptMessagingEngine.h → transport/EngineCore1.h
+# Serial messaging engine (better name!)
+mv InterruptMessagingEngine.cpp → transport/SerialEngine.cpp
+mv InterruptMessagingEngine.h → transport/SerialEngine.h
 ```
 
-#### **API Layer (Public Interface)**
+#### **Main API (Stays at Root)**
 ```bash
-# Clean public API facade
-mv MessageAPI.h → api/MessageAPI.h
+# MessageAPI.h stays at root - it's the main entry point
+# No move needed - keeps includes simple
 ```
 
 ### **Phase 3: Update Include Paths**
@@ -148,19 +147,21 @@ mv MessageAPI.h → api/MessageAPI.h
 #include "MessageCore.h"
 #include "MessageData.h" 
 #include "BinaryProtocol.h"
+#include "InterruptMessagingEngine.h"
 
 // After
-#include "core/MessageCore.h"
+#include "system/MessageCore.h"
 #include "protocol/MessageData.h"
 #include "transport/BinaryProtocol.h"
+#include "transport/SerialEngine.h"
 ```
 
 ### **Phase 4: Update Class Names (Optional)**
 Consider renaming classes to match new structure:
 ```cpp
-// transport/EngineCore1.h
-class MessagingEngineCore1 {  // was InterruptMessagingEngine
-    // Clearer name, matches file name
+// transport/SerialEngine.h
+class SerialMessagingEngine {  // was InterruptMessagingEngine
+    // Clearer name - describes what it actually does (serial communication)
 };
 ```
 
@@ -198,7 +199,7 @@ class MessagingEngineCore1 {  // was InterruptMessagingEngine
 ## **Questions for Decision**
 
 1. **File Naming**: Keep `MessageProtocol.cpp` or rename to `MessageTypes.cpp`?
-2. **Class Naming**: Rename `InterruptMessagingEngine` to `MessagingEngineCore1`?
+2. **Class Naming**: Rename `InterruptMessagingEngine` to `SerialMessagingEngine`?
 3. **Implementation**: Conservative (safe) or Aggressive (fast) approach?
 4. **Scope**: Just reorganize, or also eliminate redundant code during move?
 
