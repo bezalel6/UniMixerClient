@@ -1,6 +1,7 @@
 #ifndef BOOT_MANAGER_H
 #define BOOT_MANAGER_H
 
+#include <Arduino.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <nvs.h>

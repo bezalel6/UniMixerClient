@@ -26,7 +26,7 @@ bool MessageCore::init() {
         return true;
     }
 
-    ESP_LOGI(TAG, "Initializing MessageCore with dual architecture...");
+    ESP_LOGW(TAG, "Initializing MessageCore with dual architecture...");
 
     // Clear any existing state
     externalSubscriptions.clear();
@@ -47,7 +47,7 @@ bool MessageCore::init() {
 
     initialized = true;
 
-    ESP_LOGI(TAG, "MessageCore initialized successfully");
+    ESP_LOGW(TAG, "MessageCore initialized successfully");
     return true;
 }
 
@@ -56,7 +56,7 @@ void MessageCore::deinit() {
         return;
     }
 
-    ESP_LOGI(TAG, "Shutting down MessageCore...");
+    ESP_LOGW(TAG, "Shutting down MessageCore...");
 
     // Shutdown all transports
     for (auto& [name, transport] : transports) {
@@ -73,7 +73,7 @@ void MessageCore::deinit() {
 
     initialized = false;
 
-    ESP_LOGI(TAG, "MessageCore shutdown complete");
+    ESP_LOGW(TAG, "MessageCore shutdown complete");
 }
 
 void MessageCore::update() {
@@ -99,7 +99,7 @@ void MessageCore::registerTransport(const String& name, TransportInterface trans
         return;
     }
 
-    ESP_LOGI(TAG, "Registering transport: %s", name.c_str());
+    ESP_LOGW(TAG, "Registering transport: %s", name.c_str());
 
     // Initialize transport if needed
     if (transport.init && !transport.init()) {
@@ -109,13 +109,13 @@ void MessageCore::registerTransport(const String& name, TransportInterface trans
 
     transports[name] = transport;
 
-    ESP_LOGI(TAG, "Transport registered: %s", name.c_str());
+    ESP_LOGW(TAG, "Transport registered: %s", name.c_str());
 }
 
 void MessageCore::unregisterTransport(const String& name) {
     auto it = transports.find(name);
     if (it != transports.end()) {
-        ESP_LOGI(TAG, "Unregistering transport: %s", name.c_str());
+        ESP_LOGW(TAG, "Unregistering transport: %s", name.c_str());
 
         // Cleanup transport
         if (it->second.deinit) {
@@ -154,18 +154,11 @@ void MessageCore::handleExternalMessage(const ExternalMessage& external) {
     updateActivity();
     externalMessagesReceived++;
 
-    // Validate the pre-parsed external message
-    if (!const_cast<ExternalMessage&>(external).validate()) {
-        invalidMessagesReceived++;
-        ESP_LOGW(TAG, "Invalid external message received");
-        return;
-    }
-
     logExternalMessage("IN", external);
 
     // Check if we should ignore self-originated messages
     if (external.isSelfOriginated()) {
-        ESP_LOGD(TAG, "Ignoring self-originated external message: %d",
+        ESP_LOGW(TAG, "Ignoring self-originated external message: %d",
                  LOG_EXTERNAL_MSG_TYPE(external.messageType));
         return;
     }
@@ -255,14 +248,14 @@ void MessageCore::subscribeToExternal(MessageProtocol::ExternalMessageType messa
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to external messageType: %d", LOG_EXTERNAL_MSG_TYPE(messageType));
+    ESP_LOGW(TAG, "Subscribing to external messageType: %d", LOG_EXTERNAL_MSG_TYPE(messageType));
     externalSubscriptions[messageType].push_back(callback);
 }
 
 void MessageCore::unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
     auto it = externalSubscriptions.find(messageType);
     if (it != externalSubscriptions.end()) {
-        ESP_LOGI(TAG, "Unsubscribing from external messageType: %d",
+        ESP_LOGW(TAG, "Unsubscribing from external messageType: %d",
                  LOG_EXTERNAL_MSG_TYPE(messageType));
         externalSubscriptions.erase(it);
     }
@@ -295,14 +288,14 @@ void MessageCore::subscribeToInternal(MessageProtocol::InternalMessageType messa
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to internal messageType: %d", LOG_INTERNAL_MSG_TYPE(messageType));
+    ESP_LOGW(TAG, "Subscribing to internal messageType: %d", LOG_INTERNAL_MSG_TYPE(messageType));
     internalSubscriptions[messageType].push_back(callback);
 }
 
 void MessageCore::unsubscribeFromInternal(MessageProtocol::InternalMessageType messageType) {
     auto it = internalSubscriptions.find(messageType);
     if (it != internalSubscriptions.end()) {
-        ESP_LOGI(TAG, "Unsubscribing from internal messageType: %d",
+        ESP_LOGW(TAG, "Unsubscribing from internal messageType: %d",
                  LOG_INTERNAL_MSG_TYPE(messageType));
         internalSubscriptions.erase(it);
     }
@@ -314,7 +307,7 @@ void MessageCore::subscribeToAllInternal(InternalMessageCallback callback) {
         return;
     }
 
-    ESP_LOGI(TAG, "Subscribing to all internal message types (wildcard)");
+    ESP_LOGW(TAG, "Subscribing to all internal message types (wildcard)");
     internalWildcardSubscribers.push_back(callback);
 }
 
@@ -458,7 +451,7 @@ void MessageCore::convertAndRouteExternal(const ExternalMessage& external) {
         routeInternalMessage(internal);
     }
 
-    ESP_LOGD(TAG, "Processed external message %d -> %d internal messages",
+    ESP_LOGW(TAG, "Processed external message %d -> %d internal messages",
              LOG_EXTERNAL_MSG_TYPE(external.messageType), internalMessages.size());
 }
 
@@ -491,14 +484,14 @@ void MessageCore::routeInternalMessage(const InternalMessage& internal) {
 }
 
 void MessageCore::logExternalMessage(const char* direction, const ExternalMessage& message) {
-    ESP_LOGD(TAG, "[%s-EXT] %d (device: %s)",
+    ESP_LOGW(TAG, "[%s-EXT] %d (device: %s)",
              direction,
              LOG_EXTERNAL_MSG_TYPE(message.messageType),
              message.deviceId.c_str());
 }
 
 void MessageCore::logInternalMessage(const char* direction, const InternalMessage& message) {
-    ESP_LOGD(TAG, "[%s-INT] %d (Core %d, Priority %d, Data %d bytes)",
+    ESP_LOGW(TAG, "[%s-INT] %d (Core %d, Priority %d, Data %d bytes)",
              direction,
              LOG_INTERNAL_MSG_TYPE(message.messageType),
              message.shouldRouteToCore1() ? 1 : 0,

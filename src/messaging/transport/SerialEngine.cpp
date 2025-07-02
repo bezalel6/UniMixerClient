@@ -78,7 +78,7 @@ bool InterruptMessagingEngine::init() {
     }
 
     // Binary protocol initialized - using working CRC-16-MODBUS algorithm from previous SerialBridge
-    ESP_LOGI(TAG, "Binary protocol framer ready with compatible CRC-16-MODBUS algorithm");
+    ESP_LOGD(TAG, "Binary protocol framer ready with compatible CRC-16-MODBUS algorithm");
 
     // Create synchronization objects
     uartMutex = xSemaphoreCreateMutex();
@@ -159,9 +159,6 @@ bool InterruptMessagingEngine::start() {
     }
 
     ESP_LOGI(TAG, "Core 1 Binary Protocol Messaging Engine started successfully");
-
-    // Log from Core 1 to demonstrate logging filter is working
-    ESP_LOGI(TAG, "Core 1 messaging active - logging filter allows Core 1 output");
     return true;
 }
 
@@ -219,10 +216,6 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
     TickType_t lastWakeTime = xTaskGetTickCount();
     const TickType_t taskFrequency = pdMS_TO_TICKS(1);  // 1ms cycle time for better responsiveness
 
-    // Track logging filter statistics
-    TickType_t lastLogStatsTime = lastWakeTime;
-    const TickType_t logStatsInterval = pdMS_TO_TICKS(30000);  // 30 seconds
-
     while (running) {
         // Process incoming UART data (highest priority)
         processIncomingData();
@@ -236,16 +229,6 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
         // Update MessageCore
         if (messageCore) {
             messageCore->update();
-        }
-
-        // Periodically report logging filter statistics
-        TickType_t currentTime = xTaskGetTickCount();
-        if ((currentTime - lastLogStatsTime) >= logStatsInterval) {
-            uint32_t core0Filtered, core1Allowed;
-            CoreLoggingFilter::getStats(core0Filtered, core1Allowed);
-            ESP_LOGI(TAG, "Logging Filter Stats - Core 0 filtered: %u, Core 1 allowed: %u",
-                     core0Filtered, core1Allowed);
-            lastLogStatsTime = currentTime;
         }
 
         // Yield periodically to prevent watchdog
@@ -273,25 +256,14 @@ void InterruptMessagingEngine::processIncomingData() {
     }
 
     if (length > 0) {
-        ESP_LOGD(TAG, "Received %d bytes from UART", length);
-
         // Process incoming bytes through binary protocol framer
         std::vector<String> decodedMessages = binaryFramer->processIncomingBytes(data, length);
 
-        ESP_LOGD(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
-
         // Process each decoded JSON message
         for (const String& jsonMessage : decodedMessages) {
-            ESP_LOGD(TAG, "Decoded JSON: %s", jsonMessage.c_str());
-
-            // Log every received message payload to UI
-            // LOG_TO_UI(ui_txtAreaDebugLog, ("RX: " + jsonMessage).c_str());
-
             ExternalMessage message;
             if (parseCompleteMessage(jsonMessage.c_str(), jsonMessage.length(), message)) {
                 messagesReceived++;
-                ESP_LOGD(TAG, "Message parsed successfully: Type=%d Device=%s",
-                         static_cast<int>(message.messageType), message.deviceId.c_str());
 
                 // Log to UI with success indicator
                 LOG_TO_UI(ui_txtAreaDebugLog, ("✓ PARSED: Type=" + String(static_cast<int>(message.messageType)) +
@@ -299,10 +271,8 @@ void InterruptMessagingEngine::processIncomingData() {
                                                   .c_str());
 
                 routeExternalMessage(message);
-                ESP_LOGD(TAG, "Message parsed and routed successfully");
             } else {
                 bufferOverruns++;
-                ESP_LOGD(TAG, "Parse failed for JSON message");
 
                 // Log parsing failures to UI
                 LOG_TO_UI(ui_txtAreaDebugLog, ("PARSE ERROR: " + jsonMessage).c_str());
@@ -321,10 +291,6 @@ void InterruptMessagingEngine::processOutgoingMessages() {
 
             if (success) {
                 messagesSent++;
-                ESP_LOGD(TAG, "Queued message sent successfully: %zu bytes", messagePtr->length);
-            } else {
-                ESP_LOGD(TAG, "Failed to send queued message: %zu bytes", messagePtr->length);
-                // TODO: Could implement retry logic here
             }
 
             // Clean up the message
@@ -392,10 +358,7 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
             Serial.flush();  // Ensure all bytes are transmitted
 
             if (written == length) {
-                ESP_LOGD(TAG, "Serial transmission successful: %zu bytes", written);
                 success = true;
-            } else {
-                ESP_LOGD(TAG, "Serial transmission failed: %zu out of %zu bytes", written, length);
             }
 
         } catch (...) {
@@ -524,8 +487,6 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGD(TAG, "Sending message: %d bytes", payload.length());
-
     // Intelligent transmission strategy based on message characteristics
     return sendMessageIntelligent(payload);
 }
@@ -594,9 +555,6 @@ void InterruptMessagingEngine::routeExternalMessage(const ExternalMessage& messa
 }
 
 void InterruptMessagingEngine::processExternalMessageOnCore1(const ExternalMessage& message) {
-    ESP_LOGD(TAG, "Processing external message on Core 1: type %d",
-             static_cast<int>(message.messageType));
-
     if (messageCore) {
         messageCore->handleExternalMessage(message);
     }

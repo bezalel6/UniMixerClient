@@ -176,7 +176,7 @@ struct ExternalMessage {
     String deviceId;
     String originatingDeviceId;
     unsigned long timestamp;
-    bool validated = false;
+    bool validated = true; //once a message is read and validated using the CrC binary calculation it is considered valid.
 
     // Type-specific parsed data (transport provides this)
     JsonDocument parsedData;  // Only the specific data fields, not entire payload
@@ -198,7 +198,6 @@ struct ExternalMessage {
     }
 
     // Validation and security (no JSON parsing overhead)
-    bool validate();
     bool isSelfOriginated() const;
 
     // Utility methods for external message handling

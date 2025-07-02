@@ -10,48 +10,6 @@ namespace Messaging {
 // EXTERNAL MESSAGE IMPLEMENTATION
 // =============================================================================
 
-// parseFromJSON method removed - transport handles parsing
-
-bool ExternalMessage::validate() {
-  if (validated) {
-    return true; // Already validated
-  }
-
-  // Basic validation checks
-  if (messageType == MessageProtocol::ExternalMessageType::INVALID) {
-    ESP_LOGW(TAG, "Invalid message type in external message");
-    return false;
-  }
-
-  // Validate core fields are present
-  if (deviceId.isEmpty()) {
-    ESP_LOGW(TAG, "Missing deviceId in external message");
-    return false;
-  }
-
-  // Security validation - check parsed data size
-  String serializedCheck;
-  serializeJson(parsedData, serializedCheck);
-  if (serializedCheck.length() > 8192) { // Max 8KB per message
-    ESP_LOGW(TAG, "External message data too large: %d bytes",
-             serializedCheck.length());
-    return false;
-  }
-
-  // Check for malicious JSON patterns in device identifiers
-  if (deviceId.indexOf("__proto__") >= 0 ||
-      deviceId.indexOf("constructor") >= 0 ||
-      originatingDeviceId.indexOf("prototype") >= 0) {
-    ESP_LOGW(TAG, "Potentially malicious data detected in identifiers");
-    return false;
-  }
-
-  validated = true;
-  ESP_LOGD(TAG, "External message validated successfully: %d",
-           LOG_EXTERNAL_MSG_TYPE(messageType));
-  return true;
-}
-
 bool ExternalMessage::isSelfOriginated() const {
   return originatingDeviceId == Config::getDeviceId() ||
          deviceId == Config::getDeviceId();
