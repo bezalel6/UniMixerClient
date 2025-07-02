@@ -1064,5 +1064,87 @@ void updateMessagingEngineIntegration(void) {
              core1Routed, messagesReceived, messagesSent);
 }
 
+// =============================================================================
+// PHASE 4: OTA PERFORMANCE OPTIMIZATION
+// =============================================================================
+
+/**
+ * ULTRA-MINIMAL OTA BOOT MODE CONFIGURATION
+ * Eliminates ALL non-essential operations during OTA boot mode
+ */
+void configureUltraMinimalOTAMode(void) {
+    ESP_LOGI(TAG, "[PHASE4-OTA] Configuring ultra-minimal OTA boot mode");
+    
+    // Suspend ALL non-essential tasks immediately
+    if (tasksRunning) {
+        if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
+            ESP_LOGI(TAG, "[PHASE4-OTA] Suspending Audio task for minimal OTA mode");
+            vTaskSuspend(audioTaskHandle);
+        }
+    }
+    
+    // Set ultra-conservative intervals for remaining operations
+    currentAudioInterval = 30000;  // 30 seconds (effectively disabled)
+    
+    // Disable all periodic operations
+    taskSystemConfig.otaState = OTA_STATE_ULTRA_MINIMAL;
+    taskSystemConfig.currentState = TASK_STATE_OTA_ACTIVE;
+    taskSystemConfig.emergencyMode = false;  // Ensure no emergency processing
+    
+    ESP_LOGI(TAG, "[PHASE4-OTA] Ultra-minimal OTA mode configured - maximum performance for OTA download");
+}
+
+/**
+ * NORMAL MODE BACKGROUND TASK OPTIMIZATION
+ * Eliminates unnecessary background operations during normal operation
+ */
+void optimizeNormalModePerformance(void) {
+    ESP_LOGI(TAG, "[PHASE4-NORMAL] Optimizing normal mode for maximum performance");
+    
+    // Extend all background operation intervals significantly
+    taskSystemConfig.backgroundOperationsDisabled = true;
+    
+    // Configure ultra-efficient task intervals
+    currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;  // Keep audio responsive
+    
+    // Disable non-critical periodic operations
+    taskSystemConfig.logoCheckingDisabled = true;
+    taskSystemConfig.debugStatisticsDisabled = true;
+    taskSystemConfig.nonEssentialUpdatesDisabled = true;
+    
+    ESP_LOGI(TAG, "[PHASE4-NORMAL] Normal mode optimized - background tasks minimized");
+}
+
+/**
+ * ADAPTIVE PERFORMANCE MANAGEMENT
+ * Dynamically adjusts performance based on system load and OTA state
+ */
+void updateAdaptivePerformanceSettings(void) {
+    static unsigned long lastOptimizationCheck = 0;
+    unsigned long currentTime = millis();
+    
+    // Only check every 10 seconds to avoid overhead
+    if (currentTime - lastOptimizationCheck < 10000) {
+        return;
+    }
+    lastOptimizationCheck = currentTime;
+    
+    // Get current system load
+    uint32_t messageLoad = getMessageLoadPerSecond();
+    uint32_t freeHeap = esp_get_free_heap_size();
+    
+    // Adaptive interval adjustment based on system resources
+    if (freeHeap < 50000) {  // Low memory - reduce background operations
+        currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED * 2;
+        ESP_LOGW(TAG, "[PHASE4-ADAPTIVE] Low memory detected (%u bytes), reducing background operations", freeHeap);
+    } else if (messageLoad > 25) {  // High message load - prioritize messaging
+        currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED;
+        ESP_LOGI(TAG, "[PHASE4-ADAPTIVE] High message load (%u/s), prioritizing messaging performance", messageLoad);
+    } else {
+        // Normal operation - standard intervals
+        currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
+    }
+}
+
 }  // namespace TaskManager
 }  // namespace Application

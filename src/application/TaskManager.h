@@ -60,7 +60,8 @@ typedef enum {
     OTA_STATE_DOWNLOADING,  // Active download
     OTA_STATE_INSTALLING,   // Installing update
     OTA_STATE_COMPLETE,     // Update complete
-    OTA_STATE_ERROR         // Error occurred
+    OTA_STATE_ERROR,        // Error occurred
+    OTA_STATE_ULTRA_MINIMAL // Phase 4: Ultra-minimal OTA boot mode
 } OTAState_t;
 
 // Task configuration for network-free architecture
@@ -71,6 +72,12 @@ typedef struct {
     uint32_t lastStateChange;
     bool emergencyMode;
     uint32_t taskLoadMetrics[4];  // Simplified for LVGL, Audio, and messaging stats
+    
+    // Phase 4: OTA Performance Optimization Fields
+    bool backgroundOperationsDisabled;  // Disable non-essential background operations
+    bool logoCheckingDisabled;          // Disable logo checking during normal mode
+    bool debugStatisticsDisabled;       // Disable debug statistics collection
+    bool nonEssentialUpdatesDisabled;   // Disable non-essential periodic updates
 } TaskSystemConfig_t;
 
 // =============================================================================
@@ -130,6 +137,11 @@ void suspendForOTA(void);
 void resumeFromOTA(void);
 void configureForOTADownload(void);  // High-performance OTA mode
 void configureForOTAInstall(void);   // Minimize interruptions during install
+
+// Phase 4: OTA Performance Optimization Functions
+void configureUltraMinimalOTAMode(void);      // Ultra-minimal OTA boot mode
+void optimizeNormalModePerformance(void);     // Optimize normal mode performance  
+void updateAdaptivePerformanceSettings(void); // Adaptive performance management
 
 // LVGL thread safety
 void lvglLock(void);
