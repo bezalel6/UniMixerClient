@@ -300,6 +300,8 @@ void ui_screenMain_screen_init(void)
     ui_pnlSettings = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlSettings, 400);
     lv_obj_set_height(ui_pnlSettings, 200);
+    lv_obj_set_x(ui_pnlSettings, 0);
+    lv_obj_set_y(ui_pnlSettings, -200);
     lv_obj_set_align(ui_pnlSettings, LV_ALIGN_TOP_MID);
     lv_obj_add_flag(ui_pnlSettings, LV_OBJ_FLAG_IGNORE_LAYOUT | LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_OVERFLOW_VISIBLE |
                     LV_OBJ_FLAG_EVENT_BUBBLE);    /// Flags

@@ -11,7 +11,7 @@
  * This system provides separate, dedicated enums for external vs internal messages
  * to ensure unmistakable separation and type safety:
  *
- * EXTERNAL MESSAGES: Cross transport boundaries (Serial/MQTT/Network)
+ * EXTERNAL MESSAGES: Cross transport boundaries (Serial in normal mode, network in OTA mode)
  * - Security validation required
  * - JSON serialization/deserialization
  * - Cross-device communication
@@ -318,4 +318,63 @@ class InternalMessageTypeRegistry {
         return MessageProtocol::isValidInternalMessageType(type) ? type : MessageProtocol::InternalMessageType::INVALID; \
     })()
 
+}  // namespace MessageProtocol
+
+// =============================================================================
+// EXTERNAL JSON FIELD NAME CONSTANTS (camelCase only)
+// =============================================================================
+
+namespace MessageProtocol {
+namespace JsonFields {
+
+// =============================================================================
+// CORE MESSAGE FIELDS - camelCase format
+// =============================================================================
+
+// Core message identification fields
+constexpr const char* MESSAGE_TYPE = "messageType";
+constexpr const char* REQUEST_ID = "requestId";
+constexpr const char* DEVICE_ID = "deviceId";
+constexpr const char* ORIGINATING_DEVICE_ID = "originatingDeviceId";
+constexpr const char* TIMESTAMP = "timestamp";
+
+// =============================================================================
+// AUDIO STATUS MESSAGE FIELDS - camelCase format
+// =============================================================================
+
+// Session data fields
+constexpr const char* SESSIONS = "sessions";
+constexpr const char* ACTIVE_SESSION_COUNT = "activeSessionCount";
+
+// Individual session fields
+constexpr const char* PROCESS_ID = "processId";
+constexpr const char* PROCESS_NAME = "processName";
+constexpr const char* DISPLAY_NAME = "displayName";
+constexpr const char* VOLUME = "volume";
+constexpr const char* IS_MUTED = "isMuted";
+constexpr const char* STATE = "state";
+
+// Default device fields
+constexpr const char* DEFAULT_DEVICE = "defaultDevice";
+constexpr const char* FRIENDLY_NAME = "friendlyName";
+constexpr const char* DATA_FLOW = "dataFlow";
+constexpr const char* DEVICE_ROLE = "deviceRole";
+
+// Message metadata fields
+constexpr const char* REASON = "reason";
+constexpr const char* ORIGINATING_REQUEST_ID = "originatingRequestId";
+
+// =============================================================================
+// ASSET REQUEST/RESPONSE FIELDS - camelCase format
+// =============================================================================
+
+constexpr const char* SUCCESS = "success";
+constexpr const char* ERROR_MESSAGE = "errorMessage";
+constexpr const char* METADATA = "metadata";
+constexpr const char* WIDTH = "width";
+constexpr const char* HEIGHT = "height";
+constexpr const char* FORMAT = "format";
+constexpr const char* ASSET_DATA = "assetData";
+
+}  // namespace JsonFields
 }  // namespace MessageProtocol

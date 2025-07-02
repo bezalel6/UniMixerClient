@@ -32,10 +32,8 @@ uint32_t readLightSensorMv(void);
 unsigned long getMillis(void);
 void delay(unsigned long ms);
 
-// Serial interface management
-bool initSerial(void);
-HardwareSerial& getDataSerial(void);  // Returns standard Serial interface
-bool isDataSerialAvailable(void);
+// NOTE: Serial/UART interface is now managed by InterruptMessagingEngine
+// to avoid driver conflicts between Arduino Serial and ESP-IDF UART drivers
 
 }  // namespace Device
 }  // namespace Hardware

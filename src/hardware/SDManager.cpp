@@ -966,15 +966,15 @@ static bool initializeSPI() {
 
         // Check if we got a valid response
         if (response == 0x01 || response == 0x00) {
-            Serial.println("SPI initialization successful - SD card detected");
+            ESP_LOGI(TAG, "SPI initialization successful - SD card detected");
             return true;
         } else {
-            Serial.printf("SPI initialized but unexpected SD response: 0x%02X\n", response);
+            ESP_LOGW(TAG, "SPI initialized but unexpected SD response: 0x%02X", response);
             return true;  // SPI is working, SD card might not be inserted
         }
 
     } catch (...) {
-        Serial.println("SPI initialization failed - exception occurred");
+        ESP_LOGE(TAG, "SPI initialization failed - exception occurred");
         return false;
     }
 }

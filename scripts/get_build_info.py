@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
 Build information script for PlatformIO
-Generates build flags with git commit hash and other build info
+Inserts or replaces build flags in ../PIOConfig.h before the final #endif
 """
 
 import subprocess
-import sys
 import os
 from datetime import datetime
 
+PIO_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../PIOConfig.h")
+BEGIN_MARK = "// >>> AUTO-GENERATED BUILD INFO BEGIN"
+END_MARK = "// <<< AUTO-GENERATED BUILD INFO END"
+
 def get_git_commit_hash():
-    """Get the short git commit hash, return 'dev' if not available"""
     try:
-        # Try to get git commit hash
         result = subprocess.run(
             ['git', 'rev-parse', '--short', 'HEAD'],
             stdout=subprocess.PIPE,
@@ -22,13 +23,11 @@ def get_git_commit_hash():
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+    except:
         pass
-    
     return "dev"
 
 def get_git_branch():
-    """Get the current git branch name, return 'unknown' if not available"""
     try:
         result = subprocess.run(
             ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
@@ -39,38 +38,53 @@ def get_git_branch():
         )
         if result.returncode == 0:
             branch = result.stdout.strip()
-            # Handle detached HEAD state
-            if branch == "HEAD":
-                return "detached"
-            return branch
-    except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+            return "detached" if branch == "HEAD" else branch
+    except:
         pass
-    
     return "unknown"
 
 def main():
-    """Generate build flags for PlatformIO"""
-    
-    # Get build information
     commit_hash = get_git_commit_hash()
     branch = get_git_branch()
-    
-    # Generate build flags
-    flags = []
-    
-    # Build number (git commit hash)
-    flags.append(f'-DFIRMWARE_BUILD_NUMBER=\\"{commit_hash}\\"')
-    
-    # Git branch (optional)
-    flags.append(f'-DGIT_BRANCH=\\"{branch}\\"')
-    
-    # Build timestamp (when this script runs)
-    build_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    flags.append(f'-DBUILD_TIMESTAMP_NUM=\\"{build_timestamp}\\"')
-    
-    # Output all flags on separate lines for PlatformIO
-    for flag in flags:
-        print(flag)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    generated_block = [
+        BEGIN_MARK,
+        f'#define FIRMWARE_BUILD_NUMBER "{commit_hash}"',
+        f'#define GIT_BRANCH "{branch}"',
+        f'#define BUILD_TIMESTAMP_NUM "{timestamp}"',
+        END_MARK
+    ]
+
+    with open(PIO_CONFIG_PATH, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # Remove existing auto-generated block if it exists
+    start, end = None, None
+    for i, line in enumerate(lines):
+        if line.strip() == BEGIN_MARK:
+            start = i
+        elif line.strip() == END_MARK:
+            end = i
+            break
+
+    if start is not None and end is not None:
+        del lines[start:end+1]
+
+    # Find the final #endif
+    for i in reversed(range(len(lines))):
+        if lines[i].strip() == "#endif":
+            insert_index = i
+            break
+    else:
+        raise RuntimeError("No #endif found in PIOConfig.h")
+
+    # Insert block before #endif
+    insert_lines = [line + "\n" for line in generated_block]
+    updated_lines = lines[:insert_index] + insert_lines + lines[insert_index:]
+
+    with open(PIO_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.writelines(updated_lines)
 
 if __name__ == "__main__":
-    main() 
+    main()
