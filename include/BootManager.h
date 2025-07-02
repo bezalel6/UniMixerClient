@@ -19,7 +19,8 @@ enum class BootMode {
 };
 
 /**
- * Boot Manager - Handles separate boot modes
+ * Boot Manager - Handles separate boot modes.
+
  */
 class BootManager {
 public:
