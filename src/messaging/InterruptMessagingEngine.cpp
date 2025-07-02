@@ -4,6 +4,7 @@
 #include "MessageData.h"
 #include "../include/MessagingConfig.h"
 #include "../include/BinaryProtocol.h"
+#include "../include/CoreLoggingFilter.h"
 #include <esp_log.h>
 #include <driver/gpio.h>
 
@@ -156,6 +157,9 @@ bool InterruptMessagingEngine::start() {
     }
 
     ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine started successfully");
+
+    // Log from Core 1 to demonstrate logging filter is working
+    ESP_LOGI(TAG, "Core 1 messaging active - logging filter allows Core 1 output");
     return true;
 }
 
@@ -213,6 +217,10 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
     TickType_t lastWakeTime = xTaskGetTickCount();
     const TickType_t taskFrequency = pdMS_TO_TICKS(5);  // 5ms cycle time
 
+    // Track logging filter statistics
+    TickType_t lastLogStatsTime = lastWakeTime;
+    const TickType_t logStatsInterval = pdMS_TO_TICKS(30000);  // 30 seconds
+
     while (running) {
         // Process incoming UART data (highest priority)
         processIncomingData();
@@ -226,6 +234,16 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
         // Update MessageCore
         if (messageCore) {
             messageCore->update();
+        }
+
+        // Periodically report logging filter statistics
+        TickType_t currentTime = xTaskGetTickCount();
+        if ((currentTime - lastLogStatsTime) >= logStatsInterval) {
+            uint32_t core0Filtered, core1Allowed;
+            CoreLoggingFilter::getStats(core0Filtered, core1Allowed);
+            ESP_LOGI(TAG, "Logging Filter Stats - Core 0 filtered: %u, Core 1 allowed: %u",
+                     core0Filtered, core1Allowed);
+            lastLogStatsTime = currentTime;
         }
 
         // Yield periodically to prevent watchdog

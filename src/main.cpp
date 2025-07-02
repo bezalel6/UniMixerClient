@@ -2,6 +2,7 @@
 #include "application/AppController.h"
 #include "hardware/DeviceManager.h"
 #include "../include/BootManager.h"
+#include "../include/CoreLoggingFilter.h"
 #include "ota/OTAApplication.h"
 
 /*
@@ -28,6 +29,10 @@
  */
 
 void setup() {
+    // Initialize Core 1-only logging filter FIRST to prevent interference
+    // This must be done before any ESP_LOG calls to ensure proper filtering
+    CoreLoggingFilter::init();
+
     // NOTE: UART/Serial initialization is now handled by InterruptMessagingEngine
     // to avoid driver conflicts
 
