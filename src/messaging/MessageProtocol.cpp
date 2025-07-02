@@ -102,18 +102,6 @@ class InternalMessageTypeRegistry::Impl {
     }
 };
 
-class MessageTypeRegistry::Impl {
-   public:
-    bool initialized = false;
-
-    Impl() : initialized(false) {}
-
-    void populateMappings() {
-        // Legacy implementation can delegate to other registries
-        initialized = true;
-    }
-};
-
 // =============================================================================
 // EXTERNAL MESSAGE TYPE FUNCTIONS
 // =============================================================================
@@ -312,112 +300,6 @@ bool InternalMessageTypeRegistry::init() {
     return pImpl->initialized;
 }
 
-// =============================================================================
-// LEGACY MESSAGE TYPE REGISTRY IMPLEMENTATION
-// =============================================================================
-
-MessageTypeRegistry::MessageTypeRegistry() : pImpl(new Impl()) {}
-
-MessageTypeRegistry& MessageTypeRegistry::getInstance() {
-    static MessageTypeRegistry instance;
-    return instance;
-}
-
-MessageType MessageTypeRegistry::getMessageType(const char* str) const {
-    if (!str) return MessageType::INVALID;
-
-    // Try external types first
-    ExternalMessageType extType = stringToExternalMessageType(str);
-    if (extType != ExternalMessageType::INVALID) {
-        return static_cast<MessageType>(static_cast<uint16_t>(extType));
-    }
-
-    // Try internal types
-    InternalMessageType intType = stringToInternalMessageType(str);
-    if (intType != InternalMessageType::INVALID) {
-        return static_cast<MessageType>(static_cast<uint16_t>(intType));
-    }
-
-    return MessageType::INVALID;
-}
-
-const char* MessageTypeRegistry::getString(MessageType type) const {
-    uint16_t value = static_cast<uint16_t>(type);
-
-    // Check if it's an external type (0-5)
-    if (value <= 5) {
-        ExternalMessageType extType = static_cast<ExternalMessageType>(static_cast<int16_t>(value));
-        return externalMessageTypeToString(extType);
-    }
-
-    // Check if it's an internal type (>= 100)
-    if (value >= 100) {
-        InternalMessageType intType = static_cast<InternalMessageType>(value);
-        return internalMessageTypeToString(intType);
-    }
-
-    return "UNKNOWN";
-}
-
-bool MessageTypeRegistry::init() {
-    if (!pImpl->initialized) {
-        pImpl->populateMappings();
-    }
-    return pImpl->initialized;
-}
-
-// =============================================================================
-// LEGACY DEPRECATED FUNCTIONS
-// =============================================================================
-
-const char* messageTypeToString(MessageType type) {
-    MessageTypeRegistry& registry = MessageTypeRegistry::getInstance();
-    return registry.getString(type);
-}
-
-MessageType stringToMessageType(const char* str) {
-    MessageTypeRegistry& registry = MessageTypeRegistry::getInstance();
-    return registry.getMessageType(str);
-}
-
-MessageType stringToMessageType(const String& str) {
-    return stringToMessageType(str.c_str());
-}
-
-MessageCategory getMessageCategory(MessageType type) {
-    uint16_t value = static_cast<uint16_t>(type);
-
-    // Map to new category system
-    if (value <= 5) {
-        return MessageCategory::LEGACY_CAT_SYSTEM;  // External messages are system-level
-    }
-
-    if (value >= 100 && value < 200) return MessageCategory::LEGACY_CAT_NETWORK;
-    if (value >= 200 && value < 300) return MessageCategory::LEGACY_CAT_UI;
-    if (value >= 300 && value < 400) return MessageCategory::LEGACY_CAT_FILESYSTEM;
-    if (value >= 400 && value < 500) return MessageCategory::LEGACY_CAT_AUDIO;
-    if (value >= 500 && value < 600) return MessageCategory::LEGACY_CAT_SYSTEM;
-    if (value >= 600 && value < 700) return MessageCategory::LEGACY_CAT_DEVICE;
-    if (value >= 700 && value < 800) return MessageCategory::LEGACY_CAT_SYSTEM;
-
-    return MessageCategory::LEGACY_CAT_UNKNOWN;
-}
-
-MessagePriority getMessagePriority(MessageType type) {
-    uint16_t value = static_cast<uint16_t>(type);
-
-    // Use new priority system
-    if (value <= 5) {
-        ExternalMessageType extType = static_cast<ExternalMessageType>(static_cast<int16_t>(value));
-        return getExternalMessagePriority(extType);
-    }
-
-    if (value >= 100) {
-        InternalMessageType intType = static_cast<InternalMessageType>(value);
-        return getInternalMessagePriority(intType);
-    }
-
-    return MessagePriority::MSG_NORMAL;
-}
+// All legacy functions and MessageTypeRegistry implementation removed
 
 }  // namespace MessageProtocol

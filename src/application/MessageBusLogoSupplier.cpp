@@ -281,9 +281,9 @@ AssetResponse MessageBusLogoSupplier::parseAssetResponse(const String& jsonPaylo
 
     // Extract basic fields with new enum-based messageType handling
     String messageTypeStr = doc["messageType"] | "";
-    // Convert to enum and back to ensure consistency with new dual system
+    // Convert to enum and store directly (no string conversion needed)
     MessageProtocol::ExternalMessageType msgType = MessageProtocol::stringToExternalMessageType(messageTypeStr);
-    response.messageType = MessageProtocol::externalMessageTypeToString(msgType);
+    response.messageType = msgType;
     response.requestId = doc["requestId"] | "";
     response.deviceId = doc["deviceId"] | "";
     response.processName = doc["processName"] | "";
