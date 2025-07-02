@@ -8,11 +8,11 @@
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
 #include "../messaging/transport/SerialEngine.h"
-#include "AudioManager.h"
-#include "AudioUI.h"
+#include "../audio/AudioManager.h"
+#include "../audio/AudioUI.h"
 #include "../logo/LogoManager.h"
-#include "MessageBusLogoSupplier.h"
-#include "LVGLMessageHandler.h"
+#include "../services/MessageBusLogoSupplier.h"
+#include "../ui/LVGLMessageHandler.h"
 #include "TaskManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>

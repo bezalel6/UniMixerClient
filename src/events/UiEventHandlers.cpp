@@ -1,7 +1,7 @@
 #include "UiEventHandlers.h"
-#include "../application/AudioManager.h"
-#include "../application/AudioUI.h"
-#include "../application/LVGLMessageHandler.h"
+#include "../application/audio/AudioManager.h"
+#include "../application/audio/AudioUI.h"
+#include "../application/ui/LVGLMessageHandler.h"
 
 #include "../hardware/DeviceManager.h"
 

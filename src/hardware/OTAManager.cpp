@@ -1,7 +1,7 @@
 #include "OTAManager.h"
 #include "../../include/DebugUtils.h"
-#include "../application/LVGLMessageHandler.h"
-#include "../application/TaskManager.h"
+#include "../application/ui/LVGLMessageHandler.h"
+#include "../application/core/TaskManager.h"
 #include <WiFi.h>
 #include <esp_log.h>
 #include <esp_task_wdt.h>

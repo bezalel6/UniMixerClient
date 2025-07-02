@@ -3,7 +3,7 @@
 #include "../messaging/MessageAPI.h"
 #include "../messaging/protocol/MessageConfig.h"
 #include "../logo/LogoManager.h"
-#include "MessageBusLogoSupplier.h"
+#include "../services/MessageBusLogoSupplier.h"
 #include <esp_log.h>
 #include <algorithm>
 #include "ui/ui.h"

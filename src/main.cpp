@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "application/AppController.h"
+#include "application/core/AppController.h"
 #include "hardware/DeviceManager.h"
 #include "../include/BootManager.h"
 #include "../include/CoreLoggingFilter.h"

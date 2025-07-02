@@ -29,8 +29,8 @@
 // Network managers available only during OTA mode
 #include "../hardware/SDManager.h"
 #include "../hardware/OTAManager.h"
-#include "AudioManager.h"
-#include "AudioUI.h"
+#include "../audio/AudioManager.h"
+#include "../audio/AudioUI.h"
 #include "../display/DisplayManager.h"
 #include "../ui/UniversalDialog.h"
 #include <esp_log.h>

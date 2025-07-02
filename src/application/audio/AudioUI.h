@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AudioManager.h"
-#include "LVGLMessageHandler.h"
+#include "../ui/LVGLMessageHandler.h"
 #include <lvgl.h>
 
 namespace Application {

@@ -1,5 +1,5 @@
 #include "DisplayManager.h"
-#include "../application/TaskManager.h"
+#include "../application/core/TaskManager.h"
 #include "../include/UIConstants.h"
 #include <SPI.h>
 #include <cinttypes>

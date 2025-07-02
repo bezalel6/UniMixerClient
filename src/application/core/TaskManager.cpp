@@ -10,9 +10,9 @@
 #include "../messaging/transport/SerialEngine.h"
 #include "../messaging/protocol/MessageData.h"
 #include "AppController.h"
-#include "AudioUI.h"
-#include "LogoSupplier.h"
-#include "LVGLMessageHandler.h"
+#include "../audio/AudioUI.h"
+#include "../services/LogoSupplier.h"
+#include "../ui/LVGLMessageHandler.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
