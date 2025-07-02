@@ -2,7 +2,7 @@
 #include "../messaging/protocol/MessageConfig.h"
 #include "../hardware/DeviceManager.h"
 #include "../logo/LogoManager.h"
-#include "../../include/ManagerMacros.h"
+#include "ManagerMacros.h"
 #include <esp_log.h>
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>

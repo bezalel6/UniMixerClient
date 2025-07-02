@@ -1,4 +1,4 @@
-#include "../../include/MessageProtocol.h"
+#include "MessageProtocol.h"
 #include <esp_log.h>
 #include <unordered_map>
 #include <array>

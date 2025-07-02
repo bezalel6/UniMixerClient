@@ -1,6 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_btn.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_volumeslider.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -23,6 +26,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\ui_helpers.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\images\ui_img_2039083_png.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -272,6 +272,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_btn.c" />
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_volumeslider.c" />
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp.c" />
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\screens\ui_screenMain.c" />
@@ -280,6 +281,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\ui.c" />
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\components\ui_comp_hook.c" />
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\ui_helpers.c" />
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\images\ui_img_2039083_png.c" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

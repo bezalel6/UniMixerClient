@@ -1,6 +1,6 @@
 #include "UniversalDialog.h"
-#include "../../include/ManagerMacros.h"
-#include "../../include/UIConstants.h"
+#include "ManagerMacros.h"
+#include "UIConstants.h"
 #include <esp_log.h>
 #include <Arduino.h>
 

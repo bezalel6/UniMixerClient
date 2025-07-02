@@ -1,5 +1,5 @@
-#include "../../include/BinaryProtocol.h"
-#include "../../include/MessagingConfig.h"
+#include "BinaryProtocol.h"
+#include "MessagingConfig.h"
 #include <esp_log.h>
 
 static const char* TAG = "BinaryProtocol";

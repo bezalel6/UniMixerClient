@@ -1,7 +1,7 @@
 #include "UiEventHandlers.h"
-#include "../application/AudioManager.h"
-#include "../application/AudioUI.h"
-#include "../application/LVGLMessageHandler.h"
+#include "../application/audio/AudioManager.h"
+#include "../application/audio/AudioUI.h"
+#include "../application/ui/LVGLMessageHandler.h"
 
 #include "../hardware/DeviceManager.h"
 
@@ -208,13 +208,14 @@ void volumeArcChangedHandler(lv_event_t *e) {
         lv_timer_delete(volumeDebounceTimer);
         volumeDebounceTimer = nullptr;
 
-    // Store the pending volume value
-    pendingVolumeValue = volume;
-    lastVolumeUpdateTime = currentTime;
+        // Store the pending volume value
+        pendingVolumeValue = volume;
+        lastVolumeUpdateTime = currentTime;
 
-    // Create a new debounce timer
-    volumeDebounceTimer = lv_timer_create(volumeDebounceCallback, VOLUME_DEBOUNCE_DELAY_MS, nullptr);
-    lv_timer_set_repeat_count(volumeDebounceTimer, 1);  // Only run once
+        // Create a new debounce timer
+        volumeDebounceTimer = lv_timer_create(volumeDebounceCallback, VOLUME_DEBOUNCE_DELAY_MS, nullptr);
+        lv_timer_set_repeat_count(volumeDebounceTimer, 1);  // Only run once
+    }
 }
 
 // Tab switch event handler

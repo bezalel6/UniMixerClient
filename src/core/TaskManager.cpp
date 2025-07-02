@@ -1,18 +1,18 @@
 #include "TaskManager.h"
-#include "../../include/MessagingConfig.h"
-#include "../../include/OTAConfig.h"
-#include "../../include/DebugUtils.h"
+#include "MessagingConfig.h"
+#include "OTAConfig.h"
+#include "DebugUtils.h"
 #include "../display/DisplayManager.h"
-#include "../core/UiEventHandlers.h"
+#include "UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
 #include "../messaging/transport/SerialEngine.h"
 #include "../messaging/protocol/MessageData.h"
 #include "AppController.h"
-#include "../audio/AudioUI.h"
-#include "../services/LogoSupplier.h"
-#include "../ui/LVGLMessageHandler.h"
+#include "../application/audio/AudioUI.h"
+#include "../logo/LogoSupplier.h"
+#include "../application/ui/LVGLMessageHandler.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
@@ -1074,7 +1074,7 @@ void updateMessagingEngineIntegration(void) {
  */
 void configureUltraMinimalOTAMode(void) {
     ESP_LOGI(TAG, "[PHASE4-OTA] Configuring ultra-minimal OTA boot mode");
-    
+
     // Suspend ALL non-essential tasks immediately
     if (tasksRunning) {
         if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
@@ -1082,15 +1082,15 @@ void configureUltraMinimalOTAMode(void) {
             vTaskSuspend(audioTaskHandle);
         }
     }
-    
+
     // Set ultra-conservative intervals for remaining operations
     currentAudioInterval = 30000;  // 30 seconds (effectively disabled)
-    
+
     // Disable all periodic operations
     taskSystemConfig.otaState = OTA_STATE_ULTRA_MINIMAL;
     taskSystemConfig.currentState = TASK_STATE_OTA_ACTIVE;
     taskSystemConfig.emergencyMode = false;  // Ensure no emergency processing
-    
+
     ESP_LOGI(TAG, "[PHASE4-OTA] Ultra-minimal OTA mode configured - maximum performance for OTA download");
 }
 
@@ -1100,18 +1100,18 @@ void configureUltraMinimalOTAMode(void) {
  */
 void optimizeNormalModePerformance(void) {
     ESP_LOGI(TAG, "[PHASE4-NORMAL] Optimizing normal mode for maximum performance");
-    
+
     // Extend all background operation intervals significantly
     taskSystemConfig.backgroundOperationsDisabled = true;
-    
+
     // Configure ultra-efficient task intervals
     currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;  // Keep audio responsive
-    
+
     // Disable non-critical periodic operations
     taskSystemConfig.logoCheckingDisabled = true;
     taskSystemConfig.debugStatisticsDisabled = true;
     taskSystemConfig.nonEssentialUpdatesDisabled = true;
-    
+
     ESP_LOGI(TAG, "[PHASE4-NORMAL] Normal mode optimized - background tasks minimized");
 }
 
@@ -1122,17 +1122,17 @@ void optimizeNormalModePerformance(void) {
 void updateAdaptivePerformanceSettings(void) {
     static unsigned long lastOptimizationCheck = 0;
     unsigned long currentTime = millis();
-    
+
     // Only check every 10 seconds to avoid overhead
     if (currentTime - lastOptimizationCheck < 10000) {
         return;
     }
     lastOptimizationCheck = currentTime;
-    
+
     // Get current system load
     uint32_t messageLoad = getMessageLoadPerSecond();
     uint32_t freeHeap = esp_get_free_heap_size();
-    
+
     // Adaptive interval adjustment based on system resources
     if (freeHeap < 50000) {  // Low memory - reduce background operations
         currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED * 2;

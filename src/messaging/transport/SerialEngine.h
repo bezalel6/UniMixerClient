@@ -9,7 +9,7 @@
 #include <driver/uart.h>
 #include "../system/MessageCore.h"
 #include "../protocol/MessageData.h"
-#include "../../include/BinaryProtocol.h"
+#include "BinaryProtocol.h"
 
 namespace Messaging {
 namespace Core1 {
@@ -57,6 +57,9 @@ class InterruptMessagingEngine {
      * Get binary protocol statistics
      */
     static const BinaryProtocol::ProtocolStatistics& getBinaryStats();
+
+    static bool sendMessageIntelligent(const String& payload);
+    static bool attemptDirectTransmission(const String& payload);
 
    private:
     static bool initialized;
@@ -198,7 +201,6 @@ class InterruptMessagingEngine {
      * Handle Core 1 processing for external messages
      */
     static void processExternalMessageOnCore1(const ExternalMessage& message);
-
 };
 
 }  // namespace Core1

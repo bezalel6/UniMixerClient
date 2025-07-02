@@ -7,9 +7,7 @@
 #include <esp_log.h>
 #include <algorithm>
 #include "ui/ui.h"
-#include "logo/LogoManager.h"
-#include "../../../include/ManagerMacros.h"
-
+#include "ManagerMacros.h"
 static const char* TAG = "AudioManager";
 
 namespace Application {

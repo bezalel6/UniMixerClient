@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <functional>
-#include "../../include/MessageProtocol.h"
+#include "MessageProtocol.h"
 
 namespace Application {
 namespace LogoAssets {

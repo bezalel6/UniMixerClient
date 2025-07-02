@@ -1,7 +1,7 @@
 #ifndef OTA_MANAGER_H
 #define OTA_MANAGER_H
 
-#include "../../include/OTAConfig.h"
+#include "OTAConfig.h"
 #include <Arduino.h>
 #include <HTTPUpdate.h>
 #include <WiFiClient.h>

@@ -1,5 +1,5 @@
 #include "OTAManager.h"
-#include "../../include/DebugUtils.h"
+#include "DebugUtils.h"
 #include "../application/ui/LVGLMessageHandler.h"
 #include "../core/TaskManager.h"
 #include <WiFi.h>

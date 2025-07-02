@@ -23,16 +23,16 @@
  */
 
 #include "LVGLMessageHandler.h"
-#include "../../include/DebugUtils.h"
-#include "../../include/BuildInfo.h"
-#include "../hardware/DeviceManager.h"
+#include "DebugUtils.h"
+#include "BuildInfo.h"
+#include "../../hardware/DeviceManager.h"
 // Network managers available only during OTA mode
-#include "../hardware/SDManager.h"
-#include "../ota/OTAManager.h"
+#include "hardware/SDManager.h"
+#include "../../ota/OTAManager.h"
 #include "../audio/AudioManager.h"
 #include "../audio/AudioUI.h"
-#include "../display/DisplayManager.h"
-#include "../ui/UniversalDialog.h"
+#include "display/DisplayManager.h"
+#include "../../ui/UniversalDialog.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 #include <functional>

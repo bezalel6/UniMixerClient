@@ -1,4 +1,4 @@
-#include "../../include/CoreLoggingFilter.h"
+#include "CoreLoggingFilter.h"
 
 // Static member definitions
 bool CoreLoggingFilter::initialized_ = false;

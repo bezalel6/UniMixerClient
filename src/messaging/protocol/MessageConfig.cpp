@@ -1,5 +1,5 @@
 #include "MessageConfig.h"
-#include "../hardware/DeviceManager.h"
+#include "hardware/DeviceManager.h"
 #include <MessageProtocol.h>
 
 namespace Messaging {

@@ -2,11 +2,11 @@
 #include "../MessageAPI.h"
 #include "../protocol/MessageConfig.h"
 #include "../protocol/MessageData.h"
-#include "../../include/MessagingConfig.h"
-#include "../../include/BinaryProtocol.h"
-#include "../include/CoreLoggingFilter.h"
-#include "../include/DebugUtils.h"
-#include "../ui/screens/ui_screenDebug.h"
+#include "MessagingConfig.h"
+#include "BinaryProtocol.h"
+#include "CoreLoggingFilter.h"
+#include "DebugUtils.h"
+#include "../../ui/screens/ui_screenDebug.h"
 #include <esp_log.h>
 #include <driver/gpio.h>
 
@@ -285,12 +285,12 @@ void InterruptMessagingEngine::processIncomingData() {
             ESP_LOGD(TAG, "Decoded JSON: %s", jsonMessage.c_str());
 
             // Log every received message payload to UI
-            LOG_TO_UI(ui_txtAreaDebugLog, ("RX: " + jsonMessage).c_str());
+            // LOG_TO_UI(ui_txtAreaDebugLog, ("RX: " + jsonMessage).c_str());
 
             ExternalMessage message;
             if (parseCompleteMessage(jsonMessage.c_str(), jsonMessage.length(), message)) {
                 messagesReceived++;
-                ESP_LOGD(TAG, "Message parsed successfully: Type=%d Device=%s", 
+                ESP_LOGD(TAG, "Message parsed successfully: Type=%d Device=%s",
                          static_cast<int>(message.messageType), message.deviceId.c_str());
 
                 // Log to UI with success indicator
@@ -318,7 +318,7 @@ void InterruptMessagingEngine::processOutgoingMessages() {
         if (messagePtr && messagePtr->data && messagePtr->length > 0) {
             // Send the queued message
             bool success = sendRawData(reinterpret_cast<const char*>(messagePtr->data), messagePtr->length);
-            
+
             if (success) {
                 messagesSent++;
                 ESP_LOGD(TAG, "Queued message sent successfully: %zu bytes", messagePtr->length);
@@ -326,7 +326,7 @@ void InterruptMessagingEngine::processOutgoingMessages() {
                 ESP_LOGD(TAG, "Failed to send queued message: %zu bytes", messagePtr->length);
                 // TODO: Could implement retry logic here
             }
-            
+
             // Clean up the message
             delete[] messagePtr->data;
             delete messagePtr;
@@ -384,12 +384,8 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
         return false;
     }
 
-
-
     if (xSemaphoreTake(uartMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         bool success = false;
-
-
 
         try {
             size_t written = Serial.write(reinterpret_cast<const uint8_t*>(data), length);
@@ -401,7 +397,6 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
             } else {
                 ESP_LOGD(TAG, "Serial transmission failed: %zu out of %zu bytes", written, length);
             }
-
 
         } catch (...) {
             ESP_LOGE(TAG, "Exception during Arduino Serial transmission");
@@ -427,20 +422,20 @@ bool InterruptMessagingEngine::sendMessageIntelligent(const String& payload) {
     }
 
     size_t payloadSize = payload.length();
-    
+
     // Transmission strategy based on message characteristics
-    const size_t DIRECT_TRANSMISSION_THRESHOLD = 512; // bytes
-    
+    const size_t DIRECT_TRANSMISSION_THRESHOLD = 512;  // bytes
+
     // Check queue congestion
     UBaseType_t queueSpacesAvailable = uxQueueSpacesAvailable(outgoingMessageQueue);
-    bool queueCongested = queueSpacesAvailable < (MESSAGE_QUEUE_SIZE / 4); // Less than 25% space
-    
+    bool queueCongested = queueSpacesAvailable < (MESSAGE_QUEUE_SIZE / 4);  // Less than 25% space
+
     // Decision matrix:
     // Small messages + low congestion = Direct transmission (fast)
     // Large messages OR high congestion = Queue (reliable)
-    
+
     bool useDirect = (payloadSize <= DIRECT_TRANSMISSION_THRESHOLD) && !queueCongested;
-    
+
     if (useDirect) {
         // Attempt direct transmission for speed
         bool success = attemptDirectTransmission(payload);
@@ -450,7 +445,7 @@ bool InterruptMessagingEngine::sendMessageIntelligent(const String& payload) {
         }
         // Direct failed, fall through to queuing
     }
-    
+
     // Use queued transmission for reliability
     return queueMessageForTransmission(payload);
 }
@@ -467,11 +462,11 @@ bool InterruptMessagingEngine::attemptDirectTransmission(const String& payload) 
         }
         return false;
     });
-    
+
     if (success) {
         Serial.flush();
     }
-    
+
     return success;
 }
 
@@ -546,7 +541,7 @@ void InterruptMessagingEngine::transportUpdate() {
 String InterruptMessagingEngine::transportGetStatus() {
     String status = String("Core1 Engine - Running: ") + (running ? "Yes" : "No") +
                     ", RX: " + String(messagesReceived) + ", TX: " + String(messagesSent);
-    
+
     if (binaryFramer) {
         const auto& stats = binaryFramer->getStatistics();
         status += ", Errors: " + String(stats.crcErrors + stats.framingErrors);
@@ -614,7 +609,5 @@ void InterruptMessagingEngine::routeInternalMessage(const InternalMessage& messa
 }
 
 }  // namespace Core1
-
-
 
 }  // namespace Messaging

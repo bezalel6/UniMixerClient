@@ -2,7 +2,7 @@
 #define OTA_APPLICATION_H
 
 #include <Arduino.h>
-#include "../../include/BootManager.h"
+#include "BootManager.h"
 
 namespace OTA {
 
