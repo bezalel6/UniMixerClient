@@ -51,7 +51,7 @@ bool InterruptMessagingEngine::init() {
         return true;
     }
 
-    ESP_LOGI(TAG, "Initializing Core 1 Interrupt Messaging Engine");
+    ESP_LOGW(TAG, "Initializing Core 1 Interrupt Messaging Engine");
 
     // Get MessageCore instance
     messageCore = &MessageCore::getInstance();
@@ -101,7 +101,7 @@ bool InterruptMessagingEngine::init() {
     rxBufferPos = 0;
 
     initialized = true;
-    ESP_LOGI(TAG, "Core 1 Messaging Engine initialized successfully");
+    ESP_LOGW(TAG, "Core 1 Messaging Engine initialized successfully");
     return true;
 }
 
@@ -116,7 +116,10 @@ bool InterruptMessagingEngine::start() {
         return true;
     }
 
-    ESP_LOGI(TAG, "Starting Core 1 Messaging Engine task");
+    ESP_LOGW(TAG, "Starting Core 1 Messaging Engine task");
+
+    // CRITICAL: Set running = true BEFORE creating task to avoid race condition
+    running = true;
 
     // Create messaging task on Core 1
     BaseType_t result = xTaskCreatePinnedToCore(
@@ -131,11 +134,11 @@ bool InterruptMessagingEngine::start() {
 
     if (result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create messaging task on Core 1");
+        running = false;  // Reset on failure
         return false;
     }
 
-    running = true;
-    ESP_LOGI(TAG, "Core 1 Messaging Engine started successfully");
+    ESP_LOGW(TAG, "Core 1 Messaging Engine started successfully");
     return true;
 }
 
@@ -144,7 +147,7 @@ void InterruptMessagingEngine::stop() {
         return;
     }
 
-    ESP_LOGI(TAG, "Stopping Core 1 Messaging Engine");
+    ESP_LOGW(TAG, "Stopping Core 1 Messaging Engine");
     running = false;
 
     if (messagingTaskHandle) {
@@ -152,7 +155,7 @@ void InterruptMessagingEngine::stop() {
         messagingTaskHandle = nullptr;
     }
 
-    ESP_LOGI(TAG, "Core 1 Messaging Engine stopped");
+    ESP_LOGW(TAG, "Core 1 Messaging Engine stopped");
 }
 
 bool InterruptMessagingEngine::isRunning() {
@@ -172,7 +175,7 @@ void InterruptMessagingEngine::getStats(uint32_t& msgReceived, uint32_t& msgSent
 // =============================================================================
 
 void InterruptMessagingEngine::messagingTask(void* parameter) {
-    ESP_LOGI(TAG, "Core 1 Messaging Task started on Core %d", xPortGetCoreID());
+    ESP_LOGW(TAG, "Core 1 Messaging Task started on Core %d", xPortGetCoreID());
 
     TickType_t lastWakeTime = xTaskGetTickCount();
     const TickType_t taskFrequency = pdMS_TO_TICKS(5);  // 5ms cycle time
@@ -196,7 +199,7 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
         vTaskDelayUntil(&lastWakeTime, taskFrequency);
     }
 
-    ESP_LOGI(TAG, "Core 1 Messaging Task ended");
+    ESP_LOGW(TAG, "Core 1 Messaging Task ended");
     vTaskDelete(nullptr);
 }
 
@@ -274,13 +277,13 @@ void InterruptMessagingEngine::uartISR(void* arg) {
 }
 
 bool InterruptMessagingEngine::initUART() {
-    ESP_LOGI(TAG, "Initializing UART with standard driver");
+    ESP_LOGW(TAG, "Initializing UART with standard driver");
 
     // Check if UART driver is already installed (likely by logging system)
     bool driverAlreadyInstalled = uart_is_driver_installed(UART_NUM_0);
 
     if (driverAlreadyInstalled) {
-        ESP_LOGI(TAG, "UART driver already installed by system (likely logging) - using existing driver");
+        ESP_LOGW(TAG, "UART driver already installed by system (likely logging) - using existing driver");
 
         // Configure UART parameters on existing driver
         uart_config_t uart_config = {
@@ -297,17 +300,17 @@ bool InterruptMessagingEngine::initUART() {
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "Failed to reconfigure existing UART driver: %s - using current settings", esp_err_to_name(err));
         } else {
-            ESP_LOGI(TAG, "Successfully reconfigured existing UART driver for messaging");
+            ESP_LOGW(TAG, "Successfully reconfigured existing UART driver for messaging");
         }
 
         // Flush any existing data in buffers
         uart_flush(UART_NUM_0);
 
-        ESP_LOGI(TAG, "UART messaging interface ready (using existing driver)");
+        ESP_LOGW(TAG, "UART messaging interface ready (using existing driver)");
         return true;
     } else {
         // No driver installed yet - install our own
-        ESP_LOGI(TAG, "No existing UART driver found - installing new driver");
+        ESP_LOGW(TAG, "No existing UART driver found - installing new driver");
 
         // Configure UART parameters
         uart_config_t uart_config = {
@@ -345,7 +348,7 @@ bool InterruptMessagingEngine::initUART() {
             return false;
         }
 
-        ESP_LOGI(TAG, "UART initialized with new driver installation");
+        ESP_LOGW(TAG, "UART initialized with new driver installation");
         return true;
     }
 }
@@ -370,7 +373,7 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
 // =============================================================================
 
 bool InterruptMessagingEngine::registerWithMessageCore() {
-    ESP_LOGI(TAG, "Registering with MessageCore as Serial transport");
+    ESP_LOGW(TAG, "Registering with MessageCore as Serial transport");
 
     TransportInterface transport;
     transport.sendRaw = transportSend;
@@ -385,7 +388,7 @@ bool InterruptMessagingEngine::registerWithMessageCore() {
     // Use the standard Serial transport name for compatibility
     messageCore->registerTransport(Config::TRANSPORT_NAME_SERIAL, transport);
 
-    ESP_LOGI(TAG, "Registered with MessageCore as '%s' transport successfully", Config::TRANSPORT_NAME_SERIAL);
+    ESP_LOGW(TAG, "Registered with MessageCore as '%s' transport successfully", Config::TRANSPORT_NAME_SERIAL);
     return true;
 }
 
@@ -449,7 +452,7 @@ void InterruptMessagingEngine::routeExternalMessage(const ExternalMessage& messa
         // MessageProtocol::InternalMessageCategory category =
         //     MessageProtocol::getExternalMessageCategory(message.messageType);
 
-        // Use MessageCore's routing logic by converting to internal message first
+        // Use MessageCore's routing logwc by converting to internal message first
         std::vector<InternalMessage> internalMessages =
             MessageConverter::externalToInternal(message);
 
