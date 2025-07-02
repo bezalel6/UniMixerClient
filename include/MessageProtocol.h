@@ -11,7 +11,7 @@
  * This system provides separate, dedicated enums for external vs internal messages
  * to ensure unmistakable separation and type safety:
  *
- * EXTERNAL MESSAGES: Cross transport boundaries (Serial/MQTT/Network)
+ * EXTERNAL MESSAGES: Cross transport boundaries (Serial in normal mode, network in OTA mode)
  * - Security validation required
  * - JSON serialization/deserialization
  * - Cross-device communication

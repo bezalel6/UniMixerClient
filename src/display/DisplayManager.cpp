@@ -1,5 +1,5 @@
 #include "DisplayManager.h"
-#include "../application/TaskManager.h"
+#include "../core/TaskManager.h"
 #include "../include/UIConstants.h"
 #include <SPI.h>
 #include <cinttypes>
@@ -325,15 +325,7 @@ static ConnectionStatus statusStringToConnectionStatus(const char *statusText) {
     }
 }
 
-void updateMqttStatus(lv_obj_t *mqttLabel, const char *statusText) {
-    updateLabelString(mqttLabel, statusText);
-}
-
-void updateMqttStatus(lv_obj_t *mqttLabel, lv_obj_t *indicatorObj,
-                      const char *statusText) {
-    ConnectionStatus status = statusStringToConnectionStatus(statusText);
-    updateConnectionStatus(mqttLabel, indicatorObj, statusText, status);
-}
+// MQTT UI functions removed - network transports available only during OTA mode
 
 float getFPS(void) { return currentFPS; }
 

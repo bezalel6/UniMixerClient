@@ -1,8 +1,8 @@
 #pragma once
 
-#include "MessageCore.h"
-#include "MessageData.h"
-#include "MessageConfig.h"
+#include "system/MessageCore.h"
+#include "protocol/MessageData.h"
+#include "protocol/MessageConfig.h"
 
 namespace Messaging {
 
@@ -80,22 +80,8 @@ class MessageAPI {
     // TRANSPORT MANAGEMENT
     // =============================================================================
 
-    /**
-     * Register MQTT transport
-     */
-    static void registerMqttTransport(
-        std::function<bool(const String& payload)> sendFunction,
-        std::function<bool()> isConnectedFunction,
-        std::function<void()> updateFunction = nullptr,
-        std::function<String()> getStatusFunction = nullptr) {
-        TransportInterface transport;
-        transport.sendRaw = sendFunction;
-        transport.isConnected = isConnectedFunction;
-        transport.update = updateFunction;
-        transport.getStatus = getStatusFunction;
-
-        MessageCore::getInstance().registerTransport(Config::TRANSPORT_NAME_MQTT, transport);
-    }
+    // Network transports (MQTT, HTTP, etc.) available only during OTA mode
+    // Normal mode uses only local transports (Serial, etc.) for maximum performance
 
     /**
      * Register Serial transport

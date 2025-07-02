@@ -1,7 +1,7 @@
 #include "UiEventHandlers.h"
-#include "../application/AudioManager.h"
-#include "../application/AudioUI.h"
-#include "../application/LVGLMessageHandler.h"
+#include "../application/audio/AudioManager.h"
+#include "../application/audio/AudioUI.h"
+#include "../application/ui/LVGLMessageHandler.h"
 
 #include "../hardware/DeviceManager.h"
 
@@ -207,6 +207,7 @@ void volumeArcChangedHandler(lv_event_t *e) {
     if (volumeDebounceTimer) {
         lv_timer_delete(volumeDebounceTimer);
         volumeDebounceTimer = nullptr;
+    }
 
     // Store the pending volume value
     pendingVolumeValue = volume;

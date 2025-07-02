@@ -4,17 +4,17 @@
 // Messaging Transport Configuration
 // Enable/disable different transport methods at compile time
 
-// MQTT Transport (via WiFi)
+// Network Transports (available only during OTA mode for maximum normal mode performance)
 #define MESSAGING_ENABLE_MQTT_TRANSPORT 0
 
 // Serial Transport (via USB/UART)
 #define MESSAGING_ENABLE_SERIAL_TRANSPORT 1
 
-// Dual Transport Mode (both MQTT and Serial simultaneously)
+// Network-free Normal Mode (Serial only), Network available during OTA mode  
 #define MESSAGING_ENABLE_DUAL_TRANSPORT 0
 
-// Default transport selection
-// 0 = MQTT only, 1 = Serial only, 2 = Both transports
+// Transport mode for normal operation
+// 0 = Network (OTA mode only), 1 = Serial (normal mode), 2 = Dynamic (mode-dependent)
 #define MESSAGING_DEFAULT_TRANSPORT 1
 
 // Serial Configuration (ESP32-S3)
