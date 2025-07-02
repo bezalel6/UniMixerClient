@@ -24,9 +24,37 @@
 #define MESSAGING_SERIAL_TIMEOUT_MS 1000       // Match server read/write timeout
 
 // Debug Configuration
-#define MESSAGING_DEBUG_ENABLED 1
+#define MESSAGING_DEBUG_ENABLED 0
 #define MESSAGING_LOG_ALL_MESSAGES 0
 #define MESSAGING_DESERIALIZATION_DEBUG_MODE 0  // 0 = Normal processing, 1 = Log to UI only
+
+// Binary Protocol Debug Configuration
+// Set to 1 to enable, 0 to disable for production builds
+#define BINARY_PROTOCOL_DEBUG_FRAMES 0       // Enable detailed binary frame debugging
+#define BINARY_PROTOCOL_DEBUG_HEX_DUMP 0     // Enable hex dump of transmitted frames
+#define BINARY_PROTOCOL_DEBUG_CRC_DETAILS 0  // Enable CRC calculation debugging
+
+/*
+ * Binary Protocol Debug Usage:
+ *
+ * BINARY_PROTOCOL_DEBUG_FRAMES:
+ *   - Shows frame structure analysis (start/end markers, length, type)
+ *   - State machine transitions in the framer
+ *   - Message completion notifications
+ *   - Uses ESP_LOGW level for visibility
+ *
+ * BINARY_PROTOCOL_DEBUG_HEX_DUMP:
+ *   - Hex dumps of transmitted and received data
+ *   - ASCII representation where printable
+ *   - Limited to first 64 bytes to avoid log spam
+ *
+ * BINARY_PROTOCOL_DEBUG_CRC_DETAILS:
+ *   - CRC calculation process
+ *   - CRC verification during reception
+ *   - Hex dump of data used for CRC calculation
+ *
+ * For production: Set all to 0 to reduce log noise and improve performance
+ */
 
 // Performance Configuration
 #define MESSAGING_MAX_HANDLERS 10              // Maximum number of message handlers

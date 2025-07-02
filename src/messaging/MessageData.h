@@ -322,38 +322,78 @@ namespace MessageParser {
 /**
  * Parse external message type from JSON payload
  * EFFICIENT: Direct string comparison with enum mapping
+ * FIXED: Handles both "messageType" and "MessageType" field names
  */
 inline MessageProtocol::ExternalMessageType parseExternalMessageType(const String& jsonPayload) {
-    JsonDocument doc;
+    JsonDocument doc(4096);  // Larger buffer for Unicode support
     if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
+        ESP_LOGW("MessageParser", "Failed to parse messageType from JSON: %s", jsonPayload.c_str());
         return MessageProtocol::ExternalMessageType::INVALID;
     }
 
-    return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType", MessageProtocol::ExternalMessageType::INVALID);
+    // Try both field name cases for messageType
+    if (doc["MessageType"].is<int>()) {
+        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType", MessageProtocol::ExternalMessageType::INVALID);
+    } else if (doc["messageType"].is<int>()) {
+        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "messageType", MessageProtocol::ExternalMessageType::INVALID);
+    }
+
+    ESP_LOGW("MessageParser", "No valid messageType field found in JSON");
+    return MessageProtocol::ExternalMessageType::INVALID;
 }
 
 /**
  * Parse complete external message from JSON payload
  * EFFICIENT: Single JSON parse, direct field extraction
+ * FIXED: Handles both "messageType" and "MessageType" field names + Unicode support
  */
 inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
-    JsonDocument doc;
-    if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
+    // Use larger JsonDocument to handle Unicode strings and complex messages
+    JsonDocument doc(8192);  // 8KB buffer for large messages with Unicode
+
+    DeserializationError error = deserializeJson(doc, jsonPayload);
+    if (error) {
+        ESP_LOGW("MessageParser", "JSON deserialization failed: %s", error.c_str());
+        ESP_LOGW("MessageParser", "Failed payload: %s", jsonPayload.c_str());
         return ExternalMessage();
     }
 
-    MessageProtocol::ExternalMessageType type = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType");
+    // Try both field name cases for messageType (handle inconsistency)
+    MessageProtocol::ExternalMessageType type = MessageProtocol::ExternalMessageType::INVALID;
+
+    // First try uppercase "MessageType" (existing standard)
+    if (doc["MessageType"].is<int>()) {
+        type = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType");
+    }
+    // Fall back to lowercase "messageType" (incoming message format)
+    else if (doc["messageType"].is<int>()) {
+        int typeNum = doc["messageType"] | static_cast<int>(MessageProtocol::ExternalMessageType::INVALID);
+        auto parsedType = static_cast<MessageProtocol::ExternalMessageType>(typeNum);
+        type = MessageProtocol::isValidExternalMessageType(parsedType) ? parsedType : MessageProtocol::ExternalMessageType::INVALID;
+    }
 
     if (type == MessageProtocol::ExternalMessageType::INVALID) {
+        ESP_LOGW("MessageParser", "Invalid or missing messageType field in JSON");
+        ESP_LOGW("MessageParser", "Available fields in JSON:");
+        for (JsonPair kv : doc.as<JsonObject>()) {
+            ESP_LOGW("MessageParser", "  - %s", kv.key().c_str());
+        }
         return ExternalMessage();
     }
 
-    ExternalMessage message(type,
-                            doc["RequestId"] | "",
-                            doc["DeviceId"] | "");
-    message.originatingDeviceId = doc["OriginatingDeviceId"] | "";
-    message.timestamp = doc["Timestamp"] | millis();
+    // Try both field name cases for other fields as well
+    String requestId = doc["RequestId"] | doc["requestId"] | "";
+    String deviceId = doc["DeviceId"] | doc["deviceId"] | "";
+    String originatingDeviceId = doc["OriginatingDeviceId"] | doc["originatingDeviceId"] | "";
+    unsigned long timestamp = doc["Timestamp"] | doc["timestamp"] | millis();
+
+    ExternalMessage message(type, requestId, deviceId);
+    message.originatingDeviceId = originatingDeviceId;
+    message.timestamp = timestamp;
     message.parsedData = doc;  // Store the parsed JSON data
+
+    ESP_LOGD("MessageParser", "Successfully parsed external message: type=%d, deviceId=%s",
+             static_cast<int>(type), deviceId.c_str());
 
     return message;
 }

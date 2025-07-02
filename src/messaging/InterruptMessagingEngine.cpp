@@ -5,6 +5,8 @@
 #include "../include/MessagingConfig.h"
 #include "../include/BinaryProtocol.h"
 #include "../include/CoreLoggingFilter.h"
+#include "../include/DebugUtils.h"
+#include "../ui/screens/ui_screenDebug.h"
 #include <esp_log.h>
 #include <driver/gpio.h>
 
@@ -215,7 +217,7 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
     ESP_LOGW(TAG, "Core 1 Messaging Task started on Core %d", xPortGetCoreID());
 
     TickType_t lastWakeTime = xTaskGetTickCount();
-    const TickType_t taskFrequency = pdMS_TO_TICKS(5);  // 5ms cycle time
+    const TickType_t taskFrequency = pdMS_TO_TICKS(1);  // 1ms cycle time for better responsiveness
 
     // Track logging filter statistics
     TickType_t lastLogStatsTime = lastWakeTime;
@@ -260,53 +262,129 @@ void InterruptMessagingEngine::processIncomingData() {
         return;
     }
 
-    // Use standard UART read instead of interrupt-based approach
-    uint8_t data[64];
-    int length = uart_read_bytes(UART_NUM_0, data, sizeof(data), pdMS_TO_TICKS(1));
+    // Use Arduino Serial for consistency with transmission method
+    uint8_t data[256];  // Increased from 64 to 256 bytes
+    int length = 0;
+
+    // Read available data from Arduino Serial
+    while (Serial.available() && length < sizeof(data)) {
+        data[length] = Serial.read();
+        length++;
+    }
 
     if (length > 0) {
-        ESP_LOGD(TAG, "Received %d bytes from UART", length);
+        ESP_LOGW(TAG, "Received %d bytes from UART", length);
+
+#if BINARY_PROTOCOL_DEBUG_FRAMES
+        ESP_LOGW(TAG, "=== BINARY FRAME RECEPTION DEBUG ===");
+        ESP_LOGW(TAG, "Received %d bytes from UART", length);
+
+#if BINARY_PROTOCOL_DEBUG_HEX_DUMP
+        // Print what we received
+        ESP_LOGW(TAG, "Received data hex dump:");
+        for (int i = 0; i < length; i += 16) {
+            char hexLine[64] = {0};
+            char asciiLine[20] = {0};
+            int hexPos = 0;
+            int asciiPos = 0;
+
+            for (int j = 0; j < 16 && (i + j) < length; j++) {
+                uint8_t byte = data[i + j];
+                hexPos += snprintf(hexLine + hexPos, sizeof(hexLine) - hexPos, "%02X ", byte);
+                asciiLine[asciiPos++] = (byte >= 32 && byte <= 126) ? byte : '.';
+            }
+            ESP_LOGW(TAG, "  %04X: %-48s |%s|", i, hexLine, asciiLine);
+        }
+#endif
+        ESP_LOGW(TAG, "=== END RECEPTION DEBUG ===");
+#endif
 
         // Process incoming bytes through binary protocol framer
         std::vector<String> decodedMessages = binaryFramer->processIncomingBytes(data, length);
 
+#if BINARY_PROTOCOL_DEBUG_FRAMES
+        ESP_LOGW(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
+#else
         ESP_LOGD(TAG, "Binary framer decoded %zu messages", decodedMessages.size());
+#endif
 
         // Process each decoded JSON message
         for (const String& jsonMessage : decodedMessages) {
+#if BINARY_PROTOCOL_DEBUG_FRAMES
+            ESP_LOGW(TAG, "Decoded JSON: %s", jsonMessage.c_str());
+#else
             ESP_LOGD(TAG, "Decoded JSON: %s", jsonMessage.c_str());
+#endif
+
+            // Log every received message payload to UI
+            LOG_TO_UI(ui_txtAreaDebugLog, ("RX: " + jsonMessage).c_str());
+
+            // Enhanced logging for message parsing
+            ESP_LOGW(TAG, "=== PARSING MESSAGE ===");
+            ESP_LOGW(TAG, "JSON Length: %d characters", jsonMessage.length());
+            ESP_LOGW(TAG, "JSON Preview: %.100s%s", jsonMessage.c_str(),
+                     jsonMessage.length() > 100 ? "..." : "");
 
             ExternalMessage message;
             if (parseCompleteMessage(jsonMessage.c_str(), jsonMessage.length(), message)) {
                 messagesReceived++;
+                ESP_LOGW(TAG, "✓ Message parsed successfully:");
+                ESP_LOGW(TAG, "  - Type: %d", static_cast<int>(message.messageType));
+                ESP_LOGW(TAG, "  - Device ID: %s", message.deviceId.c_str());
+                ESP_LOGW(TAG, "  - Timestamp: %lu", message.timestamp);
+                ESP_LOGW(TAG, "  - Validated: %s", message.validated ? "YES" : "NO");
+
+                // Log to UI with success indicator
+                LOG_TO_UI(ui_txtAreaDebugLog, ("✓ PARSED: Type=" + String(static_cast<int>(message.messageType)) +
+                                               " Device=" + message.deviceId)
+                                                  .c_str());
+
                 routeExternalMessage(message);
+#if BINARY_PROTOCOL_DEBUG_FRAMES
+                ESP_LOGW(TAG, "Message parsed and routed successfully");
+#else
                 ESP_LOGD(TAG, "Message parsed and routed successfully");
+#endif
             } else {
                 bufferOverruns++;
-                ESP_LOGW(TAG, "Failed to parse decoded JSON message: %s", jsonMessage.c_str());
+                ESP_LOGW(TAG, "✗ PARSE FAILED for JSON message");
+                ESP_LOGW(TAG, "Failed JSON: %s", jsonMessage.c_str());
+
+                // Try to identify specific parsing issues
+                JsonDocument testDoc(8192);
+                DeserializationError error = deserializeJson(testDoc, jsonMessage);
+                if (error) {
+                    ESP_LOGW(TAG, "JSON deserialization error: %s", error.c_str());
+                    LOG_TO_UI(ui_txtAreaDebugLog, ("✗ JSON ERROR: " + String(error.c_str())).c_str());
+                } else {
+                    ESP_LOGW(TAG, "JSON parsed OK, but message structure invalid");
+                    ESP_LOGW(TAG, "Available JSON fields:");
+                    for (JsonPair kv : testDoc.as<JsonObject>()) {
+                        ESP_LOGW(TAG, "  - %s: %s", kv.key().c_str(), kv.value().as<String>().c_str());
+                    }
+                    LOG_TO_UI(ui_txtAreaDebugLog, ("✗ STRUCTURE ERROR: Valid JSON but invalid message").c_str());
+                }
+
+                // Also log parsing failures to UI
+                LOG_TO_UI(ui_txtAreaDebugLog, ("PARSE ERROR: " + jsonMessage).c_str());
             }
+            ESP_LOGW(TAG, "=== END PARSING ===");
         }
     }
 }
 
 void InterruptMessagingEngine::processOutgoingMessages() {
+    // NOTE: We now use direct transmission in transportSend() instead of queued frames
+    // This method is kept for compatibility but should not receive any messages
+    // since we're using the SerialBridge-style direct transmission approach
+
     BinaryMessage* messagePtr;
-
-    // Process all queued outgoing messages
     while (xQueueReceive(outgoingMessageQueue, &messagePtr, 0) == pdTRUE) {
-        if (messagePtr && messagePtr->data && messagePtr->length > 0) {
-            ESP_LOGD(TAG, "Sending binary frame: %zu bytes", messagePtr->length);
-
-            // Send binary data via UART
-            if (sendRawData(reinterpret_cast<const char*>(messagePtr->data), messagePtr->length)) {
-                messagesSent++;
-                ESP_LOGD(TAG, "Binary frame transmitted successfully");
-            } else {
-                ESP_LOGE(TAG, "UART transmission failed");
+        ESP_LOGW(TAG, "Unexpected queued message received - cleaning up");
+        if (messagePtr) {
+            if (messagePtr->data) {
+                delete[] messagePtr->data;
             }
-
-            // Clean up message
-            delete[] messagePtr->data;
             delete messagePtr;
         }
     }
@@ -332,80 +410,46 @@ void InterruptMessagingEngine::uartISR(void* arg) {
 }
 
 bool InterruptMessagingEngine::initUART() {
-    ESP_LOGW(TAG, "Initializing UART with standard driver");
+    ESP_LOGW(TAG, "Initializing Arduino Serial interface (like working SerialBridge)");
 
-    // Check if UART driver is already installed (likely by logging system)
-    bool driverAlreadyInstalled = uart_is_driver_installed(UART_NUM_0);
+    // Use Arduino Serial initialization for consistency with Serial.write()
+    Serial.begin(MESSAGING_SERIAL_BAUD_RATE);
 
-    if (driverAlreadyInstalled) {
-        ESP_LOGW(TAG, "UART driver already installed by system (likely logging) - using existing driver");
+    // Wait for Serial to be ready
+    unsigned long startTime = millis();
+    const unsigned long SERIAL_TIMEOUT_MS = 5000;  // 5 seconds max wait
 
-        // Configure UART parameters on existing driver
-        uart_config_t uart_config = {
-            .baud_rate = MESSAGING_SERIAL_BAUD_RATE,
-            .data_bits = UART_DATA_8_BITS,
-            .parity = UART_PARITY_DISABLE,
-            .stop_bits = UART_STOP_BITS_1,
-            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-            .rx_flow_ctrl_thresh = 0,
-            .source_clk = UART_SCLK_APB,
-        };
-
-        esp_err_t err = uart_param_config(UART_NUM_0, &uart_config);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to reconfigure existing UART driver: %s - using current settings", esp_err_to_name(err));
-        } else {
-            ESP_LOGW(TAG, "Successfully reconfigured existing UART driver for messaging");
-        }
-
-        // Flush any existing data in buffers
-        uart_flush(UART_NUM_0);
-
-        ESP_LOGW(TAG, "UART messaging interface ready (using existing driver)");
-        return true;
-    } else {
-        // No driver installed yet - install our own
-        ESP_LOGW(TAG, "No existing UART driver found - installing new driver");
-
-        // Configure UART parameters
-        uart_config_t uart_config = {
-            .baud_rate = MESSAGING_SERIAL_BAUD_RATE,
-            .data_bits = UART_DATA_8_BITS,
-            .parity = UART_PARITY_DISABLE,
-            .stop_bits = UART_STOP_BITS_1,
-            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-            .rx_flow_ctrl_thresh = 0,
-            .source_clk = UART_SCLK_APB,
-        };
-
-        // Install UART driver with standard buffers
-        esp_err_t err = uart_driver_install(UART_NUM_0,
-                                            UART_RX_BUFFER_SIZE,
-                                            UART_TX_BUFFER_SIZE,
-                                            0, nullptr, 0);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to install UART driver: %s", esp_err_to_name(err));
-            return false;
-        }
-
-        // Configure UART parameters
-        err = uart_param_config(UART_NUM_0, &uart_config);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to configure UART: %s", esp_err_to_name(err));
-            return false;
-        }
-
-        // Set pins (using default pins)
-        err = uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
-                           UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to set UART pins: %s", esp_err_to_name(err));
-            return false;
-        }
-
-        ESP_LOGW(TAG, "UART initialized with new driver installation");
-        return true;
+    while (!Serial && (millis() - startTime) < SERIAL_TIMEOUT_MS) {
+        delay(10);  // Small delay while waiting for Serial
     }
+
+    if (!Serial) {
+        ESP_LOGE(TAG, "Arduino Serial failed to initialize within timeout");
+        return false;
+    }
+
+    // Give Serial a moment to fully initialize
+    delay(100);
+
+    // Clear any existing data in buffers
+    while (Serial.available()) {
+        Serial.read();
+    }
+
+    ESP_LOGW(TAG, "Arduino Serial initialized successfully at %d baud", MESSAGING_SERIAL_BAUD_RATE);
+    ESP_LOGW(TAG, "Serial ready: %s", Serial ? "YES" : "NO");
+
+    // Verify Serial is working by checking if we can write/flush
+    size_t testWrite = Serial.write(0x00);  // Test writing a null byte
+    Serial.flush();
+
+    if (testWrite == 1) {
+        ESP_LOGW(TAG, "Serial null byte test successful - ready for binary protocol");
+    } else {
+        ESP_LOGW(TAG, "Serial null byte test failed - may have issues with binary data");
+    }
+
+    return true;
 }
 
 bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
@@ -413,13 +457,108 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
         return false;
     }
 
-    if (xSemaphoreTake(uartMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        int written = uart_write_bytes(UART_NUM_0, data, length);
-        xSemaphoreGive(uartMutex);
+    // Debug logging for null bytes (keep existing debug code)
+    ESP_LOGW(TAG, "=== NULL BYTE DEBUG ===");
+    ESP_LOGW(TAG, "Checking %zu bytes for null bytes:", length);
+    int nullCount = 0;
+    for (size_t i = 0; i < length && i < 16; i++) {
+        uint8_t byte = static_cast<uint8_t>(data[i]);
+        if (byte == 0x00) {
+            ESP_LOGW(TAG, "  NULL BYTE at position %zu", i);
+            nullCount++;
+        }
+        ESP_LOGW(TAG, "  [%zu]: 0x%02X", i, byte);
+    }
+    ESP_LOGW(TAG, "Total null bytes in header: %d", nullCount);
+    ESP_LOGW(TAG, "=== END NULL BYTE DEBUG ===");
 
-        return (written == length);
+    if (xSemaphoreTake(uartMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        bool success = false;
+
+        // Use Arduino Serial.write() (same as working SerialBridge)
+        ESP_LOGW(TAG, "Using Arduino Serial.write() (working SerialBridge method)");
+
+        // CRITICAL DEBUG: Show exactly what we're trying to send
+        ESP_LOGW(TAG, "=== PRE-TRANSMISSION BYTE VERIFICATION ===");
+        for (size_t i = 0; i < std::min(length, size_t(16)); i++) {
+            uint8_t byte = static_cast<uint8_t>(data[i]);
+            ESP_LOGW(TAG, "  TX[%zu]: 0x%02X ('%c') %s", i, byte,
+                     (byte >= 32 && byte <= 126) ? byte : '.',
+                     (byte == 0x00) ? "← NULL BYTE" : "");
+        }
+        ESP_LOGW(TAG, "=== END PRE-TRANSMISSION DEBUG ===");
+
+        try {
+            size_t written = Serial.write(reinterpret_cast<const uint8_t*>(data), length);
+            Serial.flush();  // Ensure all bytes are transmitted
+
+            if (written == length) {
+                ESP_LOGW(TAG, "Arduino Serial bulk transmission successful: %zu bytes", written);
+                success = true;
+            } else {
+                ESP_LOGW(TAG, "Arduino Serial bulk failed: %zu out of %zu bytes", written, length);
+            }
+
+            // ALWAYS try the exact SerialBridge method regardless of bulk success
+            // This helps us debug if the issue is bulk vs individual writes
+            ESP_LOGW(TAG, "=== TRYING EXACT SERIALBRIDGE METHOD ===");
+            ESP_LOGW(TAG, "Individual Serial.write() calls like working SerialBridge");
+
+            size_t totalIndividualWritten = 0;
+            bool individualSuccess = true;
+
+            for (size_t i = 0; i < length; i++) {
+                uint8_t byte = static_cast<uint8_t>(data[i]);
+                size_t byteResult = Serial.write(byte);
+
+                if (byteResult == 1) {
+                    totalIndividualWritten++;
+
+                    // Debug critical header bytes and null bytes
+                    if (i < 16 || byte == 0x00) {
+                        ESP_LOGW(TAG, "  Individual TX[%zu]: 0x%02X %s result=%zu",
+                                 i, byte, (byte == 0x00) ? "NULL!" : "", byteResult);
+                    }
+
+                    // Extra care for null bytes (like working SerialBridge)
+                    if (byte == 0x00) {
+                        Serial.flush();  // Immediate flush after null bytes
+                        delay(2);        // Slightly longer delay for null bytes
+                    }
+                } else {
+                    ESP_LOGW(TAG, "Individual write FAILED at byte %zu: 0x%02X", i, byte);
+                    individualSuccess = false;
+                    break;
+                }
+            }
+
+            Serial.flush();  // Final flush
+            ESP_LOGW(TAG, "Individual writes result: %zu out of %zu bytes written",
+                     totalIndividualWritten, length);
+
+            // Use individual method result if it's better
+            if (individualSuccess && totalIndividualWritten == length) {
+                ESP_LOGW(TAG, "Individual write method successful!");
+                success = true;
+            } else if (!success) {
+                ESP_LOGW(TAG, "Both bulk and individual methods failed");
+                success = false;
+            }
+        } catch (...) {
+            ESP_LOGE(TAG, "Exception during Arduino Serial transmission");
+            success = false;
+        }
+
+        // Clear any received data that might be echo/garbage
+        while (Serial.available()) {
+            Serial.read();
+        }
+
+        xSemaphoreGive(uartMutex);
+        return success;
     }
 
+    ESP_LOGE(TAG, "Failed to acquire UART mutex");
     return false;
 }
 
@@ -453,31 +592,32 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGD(TAG, "Encoding JSON message: %d bytes", payload.length());
+    ESP_LOGD(TAG, "Sending JSON message using direct transmission: %d bytes", payload.length());
 
-    // Encode JSON payload using binary protocol
-    std::vector<uint8_t> binaryFrame = binaryFramer->encodeMessage(payload);
-    if (binaryFrame.empty()) {
-        ESP_LOGE(TAG, "Failed to encode message with binary protocol");
+    // Use direct transmission method (like working SerialBridge)
+    bool success = binaryFramer->transmitMessageDirect(payload, [](uint8_t byte) -> bool {
+        // Write byte using Arduino Serial and check success
+        size_t written = Serial.write(byte);
+        if (written == 1) {
+            // Extra care for null bytes
+            if (byte == 0x00) {
+                Serial.flush();  // Immediate flush after null bytes
+                delay(2);        // Extra delay for null bytes
+            }
+            return true;
+        }
+        return false;
+    });
+
+    if (!success) {
+        ESP_LOGE(TAG, "Direct transmission failed");
         return false;
     }
 
-    ESP_LOGD(TAG, "Binary frame encoded: %zu bytes", binaryFrame.size());
+    // Final flush to ensure all data is transmitted
+    Serial.flush();
 
-    // Create binary message for queue (allocate on heap for queue)
-    BinaryMessage* messagePtr = new BinaryMessage();
-    messagePtr->length = binaryFrame.size();
-    messagePtr->data = new uint8_t[messagePtr->length];
-    memcpy(messagePtr->data, binaryFrame.data(), messagePtr->length);
-
-    if (xQueueSend(outgoingMessageQueue, &messagePtr, pdMS_TO_TICKS(10)) != pdTRUE) {
-        delete[] messagePtr->data;
-        delete messagePtr;
-        ESP_LOGE(TAG, "Failed to queue binary message");
-        return false;
-    }
-
-    ESP_LOGD(TAG, "Binary message queued for transmission");
+    ESP_LOGD(TAG, "Direct transmission completed successfully");
     return true;
 }
 

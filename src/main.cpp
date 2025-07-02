@@ -32,6 +32,7 @@ void setup() {
     // Initialize Core 1-only logging filter FIRST to prevent interference
     // This must be done before any ESP_LOG calls to ensure proper filtering
     CoreLoggingFilter::init();
+    CoreLoggingFilter::disableFilter();
 
     // NOTE: UART/Serial initialization is now handled by InterruptMessagingEngine
     // to avoid driver conflicts

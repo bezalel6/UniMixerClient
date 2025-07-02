@@ -3,18 +3,26 @@
 #include <Arduino.h>
 #include <vector>
 #include <cstdint>
+#include <functional>
 
 namespace BinaryProtocol {
 
 // =============================================================================
-// PROTOCOL CONSTANTS (from C# implementation)
+// ENHANCED MESSAGE FRAMING PROTOCOL (from working SerialBridge)
 // =============================================================================
 
-static const uint8_t START_MARKER = 0x7E;
-static const uint8_t END_MARKER = 0x7F;
-static const uint8_t ESCAPE_MARKER = 0x7D;
-static const uint8_t ESCAPE_XOR = 0x20;
-static const uint8_t JSON_MESSAGE_TYPE = 0x01;
+#define MSG_START_MARKER 0x7E   // Start of message
+#define MSG_END_MARKER 0x7F     // End of message
+#define MSG_ESCAPE_CHAR 0x7D    // Escape character for framing
+#define MSG_ESCAPE_XOR 0x20     // XOR value for escape sequences
+#define JSON_MESSAGE_TYPE 0x01  // JSON message type identifier
+
+// Legacy compatibility (map old names to new defines)
+#define START_MARKER MSG_START_MARKER
+#define END_MARKER MSG_END_MARKER
+#define ESCAPE_MARKER MSG_ESCAPE_CHAR
+#define ESCAPE_XOR MSG_ESCAPE_XOR
+
 static const uint32_t MAX_PAYLOAD_SIZE = 4096 * 2;  // 8192 bytes
 static const uint8_t HEADER_SIZE = 7;               // LENGTH(4) + CRC(2) + TYPE(1)
 static const uint32_t MESSAGE_TIMEOUT_MS = 1000;
@@ -89,6 +97,9 @@ class BinaryProtocolFramer {
     // Encoding
     std::vector<uint8_t> encodeMessage(const String& jsonPayload);
     bool encodeMessage(const String& jsonPayload, uint8_t* outputBuffer, size_t bufferSize, size_t& frameLength);
+
+    // Direct transmission (like working SerialBridge)
+    bool transmitMessageDirect(const String& jsonPayload, std::function<bool(uint8_t)> writeByteFunc);
 
     // Decoding
     std::vector<String> processIncomingBytes(const uint8_t* data, size_t length);
