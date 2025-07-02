@@ -377,7 +377,9 @@ bool InterruptMessagingEngine::registerWithMessageCore() {
     transport.isConnected = transportIsConnected;
     transport.update = transportUpdate;
     transport.getStatus = transportGetStatus;
-    transport.init = transportInit;
+    // CRITICAL FIX: Do NOT set transport.init to avoid infinite recursion
+    // The transport is already initialized by the time we register it
+    transport.init = nullptr;  // Transport already initialized
     transport.deinit = transportDeinit;
 
     // Use the standard Serial transport name for compatibility
@@ -418,9 +420,8 @@ String InterruptMessagingEngine::transportGetStatus() {
            ", Messages TX: " + String(messagesSent);
 }
 
-bool InterruptMessagingEngine::transportInit() {
-    return init() && start();
-}
+// REMOVED: transportInit() method removed to prevent infinite recursion
+// Transport initialization is handled directly by init() and start() methods
 
 void InterruptMessagingEngine::transportDeinit() {
     stop();

@@ -155,7 +155,7 @@ class InterruptMessagingEngine {
     static bool transportIsConnected();
     static void transportUpdate();
     static String transportGetStatus();
-    static bool transportInit();
+    // REMOVED: transportInit() - caused infinite recursion, transport init handled by init()/start()
     static void transportDeinit();
 
     // =============================================================================
