@@ -64,6 +64,13 @@ update_includes "application/services/MessageBusLogoSupplier.h" "logo/MessageBus
 echo "📁 Updating internal cross-references..."
 # These will be handled after files are moved
 
+# AUDIO SYSTEM PATH FIXES (files in deeper directory need ../../ paths)
+echo "📁 Fixing audio system include paths..."
+# Files in src/application/audio/ need ../../ to reach src/ subdirectories
+find src/application/audio/ -type f \( -name "*.cpp" -o -name "*.h" \) -exec sed -i 's|#include "../messaging/|#include "../../messaging/|g' {} \; 2>/dev/null || true
+find src/application/audio/ -type f \( -name "*.cpp" -o -name "*.h" \) -exec sed -i 's|#include "../logo/|#include "../../logo/|g' {} \; 2>/dev/null || true
+find src/application/audio/ -type f \( -name "*.cpp" -o -name "*.h" \) -exec sed -i 's|#include "../services/|#include "../../logo/|g' {} \; 2>/dev/null || true
+
 echo "✅ Include path updates complete!"
 echo "📋 Next steps:"
 echo "   1. Run this script after moving files"
