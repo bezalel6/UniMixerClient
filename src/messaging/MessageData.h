@@ -449,10 +449,10 @@ inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
 
     // Extract sessions from parsed data using camelCase constant
     if (message.parsedData[SESSIONS].is<JsonArray>()) {
-        JsonArray sessionsArray = message.parsedData[SESSIONS].as<JsonArray>();
-        size_t sessionCount = sessionsArray.size();
+        auto sessionsVariant = message.parsedData[SESSIONS];
+        size_t sessionCount = sessionsVariant.size();
         for (size_t i = 0; i < sessionCount; i++) {
-            auto sessionVar = sessionsArray[i];
+            auto sessionVar = sessionsVariant[i];
             SessionStatusData session;
             session.processId = sessionVar[PROCESS_ID] | 0;
             session.processName = sessionVar[PROCESS_NAME] | "";
@@ -466,7 +466,7 @@ inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
 
     // Extract default device information using camelCase constant
     if (message.parsedData[DEFAULT_DEVICE].is<JsonObject>()) {
-        JsonObject defaultVar = message.parsedData[DEFAULT_DEVICE].as<JsonObject>();
+        auto defaultVar = message.parsedData[DEFAULT_DEVICE];
         data.defaultDevice.friendlyName = defaultVar[FRIENDLY_NAME] | "";
         data.defaultDevice.volume = defaultVar[VOLUME] | 0.0f;
         data.defaultDevice.isMuted = defaultVar[IS_MUTED] | false;

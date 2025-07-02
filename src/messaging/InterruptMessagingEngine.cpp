@@ -351,7 +351,7 @@ void InterruptMessagingEngine::processIncomingData() {
                 ESP_LOGW(TAG, "Failed JSON: %s", jsonMessage.c_str());
 
                 // Try to identify specific parsing issues
-                JsonDocument testDoc(8192);
+                JsonDocument testDoc;
                 DeserializationError error = deserializeJson(testDoc, jsonMessage);
                 if (error) {
                     ESP_LOGW(TAG, "JSON deserialization error: %s", error.c_str());
@@ -362,7 +362,7 @@ void InterruptMessagingEngine::processIncomingData() {
                     for (JsonPair kv : testDoc.as<JsonObject>()) {
                         ESP_LOGW(TAG, "  - %s: %s", kv.key().c_str(), kv.value().as<String>().c_str());
                     }
-                    LOG_TO_UI(ui_txtAreaDebugLog, ("✗ STRUCTURE ERROR: Valid JSON but invalid message").c_str());
+                    LOG_TO_UI(ui_txtAreaDebugLog, "✗ STRUCTURE ERROR: Valid JSON but invalid message");
                 }
 
                 // Also log parsing failures to UI
