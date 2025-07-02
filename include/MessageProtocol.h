@@ -321,122 +321,60 @@ class InternalMessageTypeRegistry {
 }  // namespace MessageProtocol
 
 // =============================================================================
-// EXTERNAL JSON FIELD NAME CONSTANTS
+// EXTERNAL JSON FIELD NAME CONSTANTS (camelCase only)
 // =============================================================================
 
 namespace MessageProtocol {
 namespace JsonFields {
 
 // =============================================================================
-// CORE MESSAGE FIELDS - Support both incoming and outgoing formats
+// CORE MESSAGE FIELDS - camelCase format
 // =============================================================================
 
-// Message type field names (incoming vs outgoing)
-constexpr const char* INCOMING_MESSAGE_TYPE = "messageType";  // From external systems
-constexpr const char* OUTGOING_MESSAGE_TYPE = "MessageType";  // To external systems
-
-// Request identification fields
-constexpr const char* INCOMING_REQUEST_ID = "requestId";  // From external systems
-constexpr const char* OUTGOING_REQUEST_ID = "RequestId";  // To external systems
-
-// Device identification fields
-constexpr const char* INCOMING_DEVICE_ID = "deviceId";  // From external systems
-constexpr const char* OUTGOING_DEVICE_ID = "DeviceId";  // To external systems
-
-constexpr const char* INCOMING_ORIGINATING_DEVICE_ID = "originatingDeviceId";  // From external
-constexpr const char* OUTGOING_ORIGINATING_DEVICE_ID = "OriginatingDeviceId";  // To external
-
-// Timestamp fields
-constexpr const char* INCOMING_TIMESTAMP = "timestamp";  // From external systems
-constexpr const char* OUTGOING_TIMESTAMP = "Timestamp";  // To external systems
+// Core message identification fields
+constexpr const char* MESSAGE_TYPE = "messageType";
+constexpr const char* REQUEST_ID = "requestId";
+constexpr const char* DEVICE_ID = "deviceId";
+constexpr const char* ORIGINATING_DEVICE_ID = "originatingDeviceId";
+constexpr const char* TIMESTAMP = "timestamp";
 
 // =============================================================================
-// AUDIO STATUS MESSAGE FIELDS
+// AUDIO STATUS MESSAGE FIELDS - camelCase format
 // =============================================================================
 
-// Session data fields (typically from C# Audio Service)
-constexpr const char* SESSIONS = "sessions";       // Can be "Sessions" or "sessions"
-constexpr const char* SESSIONS_CAPS = "Sessions";  // Capitalized version
+// Session data fields
+constexpr const char* SESSIONS = "sessions";
 constexpr const char* ACTIVE_SESSION_COUNT = "activeSessionCount";
-constexpr const char* ACTIVE_SESSION_COUNT_CAPS = "ActiveSessionCount";
 
 // Individual session fields
 constexpr const char* PROCESS_ID = "processId";
-constexpr const char* PROCESS_ID_CAPS = "ProcessId";
 constexpr const char* PROCESS_NAME = "processName";
-constexpr const char* PROCESS_NAME_CAPS = "ProcessName";
 constexpr const char* DISPLAY_NAME = "displayName";
-constexpr const char* DISPLAY_NAME_CAPS = "DisplayName";
 constexpr const char* VOLUME = "volume";
-constexpr const char* VOLUME_CAPS = "Volume";
 constexpr const char* IS_MUTED = "isMuted";
-constexpr const char* IS_MUTED_CAPS = "IsMuted";
 constexpr const char* STATE = "state";
-constexpr const char* STATE_CAPS = "State";
 
 // Default device fields
 constexpr const char* DEFAULT_DEVICE = "defaultDevice";
-constexpr const char* DEFAULT_DEVICE_CAPS = "DefaultDevice";
 constexpr const char* FRIENDLY_NAME = "friendlyName";
-constexpr const char* FRIENDLY_NAME_CAPS = "FriendlyName";
 constexpr const char* DATA_FLOW = "dataFlow";
-constexpr const char* DATA_FLOW_CAPS = "DataFlow";
 constexpr const char* DEVICE_ROLE = "deviceRole";
-constexpr const char* DEVICE_ROLE_CAPS = "DeviceRole";
 
 // Message metadata fields
 constexpr const char* REASON = "reason";
-constexpr const char* REASON_CAPS = "Reason";
 constexpr const char* ORIGINATING_REQUEST_ID = "originatingRequestId";
-constexpr const char* ORIGINATING_REQUEST_ID_CAPS = "OriginatingRequestId";
 
 // =============================================================================
-// ASSET REQUEST/RESPONSE FIELDS
+// ASSET REQUEST/RESPONSE FIELDS - camelCase format
 // =============================================================================
 
 constexpr const char* SUCCESS = "success";
-constexpr const char* SUCCESS_CAPS = "Success";
 constexpr const char* ERROR_MESSAGE = "errorMessage";
-constexpr const char* ERROR_MESSAGE_CAPS = "ErrorMessage";
 constexpr const char* METADATA = "metadata";
-constexpr const char* METADATA_CAPS = "Metadata";
 constexpr const char* WIDTH = "width";
-constexpr const char* WIDTH_CAPS = "Width";
 constexpr const char* HEIGHT = "height";
-constexpr const char* HEIGHT_CAPS = "Height";
 constexpr const char* FORMAT = "format";
-constexpr const char* FORMAT_CAPS = "Format";
 constexpr const char* ASSET_DATA = "assetData";
-constexpr const char* ASSET_DATA_CAPS = "AssetData";
-
-// =============================================================================
-// HELPER MACROS FOR FIELD ACCESS
-// =============================================================================
-
-// Try both incoming and outgoing field name formats
-#define GET_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field, default_value) \
-    (doc[incoming_field] | doc[outgoing_field] | default_value)
-
-#define GET_STRING_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field) \
-    GET_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field, "")
-
-#define GET_INT_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field, default_value) \
-    GET_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field, default_value)
-
-#define GET_BOOL_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field) \
-    GET_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field, false)
-
-#define GET_FLOAT_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field) \
-    GET_FIELD_BOTH_CASES(doc, incoming_field, outgoing_field, 0.0f)
-
-// Check if field exists in either format
-#define HAS_FIELD_EITHER_CASE(doc, incoming_field, outgoing_field) \
-    (doc[incoming_field].is<JsonVariant>() || doc[outgoing_field].is<JsonVariant>())
-
-// Get the field name that actually exists (for logging)
-#define GET_EXISTING_FIELD_NAME(doc, incoming_field, outgoing_field)                                                 \
-    (doc[incoming_field].is<JsonVariant>() ? incoming_field : doc[outgoing_field].is<JsonVariant>() ? outgoing_field \
-                                                                                                    : "MISSING")
 
 }  // namespace JsonFields
 }  // namespace MessageProtocol
