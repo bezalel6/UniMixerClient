@@ -299,6 +299,7 @@ InternalMessage createNetworkInfoMessage(const String& ssid, const String& ip);
 InternalMessage createSDStatusMessage(const String& status, bool mounted);
 InternalMessage createAudioDeviceChangeMessage(const String& deviceName);
 InternalMessage createCoreToCoreSyncMessage(uint8_t fromCore, uint8_t toCore);
+InternalMessage createDebugUILogMessage(const String& logMessage);
 
 }  // namespace MessageConverter
 
@@ -328,8 +329,7 @@ inline MessageProtocol::ExternalMessageType parseExternalMessageType(const Strin
         return MessageProtocol::ExternalMessageType::INVALID;
     }
 
-    String typeStr = doc["MessageType"] | "";
-    return MessageProtocol::stringToExternalMessageType(typeStr);
+    return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType", MessageProtocol::ExternalMessageType::INVALID);
 }
 
 /**
@@ -342,8 +342,7 @@ inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
         return ExternalMessage();
     }
 
-    String typeStr = doc["MessageType"] | "";
-    MessageProtocol::ExternalMessageType type = MessageProtocol::stringToExternalMessageType(typeStr);
+    MessageProtocol::ExternalMessageType type = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, "MessageType");
 
     if (type == MessageProtocol::ExternalMessageType::INVALID) {
         return ExternalMessage();
@@ -454,7 +453,7 @@ inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
  */
 inline String createStatusResponse(const AudioStatusData& data) {
     JsonDocument doc;
-    doc["MessageType"] = MessageProtocol::externalMessageTypeToString(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
+    doc["MessageType"] = SERIALIZE_EXTERNAL_MSG_TYPE(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
     doc["DeviceId"] = Config::getDeviceId();
     doc["Timestamp"] = data.timestamp;
     doc["ActiveSessionCount"] = data.activeSessionCount;

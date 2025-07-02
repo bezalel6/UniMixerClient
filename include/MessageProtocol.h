@@ -82,6 +82,7 @@ enum class InternalMessageType : uint16_t {
     UI_UPDATE = 201,
     BUTTON_PRESS = 202,
     UI_REFRESH = 203,
+    DEBUG_UI_LOG = 204,
 
     // === FILE SYSTEM (Internal Hardware) ===
     SD_STATUS = 300,
@@ -276,5 +277,45 @@ class InternalMessageTypeRegistry {
 #define EXTERNAL_MSG_CATEGORY(type) MessageProtocol::getExternalMessageCategory(type)
 #define INTERNAL_MSG_CATEGORY(type) MessageProtocol::getInternalMessageCategory(type)
 #define ROUTE_TO_CORE1(type) MessageProtocol::shouldRouteToCore1(type)
+
+// =============================================================================
+// NUMERIC-ONLY MACROS - No String Conversions (Performance & Consistency)
+// =============================================================================
+
+// JSON Serialization (Enum -> Int)
+#define SERIALIZE_EXTERNAL_MSG_TYPE(type) static_cast<int>(type)
+#define SERIALIZE_INTERNAL_MSG_TYPE(type) static_cast<int>(type)
+
+// JSON Deserialization (Int -> Enum)
+#define DESERIALIZE_EXTERNAL_MSG_TYPE(jsonDoc, field, defaultType) \
+    static_cast<MessageProtocol::ExternalMessageType>(             \
+        jsonDoc[field] | static_cast<int>(defaultType))
+
+#define DESERIALIZE_INTERNAL_MSG_TYPE(jsonDoc, field, defaultType) \
+    static_cast<MessageProtocol::InternalMessageType>(             \
+        jsonDoc[field] | static_cast<int>(defaultType))
+
+// Logging (Enum as Numbers)
+#define LOG_EXTERNAL_MSG_TYPE(type) static_cast<int>(type)
+#define LOG_INTERNAL_MSG_TYPE(type) static_cast<int>(type)
+
+// Type Casting Helpers
+#define CAST_TO_EXTERNAL_MSG_TYPE(intValue) static_cast<MessageProtocol::ExternalMessageType>(intValue)
+#define CAST_TO_INTERNAL_MSG_TYPE(intValue) static_cast<MessageProtocol::InternalMessageType>(intValue)
+
+// Safe Deserialization with Validation
+#define SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(jsonDoc, field)                                                               \
+    ([&]() {                                                                                                             \
+        int typeNum = jsonDoc[field] | static_cast<int>(MessageProtocol::ExternalMessageType::INVALID);                  \
+        auto type = static_cast<MessageProtocol::ExternalMessageType>(typeNum);                                          \
+        return MessageProtocol::isValidExternalMessageType(type) ? type : MessageProtocol::ExternalMessageType::INVALID; \
+    })()
+
+#define SAFE_DESERIALIZE_INTERNAL_MSG_TYPE(jsonDoc, field)                                                               \
+    ([&]() {                                                                                                             \
+        int typeNum = jsonDoc[field] | static_cast<int>(MessageProtocol::InternalMessageType::INVALID);                  \
+        auto type = static_cast<MessageProtocol::InternalMessageType>(typeNum);                                          \
+        return MessageProtocol::isValidInternalMessageType(type) ? type : MessageProtocol::InternalMessageType::INVALID; \
+    })()
 
 }  // namespace MessageProtocol

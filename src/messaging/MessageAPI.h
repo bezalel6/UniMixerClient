@@ -214,6 +214,14 @@ class MessageAPI {
         return MessageCore::getInstance().publishAudioVolumeUpdate(processName, volume);
     }
 
+    /**
+     * Send debug message to UI debug log area
+     */
+    static bool publishDebugUILog(const String& logMessage) {
+        InternalMessage msg = MessageConverter::createDebugUILogMessage(logMessage);
+        return MessageCore::getInstance().publishInternal(msg);
+    }
+
     // =============================================================================
     // STATISTICS & DIAGNOSTICS
     // =============================================================================
