@@ -69,7 +69,7 @@ extern const unsigned long MESSAGE_LOG_TRUNCATE_LENGTH;
 // TRANSPORT NAMES
 // =============================================================================
 
-// MQTT transport removed - network-free architecture
+// Network transports available only during OTA mode
 extern const char* TRANSPORT_NAME_SERIAL;
 
 String generateRequestId();

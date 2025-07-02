@@ -30,9 +30,9 @@
 #define UI_NETWORK_NO_IP "No IP"
 #define UI_NETWORK_DISCONNECTED "Disconnected"
 
-// MQTT default values
-#define UI_MQTT_DISCONNECTED "Disconnected"
-#define UI_MQTT_CONNECTING "Connecting..."
-#define UI_MQTT_CONNECTED "Connected"
+// Network status values (OTA mode only)
+#define UI_NETWORK_DISABLED "Network-Free Mode"
+#define UI_NETWORK_OTA_CONNECTING "OTA: Connecting..."
+#define UI_NETWORK_OTA_CONNECTED "OTA: Connected"
 
 #endif  // UI_CONSTANTS_H

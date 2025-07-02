@@ -26,7 +26,7 @@
 #include "../../include/DebugUtils.h"
 #include "../../include/BuildInfo.h"
 #include "../hardware/DeviceManager.h"
-#include "../hardware/MqttManager.h"
+// Network managers available only during OTA mode
 #include "../hardware/SDManager.h"
 #include "../hardware/OTAManager.h"
 #include "AudioManager.h"
@@ -753,14 +753,14 @@ static void handleUpdateStateOverview(const LVGLMessage_t *msg) {
                  "Network:\n"
                  "  IP Address: %s\n\n"
                  "Services:\n"
-                 "  MQTT: %s\n"
-                 "  OTA: Ready\n"
-                 "  Serial: Active\n\n"
+                 "  Serial: Active\n"
+                 "  OTA: Available\n"
+                 "  Network: OTA Mode Only\n\n"
                  "Protocol:\n"
                  "  Message Bus: Active\n"
                  "  Audio Streaming: OK",
                  data.wifi_status, signal_strength, data.wifi_rssi,
-                 data.ip_address, data.mqtt_status);
+                 data.ip_address);
         lv_label_set_text(state_network_label, network_text);
     }
 
@@ -1443,9 +1443,7 @@ bool updateStateOverview(void) {
             sizeof(message.data.state_overview.ip_address) - 1);
     message.data.state_overview.ip_address[sizeof(message.data.state_overview.ip_address) - 1] = '\0';
 
-    strncpy(message.data.state_overview.mqtt_status, "Disabled (Serial-Only)",
-            sizeof(message.data.state_overview.mqtt_status) - 1);
-    message.data.state_overview.mqtt_status[sizeof(message.data.state_overview.mqtt_status) - 1] = '\0';
+    // Network services available only during OTA mode
 
     // Collect audio state
     Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();

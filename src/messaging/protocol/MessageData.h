@@ -166,7 +166,7 @@ using SDStatusCallback = std::function<void(const String& status, bool mounted)>
 // =============================================================================
 
 /**
- * EXTERNAL MESSAGE - Received over Serial (network-free architecture)
+ * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode, network in OTA mode)
  * EFFICIENT: Pre-parsed by transport, no raw payload storage
  * SECURITY: Validation and sanitization required
  */

@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERROR#ifndef DISPLAY_MANAGER_H
+#ifndef DISPLAY_MANAGER_H
 #define DISPLAY_MANAGER_H
 
 #include <esp32_smartdisplay.h>
@@ -54,9 +54,7 @@ void updateConnectionStatus(lv_obj_t *statusLabel, lv_obj_t *indicatorObj,
 // Legacy functions for backward compatibility
 void updateWifiStatus(lv_obj_t *statusLabel, lv_obj_t *indicatorObj,
                       const char *statusText, bool connected);
-void updateMqttStatus(lv_obj_t *mqttLabel, const char *statusText);
-void updateMqttStatus(lv_obj_t *mqttLabel, lv_obj_t *indicatorObj,
-                      const char *statusText);
+// MQTT UI functions removed - network-free architecture
 void updateNetworkInfo(lv_obj_t *ssidLabel, lv_obj_t *ipLabel, const char *ssid,
                        const char *ipAddress);
 

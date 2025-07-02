@@ -68,7 +68,7 @@ const unsigned long MESSAGE_LOG_TRUNCATE_LENGTH = 1000;  // Characters
 // TRANSPORT NAMES
 // =============================================================================
 
-// MQTT transport removed - network-free architecture
+// Network transports available only during OTA mode
 const char* TRANSPORT_NAME_SERIAL = "Serial";
 
 // =============================================================================

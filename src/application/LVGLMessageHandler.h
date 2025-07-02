@@ -138,7 +138,6 @@ typedef struct {
             char wifi_status[32];
             int wifi_rssi;
             char ip_address[16];
-            char mqtt_status[16];
             char current_tab[16];
             // Selected devices for all tabs
             char main_device[64];  // Master/Single tab device
