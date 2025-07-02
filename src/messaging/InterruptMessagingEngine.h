@@ -1,4 +1,4 @@
-#ifndef INTERRUPT_MESSAGING_ENGINE_H
+THIS SHOULD BE A LINTER ERROR#ifndef INTERRUPT_MESSAGING_ENGINE_H
 #define INTERRUPT_MESSAGING_ENGINE_H
 
 #include <Arduino.h>
@@ -194,37 +194,7 @@ class InterruptMessagingEngine {
      */
     static void processExternalMessageOnCore1(const ExternalMessage& message);
 
-    /**
-     * Send notification to Core 0
-     */
-    static void notifyCore0(const InternalMessage& message);
 };
-
-// =============================================================================
-// CORE 1 MESSAGE ROUTING UTILITIES
-// =============================================================================
-
-/**
- * Utility functions for Core 1 message processing
- */
-namespace Core1Utils {
-
-/**
- * Process external message on Core 1 (heavy processing)
- */
-bool processExternalMessage(const ExternalMessage& message);
-
-/**
- * Convert external to internal messages using Core 1 processing
- */
-std::vector<InternalMessage> convertExternalToInternal(const ExternalMessage& external);
-
-/**
- * Validate and sanitize external message on Core 1
- */
-bool validateExternalMessage(ExternalMessage& message);
-
-}  // namespace Core1Utils
 
 }  // namespace Core1
 }  // namespace Messaging

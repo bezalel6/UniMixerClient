@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERROR#include "InterruptMessagingEngine.h"
+#include "InterruptMessagingEngine.h"
 #include "MessageAPI.h"
 #include "MessageConfig.h"
 #include "MessageData.h"
@@ -170,7 +170,7 @@ void InterruptMessagingEngine::stop() {
         return;
     }
 
-    ESP_LOGW(TAG, "Stopping Core 1 Binary Protocol Messaging Engine");
+    ESP_LOGI(TAG, "Stopping Core 1 Binary Protocol Messaging Engine");
     running = false;
 
     if (messagingTaskHandle) {
@@ -184,7 +184,7 @@ void InterruptMessagingEngine::stop() {
         binaryFramer = nullptr;
     }
 
-    ESP_LOGW(TAG, "Core 1 Binary Protocol Messaging Engine stopped");
+    ESP_LOGI(TAG, "Core 1 Binary Protocol Messaging Engine stopped");
 }
 
 bool InterruptMessagingEngine::isRunning() {
@@ -214,7 +214,7 @@ const BinaryProtocol::ProtocolStatistics& InterruptMessagingEngine::getBinarySta
 // =============================================================================
 
 void InterruptMessagingEngine::messagingTask(void* parameter) {
-    ESP_LOGW(TAG, "Core 1 Messaging Task started on Core %d", xPortGetCoreID());
+    ESP_LOGI(TAG, "Core 1 Messaging Task started on Core %d", xPortGetCoreID());
 
     TickType_t lastWakeTime = xTaskGetTickCount();
     const TickType_t taskFrequency = pdMS_TO_TICKS(1);  // 1ms cycle time for better responsiveness
@@ -252,7 +252,7 @@ void InterruptMessagingEngine::messagingTask(void* parameter) {
         vTaskDelayUntil(&lastWakeTime, taskFrequency);
     }
 
-    ESP_LOGW(TAG, "Core 1 Messaging Task ended");
+    ESP_LOGI(TAG, "Core 1 Messaging Task ended");
     vTaskDelete(nullptr);
 }
 
@@ -312,17 +312,23 @@ void InterruptMessagingEngine::processIncomingData() {
 }
 
 void InterruptMessagingEngine::processOutgoingMessages() {
-    // NOTE: We now use direct transmission in transportSend() instead of queued frames
-    // This method is kept for compatibility but should not receive any messages
-    // since we're using the SerialBridge-style direct transmission approach
-
+    // Process any queued outgoing messages (for retry, priority, batching)
     BinaryMessage* messagePtr;
     while (xQueueReceive(outgoingMessageQueue, &messagePtr, 0) == pdTRUE) {
-        ESP_LOGW(TAG, "Unexpected queued message received - cleaning up");
-        if (messagePtr) {
-            if (messagePtr->data) {
-                delete[] messagePtr->data;
+        if (messagePtr && messagePtr->data && messagePtr->length > 0) {
+            // Send the queued message
+            bool success = sendRawData(reinterpret_cast<const char*>(messagePtr->data), messagePtr->length);
+            
+            if (success) {
+                messagesSent++;
+                ESP_LOGD(TAG, "Queued message sent successfully: %zu bytes", messagePtr->length);
+            } else {
+                ESP_LOGD(TAG, "Failed to send queued message: %zu bytes", messagePtr->length);
+                // TODO: Could implement retry logic here
             }
+            
+            // Clean up the message
+            delete[] messagePtr->data;
             delete messagePtr;
         }
     }
@@ -342,13 +348,8 @@ void InterruptMessagingEngine::processCore1Messages() {
 // SIMPLIFIED UART HANDLING (No low-level interrupts)
 // =============================================================================
 
-void InterruptMessagingEngine::uartISR(void* arg) {
-    // Simplified: Remove low-level UART interrupt handler
-    // Use standard UART driver polling instead
-}
-
 bool InterruptMessagingEngine::initUART() {
-    ESP_LOGW(TAG, "Initializing Arduino Serial interface (like working SerialBridge)");
+    ESP_LOGI(TAG, "Initializing Arduino Serial interface");
 
     // Use Arduino Serial initialization for consistency with Serial.write()
     Serial.begin(MESSAGING_SERIAL_BAUD_RATE);
@@ -374,19 +375,7 @@ bool InterruptMessagingEngine::initUART() {
         Serial.read();
     }
 
-    ESP_LOGW(TAG, "Arduino Serial initialized successfully at %d baud", MESSAGING_SERIAL_BAUD_RATE);
-    ESP_LOGW(TAG, "Serial ready: %s", Serial ? "YES" : "NO");
-
-    // Verify Serial is working by checking if we can write/flush
-    size_t testWrite = Serial.write(0x00);  // Test writing a null byte
-    Serial.flush();
-
-    if (testWrite == 1) {
-        ESP_LOGW(TAG, "Serial null byte test successful - ready for binary protocol");
-    } else {
-        ESP_LOGW(TAG, "Serial null byte test failed - may have issues with binary data");
-    }
-
+    ESP_LOGI(TAG, "Serial initialized successfully at %d baud", MESSAGING_SERIAL_BAUD_RATE);
     return true;
 }
 
@@ -413,51 +402,7 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
                 ESP_LOGD(TAG, "Serial transmission failed: %zu out of %zu bytes", written, length);
             }
 
-            // ALWAYS try the exact SerialBridge method regardless of bulk success
-            // This helps us debug if the issue is bulk vs individual writes
-            ESP_LOGW(TAG, "=== TRYING EXACT SERIALBRIDGE METHOD ===");
-            ESP_LOGW(TAG, "Individual Serial.write() calls like working SerialBridge");
 
-            size_t totalIndividualWritten = 0;
-            bool individualSuccess = true;
-
-            for (size_t i = 0; i < length; i++) {
-                uint8_t byte = static_cast<uint8_t>(data[i]);
-                size_t byteResult = Serial.write(byte);
-
-                if (byteResult == 1) {
-                    totalIndividualWritten++;
-
-                    // Debug critical header bytes and null bytes
-                    if (i < 16 || byte == 0x00) {
-                        ESP_LOGW(TAG, "  Individual TX[%zu]: 0x%02X %s result=%zu",
-                                 i, byte, (byte == 0x00) ? "NULL!" : "", byteResult);
-                    }
-
-                    // Extra care for null bytes (like working SerialBridge)
-                    if (byte == 0x00) {
-                        Serial.flush();  // Immediate flush after null bytes
-                        delay(2);        // Slightly longer delay for null bytes
-                    }
-                } else {
-                    ESP_LOGW(TAG, "Individual write FAILED at byte %zu: 0x%02X", i, byte);
-                    individualSuccess = false;
-                    break;
-                }
-            }
-
-            Serial.flush();  // Final flush
-            ESP_LOGW(TAG, "Individual writes result: %zu out of %zu bytes written",
-                     totalIndividualWritten, length);
-
-            // Use individual method result if it's better
-            if (individualSuccess && totalIndividualWritten == length) {
-                ESP_LOGW(TAG, "Individual write method successful!");
-                success = true;
-            } else if (!success) {
-                ESP_LOGW(TAG, "Both bulk and individual methods failed");
-                success = false;
-            }
         } catch (...) {
             ESP_LOGE(TAG, "Exception during Arduino Serial transmission");
             success = false;
@@ -476,12 +421,43 @@ bool InterruptMessagingEngine::sendRawData(const char* data, size_t length) {
     return false;
 }
 
+bool InterruptMessagingEngine::queueMessageForTransmission(const String& payload) {
+    if (!running || !binaryFramer) {
+        return false;
+    }
+
+    // Encode the payload to binary format for queuing
+    std::vector<uint8_t> binaryFrame = binaryFramer->encodeMessage(payload);
+    if (binaryFrame.empty()) {
+        ESP_LOGE(TAG, "Failed to encode message for queuing");
+        return false;
+    }
+
+    // Create binary message for queue
+    BinaryMessage* message = new BinaryMessage();
+    message->length = binaryFrame.size();
+    message->data = new uint8_t[message->length];
+    std::copy(binaryFrame.begin(), binaryFrame.end(), message->data);
+
+    // Queue the message (non-blocking)
+    if (xQueueSend(outgoingMessageQueue, &message, 0) == pdTRUE) {
+        ESP_LOGD(TAG, "Message queued for transmission: %zu bytes", message->length);
+        return true;
+    } else {
+        // Queue full - clean up and report failure
+        delete[] message->data;
+        delete message;
+        ESP_LOGD(TAG, "Failed to queue message - queue full");
+        return false;
+    }
+}
+
 // =============================================================================
 // MessageCore TRANSPORT INTEGRATION
 // =============================================================================
 
 bool InterruptMessagingEngine::registerWithMessageCore() {
-    ESP_LOGW(TAG, "Registering with MessageCore as Serial transport");
+    ESP_LOGI(TAG, "Registering with MessageCore as Serial transport");
 
     TransportInterface transport;
     transport.sendRaw = transportSend;
@@ -496,7 +472,7 @@ bool InterruptMessagingEngine::registerWithMessageCore() {
     // Use the standard Serial transport name for compatibility
     messageCore->registerTransport(Config::TRANSPORT_NAME_SERIAL, transport);
 
-    ESP_LOGW(TAG, "Registered with MessageCore as '%s' transport successfully", Config::TRANSPORT_NAME_SERIAL);
+    ESP_LOGI(TAG, "Registered with MessageCore as '%s' transport successfully", Config::TRANSPORT_NAME_SERIAL);
     return true;
 }
 
@@ -506,33 +482,31 @@ bool InterruptMessagingEngine::transportSend(const String& payload) {
         return false;
     }
 
-    ESP_LOGD(TAG, "Sending JSON message using direct transmission: %d bytes", payload.length());
+    ESP_LOGD(TAG, "Sending JSON message: %d bytes", payload.length());
 
-    // Use direct transmission method (like working SerialBridge)
+    // Try direct transmission first (immediate)
     bool success = binaryFramer->transmitMessageDirect(payload, [](uint8_t byte) -> bool {
-        // Write byte using Arduino Serial and check success
         size_t written = Serial.write(byte);
         if (written == 1) {
-            // Extra care for null bytes
             if (byte == 0x00) {
-                Serial.flush();  // Immediate flush after null bytes
-                delay(2);        // Extra delay for null bytes
+                Serial.flush();
+                delay(2);
             }
             return true;
         }
         return false;
     });
 
-    if (!success) {
-        ESP_LOGE(TAG, "Direct transmission failed");
-        return false;
+    if (success) {
+        Serial.flush();
+        messagesSent++;
+        ESP_LOGD(TAG, "Direct transmission completed successfully");
+        return true;
     }
 
-    // Final flush to ensure all data is transmitted
-    Serial.flush();
-
-    ESP_LOGD(TAG, "Direct transmission completed successfully");
-    return true;
+    // If direct transmission fails, queue for retry
+    ESP_LOGD(TAG, "Direct transmission failed, queuing for retry");
+    return queueMessageForTransmission(payload);
 }
 
 bool InterruptMessagingEngine::transportIsConnected() {
@@ -540,27 +514,19 @@ bool InterruptMessagingEngine::transportIsConnected() {
 }
 
 void InterruptMessagingEngine::transportUpdate() {
-    // Update is handled by the main messaging task
+    // No-op: Update handled by main messaging task
 }
 
 String InterruptMessagingEngine::transportGetStatus() {
-    String status = String("Core1 Binary Protocol Engine - Running: ") + (running ? "Yes" : "No") +
-                    ", Messages RX: " + String(messagesReceived) +
-                    ", Messages TX: " + String(messagesSent);
-
+    String status = String("Core1 Engine - Running: ") + (running ? "Yes" : "No") +
+                    ", RX: " + String(messagesReceived) + ", TX: " + String(messagesSent);
+    
     if (binaryFramer) {
-        const auto& binaryStats = binaryFramer->getStatistics();
-        status += ", Binary RX: " + String(binaryStats.messagesReceived) +
-                  ", Binary TX: " + String(binaryStats.messagesSent) +
-                  ", CRC Errors: " + String(binaryStats.crcErrors) +
-                  ", Frame Errors: " + String(binaryStats.framingErrors);
+        const auto& stats = binaryFramer->getStatistics();
+        status += ", Errors: " + String(stats.crcErrors + stats.framingErrors);
     }
-
     return status;
 }
-
-// REMOVED: transportInit() method removed to prevent infinite recursion
-// Transport initialization is handled directly by init() and start() methods
 
 void InterruptMessagingEngine::transportDeinit() {
     stop();
@@ -610,48 +576,19 @@ void InterruptMessagingEngine::processExternalMessageOnCore1(const ExternalMessa
     ESP_LOGD(TAG, "Processing external message on Core 1: type %d",
              static_cast<int>(message.messageType));
 
-    // Use MessageCore to handle the message
     if (messageCore) {
         messageCore->handleExternalMessage(message);
     }
 }
 
 void InterruptMessagingEngine::routeInternalMessage(const InternalMessage& message) {
-    // Send to Core 0 for processing
-    if (xQueueSend(core0NotificationQueue, &message, 0) == pdTRUE) {
-        // Successfully queued for Core 0
-    } else {
-        ESP_LOGW(TAG, "Failed to route internal message to Core 0 - queue full");
+    if (xQueueSend(core0NotificationQueue, &message, 0) != pdTRUE) {
+        ESP_LOGD(TAG, "Failed to route internal message to Core 0 - queue full");
     }
-}
-
-void InterruptMessagingEngine::notifyCore0(const InternalMessage& message) {
-    routeInternalMessage(message);
 }
 
 }  // namespace Core1
 
-// =============================================================================
-// CORE 1 UTILITY FUNCTIONS
-// =============================================================================
 
-namespace Core1Utils {
-
-bool processExternalMessage(const ExternalMessage& message) {
-    // Leverage MessageCore's existing processing
-    MessageCore& core = MessageCore::getInstance();
-    core.handleExternalMessage(message);
-    return true;
-}
-
-std::vector<InternalMessage> convertExternalToInternal(const ExternalMessage& external) {
-    return MessageConverter::externalToInternal(external);
-}
-
-bool validateExternalMessage(ExternalMessage& message) {
-    return message.validate();
-}
-
-}  // namespace Core1Utils
 
 }  // namespace Messaging
