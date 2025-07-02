@@ -553,9 +553,8 @@ void OTAManager::cleanup(void) {
     otaStartTime = 0;
     resetMonitoring();
 
-    // CRITICAL FIX: Destroy OTA tasks and return to network-free mode
-    ESP_LOGI(TAG, "[CORE-FIX] Destroying OTA tasks and returning to network-free mode");
-    Application::TaskManager::destroyOTATasks();
+    // Network-free mode: No OTA tasks to destroy (OTA runs in boot mode)
+    ESP_LOGI(TAG, "[NETWORK-FREE] OTA operations complete - returning to network-free mode");
 
     enterState(OTA_IDLE, "Returned to network-free mode");
     Application::LVGLMessageHandler::hideOtaScreen();
@@ -614,13 +613,8 @@ bool OTAManager::startOTA(void) {
     otaStartTime = millis();
     resetMonitoring();
 
-    // CRITICAL FIX: Create OTA tasks on Core 1 to prevent blocking Core 0
-    ESP_LOGI(TAG, "[CORE-FIX] Creating OTA tasks on Core 1 to prevent watchdog timeout");
-    if (!Application::TaskManager::createOTATasks()) {
-        ESP_LOGE(TAG, "[CORE-FIX] Failed to create OTA tasks - OTA cannot proceed safely");
-        completeOTA(OTA_RESULT_UNKNOWN_ERROR, "Failed to create OTA tasks");
-        return false;
-    }
+    // Network-free mode: OTA runs in dedicated boot mode (no additional tasks needed)
+    ESP_LOGI(TAG, "[NETWORK-FREE] OTA will run in dedicated boot mode with full resource access");
 
     enterState(OTA_USER_INITIATED, "OTA started by user");
     Application::LVGLMessageHandler::showOtaScreen();

@@ -1,5 +1,4 @@
 #include "MqttManager.h"
-#include "NetworkManager.h"
 #include "DeviceManager.h"
 #include "../application/AudioManager.h"
 #include "../messaging/MessageAPI.h"
@@ -9,7 +8,7 @@
 #include <ArduinoJson.h>
 #include <esp_log.h>
 #include <secret.h>
-
+#include "OTAConfig.h"
 static const char* TAG = "MQTTManager";
 
 namespace Hardware {
@@ -24,6 +23,11 @@ static unsigned long connectionStartTime = 0;
 static unsigned long lastActivityTime = 0;
 static bool initializationComplete = false;
 static bool networkRequested = false;
+
+// WiFi status tracking (self-contained)
+static bool wifiConnected = false;
+static String currentIpAddress = "";
+static int currentSignalStrength = 0;
 
 // Message queue for delayed publishing
 static Message publishQueue[1];  // Single message queue as per original design
@@ -41,6 +45,59 @@ static void processPublishQueue(void);
 static void subscribeToRegisteredHandlers(void);
 static Handler* findHandlerByTopic(const char* topic);
 static void ensureNetworkAvailable(void);
+
+// Self-contained network functions (replacing NetworkManager dependencies)
+static bool initWiFi(void) {
+    ESP_LOGI(TAG, "Initializing WiFi for MQTT");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
+
+    unsigned long startTime = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < 10000) {
+        delay(500);
+        ESP_LOGD(TAG, "Connecting to WiFi...");
+    }
+
+    wifiConnected = (WiFi.status() == WL_CONNECTED);
+    if (wifiConnected) {
+        currentIpAddress = WiFi.localIP().toString();
+        currentSignalStrength = WiFi.RSSI();
+        ESP_LOGI(TAG, "WiFi connected: %s", currentIpAddress.c_str());
+    }
+
+    return wifiConnected;
+}
+
+static bool isWiFiConnected(void) {
+    return WiFi.status() == WL_CONNECTED;
+}
+
+static void updateWiFiStatus(void) {
+    bool wasConnected = wifiConnected;
+    wifiConnected = (WiFi.status() == WL_CONNECTED);
+
+    if (wifiConnected && !wasConnected) {
+        currentIpAddress = WiFi.localIP().toString();
+        currentSignalStrength = WiFi.RSSI();
+        ESP_LOGI(TAG, "WiFi reconnected: %s", currentIpAddress.c_str());
+    } else if (!wifiConnected && wasConnected) {
+        ESP_LOGW(TAG, "WiFi disconnected");
+        currentIpAddress = "";
+        currentSignalStrength = 0;
+    }
+}
+
+static const char* getWiFiStatusString(void) {
+    return wifiConnected ? "Connected" : "Disconnected";
+}
+
+static const char* getIpAddress(void) {
+    return currentIpAddress.c_str();
+}
+
+static int getSignalStrength(void) {
+    return currentSignalStrength;
+}
 
 bool init(void) {
     ESP_LOGI(TAG, "Initializing MQTT manager");
@@ -83,9 +140,9 @@ void deinit(void) {
     // Clear publish queue
     clearPublishQueue();
 
-    // Disable auto-reconnect if we requested it
+    // Disconnect WiFi if we initiated the connection
     if (networkRequested) {
-        Hardware::Network::enableAutoReconnect(false);
+        WiFi.disconnect();
         networkRequested = false;
     }
 
@@ -127,10 +184,11 @@ void update(void) {
         case MQTT_STATUS_DISCONNECTED:
             // Attempt reconnection if enough time has passed and network is needed
             if (networkRequested) {
-                // Check if network just became available
-                if (Hardware::Network::isConnected() &&
+                // Update WiFi status and attempt reconnection
+                updateWiFiStatus();
+                if (isWiFiConnected() &&
                     (now - lastConnectionAttempt) >= MQTT_RECONNECT_INTERVAL_MS) {
-                    ESP_LOGI(TAG, "Network available, attempting MQTT reconnection");
+                    ESP_LOGI(TAG, "WiFi available, attempting MQTT reconnection");
                     reconnect();
                 }
             }
@@ -156,7 +214,7 @@ bool connect(void) {
     // Ensure network is available
     ensureNetworkAvailable();
 
-    if (!Hardware::Network::isConnected()) {
+    if (!isWiFiConnected()) {
         ESP_LOGW(TAG, "Cannot connect to MQTT: WiFi not connected, waiting...");
         currentMqttStatus = MQTT_STATUS_DISCONNECTED;
         return false;
@@ -314,11 +372,11 @@ void publishSystemStatus(void) {
     // Create system status JSON
     JsonDocument doc;
     doc["device"] = "ESP32SmartDisplay";
-    doc["ip"] = Hardware::Network::getIpAddress();
-    doc["rssi"] = Hardware::Network::getSignalStrength();
+    doc["ip"] = getIpAddress();
+    doc["rssi"] = getSignalStrength();
     doc["free_heap"] = Hardware::Device::getFreeHeap();
     doc["uptime"] = Hardware::Device::getMillis();
-    doc["wifi_status"] = Hardware::Network::getWifiStatusString();
+    doc["wifi_status"] = getWiFiStatusString();
     doc["mqtt_status"] = getStatusString();
 
     String statusJson;
@@ -426,7 +484,7 @@ void clearPublishQueue(void) {
 }
 
 int getSignalQuality(void) {
-    return Hardware::Network::getSignalStrength();
+    return getSignalStrength();
 }
 
 // Private function implementations
@@ -520,9 +578,8 @@ static Handler* findHandlerByTopic(const char* topic) {
 
 static void ensureNetworkAvailable(void) {
     if (!networkRequested) {
-        ESP_LOGI(TAG, "MQTT requires network connectivity, requesting WiFi connection");
-        Hardware::Network::connectWifi();
-        Hardware::Network::enableAutoReconnect(true);
+        ESP_LOGI(TAG, "MQTT requires network connectivity, initializing WiFi");
+        initWiFi();
         networkRequested = true;
     }
 }

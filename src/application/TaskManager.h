@@ -10,12 +10,13 @@
 namespace Application {
 namespace TaskManager {
 
-// Task configuration constants
-#define LVGL_TASK_STACK_SIZE (8 * 1024)
-#define NETWORK_TASK_STACK_SIZE (6 * 1024)
-#define MESSAGING_TASK_STACK_SIZE (8 * 1024)
-#define OTA_TASK_STACK_SIZE (8 * 1024)
-#define AUDIO_TASK_STACK_SIZE (4 * 1024)
+// =============================================================================
+// NETWORK-FREE ARCHITECTURE: Task Configuration Constants
+// =============================================================================
+
+// Core task stack sizes (optimized for network-free mode)
+#define LVGL_TASK_STACK_SIZE (8 * 1024)   // Core 0: UI rendering and event handling
+#define AUDIO_TASK_STACK_SIZE (6 * 1024)  // Core 0: Audio management (increased from 4KB)
 
 // LVGL performance monitoring thresholds
 #define LVGL_DURATION_CRITICAL_STARTUP 300  // Critical threshold during startup (ms)
@@ -24,45 +25,35 @@ namespace TaskManager {
 #define LVGL_DURATION_CRITICAL_NORMAL 100   // Critical threshold during normal operation (ms)
 #define LVGL_DURATION_WARNING_NORMAL 50     // Warning threshold during normal operation (ms)
 
-// Dynamic priority management
-#define LVGL_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 1)       // During normal operation
-#define LVGL_TASK_PRIORITY_CRITICAL (configMAX_PRIORITIES - 1)   // During OTA (maintain UI)
-#define MESSAGING_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 2)  // Normal operation
-#define MESSAGING_TASK_PRIORITY_LOW (3)                          // During OTA
-#define OTA_TASK_PRIORITY_IDLE (2)                               // When no OTA active
-#define OTA_TASK_PRIORITY_CRITICAL (configMAX_PRIORITIES - 1)    // During active OTA
-#define NETWORK_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 3)    // Normal + OTA support
-#define AUDIO_TASK_PRIORITY_NORMAL (4)                           // Improved from 1
-#define AUDIO_TASK_PRIORITY_SUSPENDED (0)                        // During OTA
+// Network-free priority management (simplified)
+#define LVGL_TASK_PRIORITY_HIGH (configMAX_PRIORITIES - 1)      // Maximum UI responsiveness
+#define LVGL_TASK_PRIORITY_CRITICAL (configMAX_PRIORITIES - 1)  // During OTA (maintain UI)
+#define AUDIO_TASK_PRIORITY_NORMAL (configMAX_PRIORITIES - 2)   // High priority for audio
+#define AUDIO_TASK_PRIORITY_SUSPENDED (0)                       // During OTA
 
-// Core assignment for ESP32-S3 (optimized for performance)
-#define LVGL_TASK_CORE 0       // Core 0 for UI/LVGL (Arduino loop core)
-#define NETWORK_TASK_CORE 1    // Core 1 for network operations
-#define MESSAGING_TASK_CORE 1  // Moved to Core 0 to balance load
-#define OTA_TASK_CORE 1        // Core 1 for OTA (network intensive)
-#define AUDIO_TASK_CORE 0      // Core 0 for audio (needs UI updates)
+// Core assignment for ESP32-S3 (network-free architecture)
+#define LVGL_TASK_CORE 0   // Core 0: UI/LVGL + Audio (maximum performance)
+#define AUDIO_TASK_CORE 0  // Core 0: Audio management with UI integration
+// Note: Core 1 is DEDICATED to InterruptMessagingEngine (not managed by TaskManager)
 
-// Adaptive update intervals
-#define LVGL_UPDATE_INTERVAL 32                 //
-#define NETWORK_UPDATE_INTERVAL_NORMAL 500      // Normal operation
-#define NETWORK_UPDATE_INTERVAL_OTA 100         // During OTA for responsiveness
-#define MESSAGING_UPDATE_INTERVAL_NORMAL 50     // Reduced CPU load from 20ms
-#define MESSAGING_UPDATE_INTERVAL_HIGH_LOAD 20  // When high message volume
-#define OTA_UPDATE_INTERVAL_IDLE 30000          // 30s when idle (massive improvement)
-#define OTA_UPDATE_INTERVAL_CHECKING 5000       // 5s when checking for updates
-#define OTA_UPDATE_INTERVAL_ACTIVE 50           // 50ms during active download
-#define AUDIO_UPDATE_INTERVAL_NORMAL 1000       // Normal operation
-#define AUDIO_UPDATE_INTERVAL_REDUCED 5000      // Low priority mode
-// Task state management
+// Update intervals (network-free optimized)
+#define LVGL_UPDATE_INTERVAL 32             // 32ms for smooth 30+ FPS
+#define AUDIO_UPDATE_INTERVAL_NORMAL 1000   // Normal audio status updates
+#define AUDIO_UPDATE_INTERVAL_REDUCED 5000  // Low priority mode
+
+// =============================================================================
+// NETWORK-FREE ARCHITECTURE: Task State Management
+// =============================================================================
+
+// Simplified task states for network-free mode
 typedef enum {
-    TASK_STATE_NORMAL,
-    TASK_STATE_OTA_ACTIVE,
-    TASK_STATE_HIGH_LOAD,
-    TASK_STATE_LOW_POWER,
-    TASK_STATE_EMERGENCY
+    TASK_STATE_NORMAL,     // Normal UI/Audio operation
+    TASK_STATE_HIGH_LOAD,  // High message load from InterruptMessagingEngine
+    TASK_STATE_LOW_POWER,  // Power saving mode
+    TASK_STATE_OTA_ACTIVE  // OTA mode (minimal tasks)
 } TaskSystemState_t;
 
-// OTA state management
+// OTA state management (only relevant during boot mode OTA)
 typedef enum {
     OTA_STATE_IDLE,         // No OTA activity
     OTA_STATE_CHECKING,     // Checking for updates
@@ -72,36 +63,30 @@ typedef enum {
     OTA_STATE_ERROR         // Error occurred
 } OTAState_t;
 
-// NETWORK-FREE ARCHITECTURE: Task configuration
-enum TaskMode {
-    TASK_MODE_NETWORK_FREE,  // Default: No network tasks, maximum UI/audio performance
-    TASK_MODE_OTA_ACTIVE     // Temporary: Network tasks active during OTA only
-};
-
-// NETWORK-FREE ARCHITECTURE: Enhanced task system configuration
+// Task configuration for network-free architecture
 typedef struct {
     TaskSystemState_t currentState;
     OTAState_t otaState;
-    TaskMode taskMode;  // NEW: Current task mode
-    uint32_t messageLoad;
+    uint32_t messageLoad;  // Messages/second from InterruptMessagingEngine
     uint32_t lastStateChange;
     bool emergencyMode;
-    bool networkTasksActive;  // NEW: Track if network tasks are running
-    uint32_t taskLoadMetrics[8];
+    uint32_t taskLoadMetrics[4];  // Simplified for LVGL, Audio, and messaging stats
 } TaskSystemConfig_t;
 
-// Task handles
+// =============================================================================
+// NETWORK-FREE ARCHITECTURE: Task Handles and Synchronization
+// =============================================================================
+
+// Task handles (network-free mode - only Core 0 tasks managed here)
 extern TaskHandle_t lvglTaskHandle;
-extern TaskHandle_t networkTaskHandle;
-extern TaskHandle_t messagingTaskHandle;
-extern TaskHandle_t otaTaskHandle;
 extern TaskHandle_t audioTaskHandle;
+// Note: Core 1 InterruptMessagingEngine managed separately
 
 // Synchronization objects
 extern SemaphoreHandle_t lvglMutex;
 extern QueueHandle_t otaProgressQueue;
 
-// Dynamic task management
+// Task system configuration
 extern TaskSystemConfig_t taskSystemConfig;
 extern SemaphoreHandle_t taskConfigMutex;
 
@@ -113,20 +98,26 @@ typedef struct {
     char message[64];  // Status message
 } OTAProgressData_t;
 
-// Task function declarations
-void lvglTask(void *parameter);
-void networkTask(void *parameter);
-void messagingTask(void *parameter);
-void otaTask(void *parameter);
-void audioTask(void *parameter);
+// =============================================================================
+// TASK FUNCTION DECLARATIONS (Network-Free Mode)
+// =============================================================================
 
-// Task management functions
+// Core 0 tasks only
+void lvglTask(void *parameter);
+void audioTask(void *parameter);
+// Note: messagingTask runs on Core 1 via InterruptMessagingEngine
+
+// =============================================================================
+// TASK MANAGEMENT FUNCTIONS
+// =============================================================================
+
+// Core lifecycle
 bool init(void);
 void deinit(void);
 void suspend(void);
 void resume(void);
 
-// Dynamic task management functions
+// Dynamic task management
 void setTaskSystemState(TaskSystemState_t newState);
 void setOTAState(OTAState_t newState);
 void optimizeTaskPriorities(void);
@@ -140,7 +131,7 @@ void resumeFromOTA(void);
 void configureForOTADownload(void);  // High-performance OTA mode
 void configureForOTAInstall(void);   // Minimize interruptions during install
 
-// LVGL thread safety functions
+// LVGL thread safety
 void lvglLock(void);
 void lvglUnlock(void);
 bool lvglTryLock(uint32_t timeoutMs = 100);
@@ -154,29 +145,17 @@ bool getOTAProgress(OTAProgressData_t *data);
 void printTaskStats(void);
 void printTaskLoadAnalysis(void);
 uint32_t getLvglTaskHighWaterMark(void);
-uint32_t getNetworkTaskHighWaterMark(void);
-uint32_t getTaskCPUUsage(TaskHandle_t taskHandle);  // If FreeRTOS stats available
+uint32_t getAudioTaskHighWaterMark(void);
 
-// Message load monitoring
-void reportMessageActivity(void);
-uint32_t getMessageLoadPerSecond(void);
+// =============================================================================
+// MESSAGING ENGINE INTEGRATION
+// =============================================================================
 
-// NETWORK-FREE ARCHITECTURE: Task control functions
-bool initNetworkFreeTasks(void);     // Initialize only UI/audio tasks
-bool createOTATasks(void);           // Create network tasks for OTA
-void destroyOTATasks(void);          // Remove network tasks after OTA
-void switchToNetworkFreeMode(void);  // Boost UI/audio with freed resources
-void switchToOTAMode(void);          // Prepare for OTA operation
-
-// NETWORK-FREE ARCHITECTURE: Resource management
-size_t getFreedNetworkMemory(void);     // Memory available from disabled network tasks
-void reallocateNetworkResources(void);  // Boost UI/audio with network resources
-void restoreNetworkResources(void);     // Restore resources for OTA
-
-// NETWORK-FREE ARCHITECTURE: Task mode control
-TaskMode getCurrentTaskMode(void);
-bool setTaskMode(TaskMode mode);
-bool isNetworkFree(void);
+// Message load monitoring (integrates with InterruptMessagingEngine)
+void reportMessageActivity(void);        // Called by InterruptMessagingEngine
+uint32_t getMessageLoadPerSecond(void);  // Get current message throughput
+void reportCore1MessagingStats(uint32_t messagesReceived, uint32_t messagesSent,
+                               uint32_t bufferOverruns);  // Stats from InterruptMessagingEngine
 
 }  // namespace TaskManager
 }  // namespace Application

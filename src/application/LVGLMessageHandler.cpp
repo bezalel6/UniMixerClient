@@ -26,7 +26,6 @@
 #include "../../include/DebugUtils.h"
 #include "../../include/BuildInfo.h"
 #include "../hardware/DeviceManager.h"
-#include "../hardware/NetworkManager.h"
 #include "../hardware/MqttManager.h"
 #include "../hardware/SDManager.h"
 #include "../hardware/OTAManager.h"
@@ -1433,18 +1432,18 @@ bool updateStateOverview(void) {
     message.data.state_overview.cpu_freq = Hardware::Device::getCpuFrequency();
     message.data.state_overview.uptime_ms = Hardware::Device::getMillis();
 
-    // Collect network state
-    strncpy(message.data.state_overview.wifi_status, Hardware::Network::getWifiStatusString(),
+    // Network status - Network-free mode
+    strncpy(message.data.state_overview.wifi_status, "Network-Free Mode",
             sizeof(message.data.state_overview.wifi_status) - 1);
     message.data.state_overview.wifi_status[sizeof(message.data.state_overview.wifi_status) - 1] = '\0';
 
-    message.data.state_overview.wifi_rssi = Hardware::Network::getSignalStrength();
+    message.data.state_overview.wifi_rssi = 0;  // No WiFi in network-free mode
 
-    strncpy(message.data.state_overview.ip_address, Hardware::Network::getIpAddress(),
+    strncpy(message.data.state_overview.ip_address, "N/A (Network-Free)",
             sizeof(message.data.state_overview.ip_address) - 1);
     message.data.state_overview.ip_address[sizeof(message.data.state_overview.ip_address) - 1] = '\0';
 
-    strncpy(message.data.state_overview.mqtt_status, Hardware::Mqtt::getStatusString(),
+    strncpy(message.data.state_overview.mqtt_status, "Disabled (Serial-Only)",
             sizeof(message.data.state_overview.mqtt_status) - 1);
     message.data.state_overview.mqtt_status[sizeof(message.data.state_overview.mqtt_status) - 1] = '\0';
 

@@ -1,22 +1,23 @@
-#ifndef OTA_MANAGER_H
-#define OTA_MANAGER_H
+#ifndef BOOT_OTA_MANAGER_H
+#define BOOT_OTA_MANAGER_H
 
 #include "../../include/OTAConfig.h"
+#include "../../include/BootManager.h"
 #include <Arduino.h>
 #include <HTTPUpdate.h>
 #include <WiFiClient.h>
 #include <functional>
 
-namespace Hardware {
+namespace Boot {
 namespace OTA {
 
 // =============================================================================
-// OTA STATES - Unified State Machine
+// OTA STATES - Boot Mode OTA State Machine
 // =============================================================================
 
 enum OTAState {
-    OTA_IDLE,            // No OTA activity, network-free mode
-    OTA_USER_INITIATED,  // User requested OTA via UI
+    OTA_IDLE,            // No OTA activity
+    OTA_USER_INITIATED,  // User requested OTA via UI (triggers boot mode)
     OTA_CONNECTING,      // Connecting to WiFi for OTA
     OTA_CONNECTED,       // WiFi connected, ready for download
     OTA_DOWNLOADING,     // Downloading firmware via HTTPUpdate
@@ -38,7 +39,7 @@ enum OTAResult {
 };
 
 // =============================================================================
-// UI-FIRST CALLBACK SYSTEM
+// BOOT MODE OTA CALLBACKS
 // =============================================================================
 
 typedef std::function<void(OTAState state, const char* message)> OTAStateCallback;
@@ -46,41 +47,35 @@ typedef std::function<void(uint8_t progress, const char* message)> OTAProgressCa
 typedef std::function<void(OTAResult result, const char* message)> OTACompleteCallback;
 
 // =============================================================================
-// UNIFIED OTA MANAGER - HTTPUpdate + Bulletproof Monitoring
+// BOOT MODE OTA MANAGER - Dedicated OTA Boot Mode
 // =============================================================================
 
 class OTAManager {
    public:
-    // Core lifecycle
+    // Core lifecycle for boot mode
     static bool init(void);
     static void deinit(void);
     static void update(void);
 
-    // OTA control - UI-initiated
-    static bool startOTA(void);   // User clicks OTA button
+    // OTA control - Boot mode operations
+    static bool startOTA(void);   // Start OTA process in boot mode
     static void cancelOTA(void);  // User cancels OTA
     static bool isActive(void);   // Check if OTA is running
 
-    // State and progress - UI queries
+    // State and progress queries
     static OTAState getCurrentState(void);
     static uint8_t getProgress(void);
     static const char* getStateMessage(void);
     static bool canCancel(void);
 
-    // UI callback registration
+    // UI callback registration for minimal display
     static void setStateCallback(OTAStateCallback callback);
     static void setProgressCallback(OTAProgressCallback callback);
     static void setCompleteCallback(OTACompleteCallback callback);
 
-    // Network-free architecture support
-    static bool isNetworkFree(void);
-    static size_t getFreedMemory(void);
-
-    // Network status functions (for components that need network info)
-    static bool isNetworkConnected(void);
-    static const char* getNetworkStatusString(void);
-    static const char* getIpAddress(void);
-    static int getSignalStrength(void);
+    // Boot mode specific functions
+    static bool isOTABootMode(void);
+    static void returnToNormalMode(void);
 
    private:
     // =============================================================================
@@ -93,13 +88,13 @@ class OTAManager {
     static uint32_t otaStartTime;
     static bool userCancelRequested;
 
-    // UI callbacks
+    // UI callbacks for minimal display
     static OTAStateCallback stateCallback;
     static OTAProgressCallback progressCallback;
     static OTACompleteCallback completeCallback;
 
     // =============================================================================
-    // BULLETPROOF MONITORING (from old OTAManager)
+    // BULLETPROOF MONITORING
     // =============================================================================
 
     static uint32_t lastProgressTime;
@@ -109,7 +104,7 @@ class OTAManager {
     static bool emergencyMode;
 
     // =============================================================================
-    // WATCHDOG SAFETY (from OnDemandOTAManager)
+    // WATCHDOG SAFETY
     // =============================================================================
 
     static uint32_t lastWatchdogReset;
@@ -125,7 +120,7 @@ class OTAManager {
     static void completeOTA(OTAResult result, const char* message = nullptr);
 
     // =============================================================================
-    // NETWORK MANAGEMENT - Minimal for OTA only
+    // NETWORK MANAGEMENT - OTA Boot Mode Only
     // =============================================================================
 
     static bool startNetwork(void);
@@ -166,16 +161,16 @@ class OTAManager {
 };
 
 // =============================================================================
-// UI CONVENIENCE FUNCTIONS
+// BOOT MODE UI FUNCTIONS
 // =============================================================================
 
-// Simple UI integration functions
-bool initiateOTAFromUI(void);         // UI button handler
+// Simple UI integration for boot mode OTA
+bool initiateOTAFromUI(void);         // UI button handler (triggers boot mode)
 void cancelOTAFromUI(void);           // UI cancel handler
 const char* getOTAStatusForUI(void);  // UI status display
 uint8_t getOTAProgressForUI(void);    // UI progress bar
 
 }  // namespace OTA
-}  // namespace Hardware
+}  // namespace Boot
 
-#endif  // OTA_MANAGER_H
+#endif  // BOOT_OTA_MANAGER_H

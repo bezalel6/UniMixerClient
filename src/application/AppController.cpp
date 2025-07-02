@@ -7,7 +7,7 @@
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
-#include "../messaging/SerialBridge.h"
+#include "../messaging/InterruptMessagingEngine.h"
 #include "AudioManager.h"
 #include "AudioUI.h"
 #include "../logo/LogoManager.h"
@@ -19,7 +19,6 @@
 #include <ui/ui.h>
 
 // Unified OTA System
-#include "../hardware/NetworkManager.h"
 #include "../hardware/OTAManager.h"
 
 // Private variables
@@ -29,9 +28,9 @@ namespace Application {
 
 // Refactored init function using the macros
 bool init(void) {
-    Serial.println("==========================================");
-    Serial.println("AppController::init() called!");
-    Serial.println("==========================================");
+    ESP_LOGI(TAG, "==========================================");
+    ESP_LOGI(TAG, "AppController::init() called!");
+    ESP_LOGI(TAG, "==========================================");
     ESP_LOGI(TAG, "Initializing Application Controller (Multi-threaded ESP32-S3)");
     ESP_LOGI(TAG, "Build Info: %s", getBuildInfo());
     ESP_LOGE(TAG, "[DEBUG] AppController init started - using ERROR level for visibility");
@@ -72,64 +71,44 @@ bool init(void) {
 
     INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::init());
 
-    // Network architecture logic - Network-free by default, OTA on-demand
-    INIT_STEP("Configuring Network Architecture", {
+    // Network-Free Architecture - OTAManager handles network on-demand
+    INIT_STEP("Configuring Network-Free Architecture", {
         ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
-        ESP_LOGI(TAG, "[NETWORK-FREE] Network will only be activated for OTA when requested by user");
-        bool networkNeeded = false;
+        ESP_LOGI(TAG, "[NETWORK-FREE] OTAManager will handle network communications on-demand");
 
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
         ESP_LOGW(TAG, "[NETWORK-FREE] MQTT transport requested but network-free mode enabled");
-        ESP_LOGW(TAG, "[NETWORK-FREE] Disabling MQTT transport in favor of Serial-only");
-        networkNeeded = false;  // Force network-free for MQTT
+        ESP_LOGW(TAG, "[NETWORK-FREE] Using Serial-only transport via InterruptMessagingEngine");
 #endif
 
-        // Network will be initialized on-demand by OTA system when needed
-        if (networkNeeded) {
-            ESP_LOGI(TAG, "Network required - initializing network manager");
-            if (!Hardware::Network::init()) {
-                ESP_LOGE(TAG, "Failed to initialize network manager");
-                return false;
-            }
-            Hardware::Network::enableAutoReconnect(true);
-        } else {
-            ESP_LOGI(TAG, "[NETWORK-FREE] Skipping network initialization - will be done on-demand for OTA");
-        }
+        ESP_LOGI(TAG, "[NETWORK-FREE] Network will be activated only during OTA operations");
     });
 
     // Transport configuration
     INIT_STEP("Configuring Message Transport", {
-#if MESSAGING_DEFAULT_TRANSPORT == 0
-#if MESSAGING_ENABLE_MQTT_TRANSPORT
-        ESP_LOGI(TAG, "Configuring MQTT transport (config: MQTT only)");
-#else
-        ESP_LOGE(TAG, "MQTT transport requested but disabled in config");
-        return false;
-#endif
-#elif MESSAGING_DEFAULT_TRANSPORT == 1
+#if MESSAGING_DEFAULT_TRANSPORT == 1
 #if MESSAGING_ENABLE_SERIAL_TRANSPORT
-        ESP_LOGI(TAG, "Configuring Serial transport (config: Serial only)");
-        if (!Messaging::Serial::init()) {
-            ESP_LOGE(TAG, "Failed to initialize Serial bridge");
+        ESP_LOGI(TAG, "Initializing Core 1 Interrupt Messaging Engine");
+
+        // Initialize MessageCore first
+        if (!Messaging::MessageAPI::init()) {
+            ESP_LOGE(TAG, "Failed to initialize MessageCore");
             return false;
         }
+
+        // Initialize Core 1 Interrupt Messaging Engine
+        if (!Messaging::Core1::InterruptMessagingEngine::init()) {
+            ESP_LOGE(TAG, "Failed to initialize Core 1 Messaging Engine");
+            return false;
+        }
+
+        ESP_LOGI(TAG, "Core 1 Messaging Engine initialized successfully");
 #else
         ESP_LOGE(TAG, "Serial transport requested but disabled in config");
         return false;
 #endif
-#elif MESSAGING_DEFAULT_TRANSPORT == 2
-#if MESSAGING_ENABLE_MQTT_TRANSPORT && MESSAGING_ENABLE_SERIAL_TRANSPORT
-        ESP_LOGI(TAG, "Configuring dual transport (config: MQTT + Serial)");
-        if (!Messaging::Serial::init()) {
-            ESP_LOGE(TAG, "Failed to initialize Serial bridge");
-            return false;
-        }
 #else
-        ESP_LOGE(TAG, "Dual transport requested but one or both transports disabled in config");
-        return false;
-#endif
-#else
-        ESP_LOGE(TAG, "Invalid MESSAGING_DEFAULT_TRANSPORT value: %d", MESSAGING_DEFAULT_TRANSPORT);
+        ESP_LOGE(TAG, "Only Serial transport supported in network-free mode");
         return false;
 #endif
     });
@@ -167,6 +146,10 @@ bool init(void) {
     // Task Manager initialization - Network-free mode for maximum performance
     INIT_STEP_CRITICAL("Starting Task Manager", Application::TaskManager::init());
 
+    // Start Core 1 Messaging Engine after TaskManager
+    INIT_STEP_CRITICAL("Starting Core 1 Messaging Engine",
+                       Messaging::Core1::InterruptMessagingEngine::start());
+
     // Post-initialization debug test
     ESP_LOGI(TAG, "AppController initialization complete - testing debug UI log");
 
@@ -201,6 +184,9 @@ bool init(void) {
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing Application Controller");
 
+    // Stop Core 1 Messaging Engine first
+    Messaging::Core1::InterruptMessagingEngine::stop();
+
     // Deinitialize task manager first (this stops all tasks)
     TaskManager::deinit();
 
@@ -217,18 +203,10 @@ void deinit(void) {
     Hardware::OTA::OTAManager::deinit();
 #endif
 
-    // Shutdown transports
-#if MESSAGING_ENABLE_SERIAL_TRANSPORT
-    Messaging::Serial::deinit();
-#endif
-
     // Shutdown messaging system (handlers will clean up automatically)
     Messaging::MessageAPI::shutdown();
 
-    // Deinitialize network manager if it was initialized
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
-    Hardware::Network::deinit();
-#endif
+    // Network communications handled by OTAManager - no separate deinit needed
 
     Display::deinit();
     Hardware::SD::deinit();
@@ -252,8 +230,8 @@ void run(void) {
         // Print stack usage for monitoring
         ESP_LOGI(TAG, "LVGL Task Stack High Water Mark: %d bytes",
                  TaskManager::getLvglTaskHighWaterMark() * sizeof(StackType_t));
-        ESP_LOGI(TAG, "Network Task Stack High Water Mark: %d bytes",
-                 TaskManager::getNetworkTaskHighWaterMark() * sizeof(StackType_t));
+        ESP_LOGI(TAG, "Audio Task Stack High Water Mark: %d bytes",
+                 TaskManager::getAudioTaskHighWaterMark() * sizeof(StackType_t));
 
         lastStatsTime = currentTime;
     }

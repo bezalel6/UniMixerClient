@@ -5,10 +5,10 @@
 #include "../display/DisplayManager.h"
 #include "../events/UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
-#include "../hardware/NetworkManager.h"
-#include "../hardware/OTAManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
+#include "../messaging/InterruptMessagingEngine.h"
+#include "../messaging/MessageData.h"
 #include "AppController.h"
 #include "AudioUI.h"
 #include "LogoSupplier.h"
@@ -122,18 +122,19 @@ static const char *TAG = "TaskManager";
 namespace Application {
 namespace TaskManager {
 
-// Task handles
+// =============================================================================
+// NETWORK-FREE ARCHITECTURE: Task System State
+// =============================================================================
+
+// Task handles (Core 0 only - Core 1 managed by InterruptMessagingEngine)
 TaskHandle_t lvglTaskHandle = NULL;
-TaskHandle_t networkTaskHandle = NULL;
-TaskHandle_t messagingTaskHandle = NULL;
-TaskHandle_t otaTaskHandle = NULL;
 TaskHandle_t audioTaskHandle = NULL;
 
 // Synchronization objects
 SemaphoreHandle_t lvglMutex = NULL;
 QueueHandle_t otaProgressQueue = NULL;
 
-// Dynamic task management
+// Task system configuration (simplified for network-free mode)
 TaskSystemConfig_t taskSystemConfig = {
     .currentState = TASK_STATE_NORMAL,
     .otaState = OTA_STATE_IDLE,
@@ -145,14 +146,13 @@ SemaphoreHandle_t taskConfigMutex = NULL;
 
 // Task state variables
 static bool tasksRunning = false;
+
+// OTA progress tracking
 static OTAProgressData_t currentOTAProgress = {0, false, false, "Ready"};
 
-// Message load tracking
+// Message load tracking (simplified for network-free mode)
 static uint32_t messageCount = 0;
 static uint32_t lastMessageCountReset = 0;
-static uint32_t currentNetworkInterval = NETWORK_UPDATE_INTERVAL_NORMAL;
-static uint32_t currentMessagingInterval = MESSAGING_UPDATE_INTERVAL_NORMAL;
-static uint32_t currentOTAInterval = OTA_UPDATE_INTERVAL_IDLE;
 static uint32_t currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
 
 // =============================================================================
@@ -160,27 +160,24 @@ static uint32_t currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
 // =============================================================================
 
 bool initializeSharedComponents(bool networkFreeMode) {
-    ESP_LOGI(TAG, "[SHARED-INIT] Initializing shared components (network-free: %s)",
-             networkFreeMode ? "YES" : "NO");
-    ESP_LOGE(TAG, "[DEBUG] initializeSharedComponents() - using ERROR level to force visibility");
+    ESP_LOGI(TAG, "[SHARED-INIT] Initializing shared components for network-free mode");
 
     tasksRunning = true;
 
     // Create synchronization objects
     MUTEX_CREATE_SAFE(taskConfigMutex, "task configuration mutex");
     MUTEX_CREATE_SAFE(lvglMutex, "LVGL mutex");
-    QUEUE_CREATE_SAFE(otaProgressQueue, 1, sizeof(OTAProgressData_t), "OTA progress queue");
 
     // Initialize task system configuration
     taskSystemConfig.currentState = TASK_STATE_NORMAL;
     taskSystemConfig.otaState = OTA_STATE_IDLE;
-    taskSystemConfig.taskMode = networkFreeMode ? TASK_MODE_NETWORK_FREE : TASK_MODE_OTA_ACTIVE;
+    // taskSystemConfig.taskMode = TASK_MODE_NETWORK_FREE;  // Always network-free
     taskSystemConfig.messageLoad = 0;
     taskSystemConfig.lastStateChange = millis();
     taskSystemConfig.emergencyMode = false;
-    taskSystemConfig.networkTasksActive = !networkFreeMode;  // Network tasks active only if not network-free
+    // taskSystemConfig.networkTasksActive = false;  // Never active in normal mode
 
-    // CRITICAL: Initialize LVGL Message Handler - ALWAYS required for UI
+    // Initialize LVGL Message Handler - required for UI
     ESP_LOGI(TAG, "[SHARED-INIT] Initializing LVGL Message Handler...");
     if (!LVGLMessageHandler::init()) {
         ESP_LOGE(TAG, "[SHARED-INIT] CRITICAL: Failed to initialize LVGL Message Handler");
@@ -192,83 +189,51 @@ bool initializeSharedComponents(bool networkFreeMode) {
     return true;
 }
 
+void printInitializationSummary(bool networkFreeMode) {
+    ESP_LOGI(TAG, "[INIT] SUCCESS: Network-free task system initialized");
+    ESP_LOGI(TAG, "[INIT] Core 0: LVGL + Audio (maximum performance)");
+    ESP_LOGI(TAG, "[INIT] Core 1: InterruptMessagingEngine (dedicated messaging)");
+    ESP_LOGI(TAG, "[INIT] Network tasks: Only in OTA boot mode");
+    ESP_LOGI(TAG, "[INIT] Network-Free Task Manager initialization completed successfully");
+}
+
+// Update createEssentialTasks to only create LVGL and Audio
 bool createEssentialTasks(bool networkFreeMode) {
-    ESP_LOGI(TAG, "[ESSENTIAL-TASKS] Creating essential tasks (network-free: %s)",
-             networkFreeMode ? "YES" : "NO");
+    ESP_LOGI(TAG, "[ESSENTIAL-TASKS] Creating essential tasks (network-free mode)");
 
-    // Create essential tasks that are always needed
+    // Create only UI and Audio tasks - Core 1 messaging handled separately
     TASK_CREATE_PINNED(lvglTask, "LVGL_Task", LVGL_TASK_STACK_SIZE, LVGL_TASK_PRIORITY_HIGH, lvglTaskHandle, LVGL_TASK_CORE);
-    TASK_CREATE_PINNED(messagingTask, "Messaging_Task", MESSAGING_TASK_STACK_SIZE, MESSAGING_TASK_PRIORITY_HIGH, messagingTaskHandle, MESSAGING_TASK_CORE);
 
-    // Audio task gets priority boost in network-free mode (freed network resources)
-    UBaseType_t audioPriority = networkFreeMode ? (AUDIO_TASK_PRIORITY_NORMAL + 1) : AUDIO_TASK_PRIORITY_NORMAL;
-    size_t audioStackSize = networkFreeMode ? (AUDIO_TASK_STACK_SIZE + 2048) : AUDIO_TASK_STACK_SIZE;
+    // Audio task gets maximum resources in network-free mode
+    UBaseType_t audioPriority = AUDIO_TASK_PRIORITY_NORMAL + 1;  // Boost priority
+    size_t audioStackSize = AUDIO_TASK_STACK_SIZE + 2048;        // Extra stack
 
     TASK_CREATE_PINNED(audioTask, "Audio_Task", audioStackSize, audioPriority, audioTaskHandle, AUDIO_TASK_CORE);
 
     ESP_LOGI(TAG, "[ESSENTIAL-TASKS] Essential tasks created successfully");
+    ESP_LOGI(TAG, "[NETWORK-FREE] Core 1 dedicated to InterruptMessagingEngine");
     return true;
 }
 
-bool createNetworkTasks() {
-    ESP_LOGI(TAG, "[NETWORK-TASKS] Creating network-dependent tasks");
-
-    // Traditional always-on network mode or conditional network tasks
-    TASK_CREATE_PINNED(networkTask, "Network_Task", NETWORK_TASK_STACK_SIZE, NETWORK_TASK_PRIORITY_HIGH, networkTaskHandle, NETWORK_TASK_CORE);
-
-#if OTA_ENABLE_UPDATES
-    TASK_CREATE_PINNED(otaTask, "OTA_Task", OTA_TASK_STACK_SIZE, OTA_TASK_PRIORITY_IDLE, otaTaskHandle, OTA_TASK_CORE);
-    ESP_LOGI(TAG, "[NETWORK-TASKS] OTA task created with adaptive priority management");
-#else
-    ESP_LOGI(TAG, "[NETWORK-TASKS] OTA updates disabled - skipping OTA task creation");
-#endif
-
-    ESP_LOGI(TAG, "[NETWORK-TASKS] Network tasks created successfully");
-    return true;
-}
-
-void printInitializationSummary(bool networkFreeMode) {
-    ESP_LOGI(TAG, "[INIT] SUCCESS: Task system initialized with %s",
-             networkFreeMode ? "network-free architecture" : "traditional always-on network");
-
-    if (networkFreeMode) {
-        ESP_LOGI(TAG, "[INIT] Network-free mode: Freed ~%d bytes from disabled network tasks", getFreedNetworkMemory());
-    }
-
-    // Print initial task configuration
-    printTaskStats();
-    printTaskLoadAnalysis();
-
-    ESP_LOGI(TAG, "[INIT] Dynamic Task Manager initialization completed successfully");
-}
-
-// =============================================================================
-// PUBLIC INITIALIZATION FUNCTIONS
-// =============================================================================
-
+// Update init() for network-free mode
 bool init(void) {
-    Serial.println("TaskManager::init() called - logging may be filtered");
-    ESP_LOGI(TAG, "[INIT] Starting Dynamic Task Manager initialization for ESP32-S3 dual-core");
-    ESP_LOGE(TAG, "[DEBUG] TaskManager init() - using ERROR level to force visibility");
+    ESP_LOGI(TAG, "[INIT] Starting Network-Free Task Manager for ESP32-S3 dual-core");
 
-    // Initialize shared components
-    if (!initializeSharedComponents(false)) {  // false = not network-free
+    // Initialize shared components for network-free mode
+    if (!initializeSharedComponents(true)) {  // true = network-free
         return false;
     }
 
-    // Create essential tasks
-    if (!createEssentialTasks(false)) {  // false = not network-free
+    // Create only essential tasks (LVGL + Audio)
+    if (!createEssentialTasks(true)) {  // true = network-free
         return false;
     }
 
-    // Network-free architecture - network tasks created on-demand for OTA only
-    ESP_LOGI(TAG, "[INIT] Network-free mode: Skipping network tasks (will be created on-demand for OTA)");
-
-    // Update task configuration for network-free mode
-    if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        taskSystemConfig.taskMode = TASK_MODE_NETWORK_FREE;
-        taskSystemConfig.networkTasksActive = false;
-        xSemaphoreGiveRecursive(taskConfigMutex);
+    // Create OTA progress queue
+    otaProgressQueue = xQueueCreate(1, sizeof(OTAProgressData_t));
+    if (!otaProgressQueue) {
+        ESP_LOGE(TAG, "Failed to create OTA progress queue");
+        return false;
     }
 
     printInitializationSummary(true);  // true = network-free mode
@@ -276,57 +241,30 @@ bool init(void) {
     return true;
 }
 
-bool initNetworkFreeTasks(void) {
-    Serial.println("TaskManager::initNetworkFreeTasks() called - this should show!");
-    ESP_LOGI(TAG, "[NETWORK-FREE] Initializing network-free task system");
-    ESP_LOGE(TAG, "[DEBUG] initNetworkFreeTasks() - using ERROR level to force visibility");
-
-    // Initialize shared components in network-free mode
-    if (!initializeSharedComponents(true)) {  // true = network-free
-        return false;
-    }
-
-    // Create essential tasks with network-free optimizations
-    if (!createEssentialTasks(true)) {  // true = network-free
-        return false;
-    }
-
-    ESP_LOGE(TAG, "[NETWORK-FREE] Network-free task system initialized successfully");
-
-    printInitializationSummary(true);  // true = network-free
-
-    return true;
-}
-
+// Update deinit() to only handle essential tasks
 void deinit(void) {
-    ESP_LOGI(TAG, "[DEINIT] Starting Task Manager deinitialization");
+    ESP_LOGI(TAG, "[DEINIT] Starting Network-Free Task Manager deinitialization");
 
     tasksRunning = false;
 
     // Wait a bit for tasks to finish their current operations
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    // Delete all tasks
+    // Delete only the tasks we created
     TASK_DELETE_SAFE(lvglTaskHandle, "LVGL task");
-    TASK_DELETE_SAFE(networkTaskHandle, "Network task");
-    TASK_DELETE_SAFE(messagingTaskHandle, "Messaging task");
-    TASK_DELETE_SAFE(otaTaskHandle, "OTA task");
     TASK_DELETE_SAFE(audioTaskHandle, "Audio task");
 
     // Clean up synchronization objects
     MUTEX_DELETE_SAFE(lvglMutex, "LVGL mutex");
-    QUEUE_DELETE_SAFE(otaProgressQueue, "OTA progress queue");
     MUTEX_DELETE_SAFE(taskConfigMutex, "task configuration mutex");
+    QUEUE_DELETE_SAFE(otaProgressQueue, "OTA progress queue");
 
-    ESP_LOGI(TAG, "[DEINIT] Task Manager deinitialization completed");
+    ESP_LOGI(TAG, "[DEINIT] Network-Free Task Manager deinitialization completed");
 }
 
 void suspend(void) {
     if (tasksRunning) {
         TASK_SUSPEND_SAFE(lvglTaskHandle, "LVGL task");
-        TASK_SUSPEND_SAFE(networkTaskHandle, "Network task");
-        TASK_SUSPEND_SAFE(messagingTaskHandle, "Messaging task");
-        TASK_SUSPEND_SAFE(otaTaskHandle, "OTA task");
         TASK_SUSPEND_SAFE(audioTaskHandle, "Audio task");
     }
 }
@@ -334,9 +272,6 @@ void suspend(void) {
 void resume(void) {
     if (tasksRunning) {
         TASK_RESUME_SAFE(lvglTaskHandle, "LVGL task");
-        TASK_RESUME_SAFE(networkTaskHandle, "Network task");
-        TASK_RESUME_SAFE(messagingTaskHandle, "Messaging task");
-        TASK_RESUME_SAFE(otaTaskHandle, "OTA task");
         TASK_RESUME_SAFE(audioTaskHandle, "Audio task");
     }
 }
@@ -345,7 +280,6 @@ void suspendForOTA(void) {
     if (tasksRunning) {
         ESP_LOGI(TAG, "[OTA] Suspending non-essential tasks for OTA update...");
         // Keep network, OTA, and LVGL tasks running for OTA process and UI feedback
-        TASK_SUSPEND_SAFE(messagingTaskHandle, "Messaging_Task");
         TASK_SUSPEND_SAFE(audioTaskHandle, "Audio_Task");
         ESP_LOGI(TAG, "[OTA] Finished suspending tasks for OTA.");
     } else {
@@ -356,7 +290,6 @@ void suspendForOTA(void) {
 void resumeFromOTA(void) {
     if (tasksRunning) {
         ESP_LOGI(TAG, "[OTA] Resuming tasks after OTA update...");
-        TASK_RESUME_SAFE(messagingTaskHandle, "Messaging_Task");
         TASK_RESUME_SAFE(audioTaskHandle, "Audio_Task");
         ESP_LOGI(TAG, "[OTA] Finished resuming tasks after OTA.");
     } else {
@@ -651,142 +584,7 @@ void lvglTask(void *parameter) {
     ESP_LOGI(TAG, "[LVGL_TASK] LVGL Task ended");
     vTaskDelete(NULL);
 }
-
-// Network Task - Core 1, Adaptive Intervals
-void networkTask(void *parameter) {
-    ESP_LOGI(TAG, "[NETWORK_TASK] Network Task started on Core %d with adaptive intervals", xPortGetCoreID());
-
-    TickType_t lastWakeTime = xTaskGetTickCount();
-
-    while (tasksRunning) {
-        // Update network status
-#if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2 || \
-    OTA_ENABLE_UPDATES
-        PERF_TIMER_START(network_update);
-        Hardware::Network::update();
-        PERF_TIMER_END(network_update, 50000);  // Warn if network update takes >50ms
-
-        bool connected = Hardware::Network::isConnected();
-        const char *status = Hardware::Network::getWifiStatusString();
-        const char *ssid = Hardware::Network::getSsid();
-        const char *ip = Hardware::Network::getIpAddress();
-
-        // Send UI update messages instead of direct LVGL calls
-        PERF_TIMER_START(network_ui_update);
-        LVGLMessageHandler::updateWifiStatus(status, connected);
-        LVGLMessageHandler::updateNetworkInfo(ssid, ip);
-        PERF_TIMER_END(network_ui_update, 10000);  // Warn if UI update takes >10ms
-#endif
-
-        // Update SD card status (hardware monitoring)
-        Hardware::SD::update();
-        Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
-
-        // Send SD status UI update messages - use advanced hash comparison
-        static uint32_t lastCardInfoHash = 0;
-
-        if (HASH_CHANGED(cardInfo, lastCardInfoHash)) {
-            ESP_LOGI(TAG, "[NETWORK_TASK] Card Info Changed");
-
-            const char *statusStr = Hardware::SD::getStatusString();
-
-            // Send UI update
-            LVGLMessageHandler::updateSDStatus(statusStr, cardInfo.isMounted(), cardInfo.getTotalMB(), cardInfo.getUsedMB(), cardInfo.cardType);
-        }
-        // Use adaptive interval based on current system state
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(currentNetworkInterval));
-    }
-
-    ESP_LOGI(TAG, "[NETWORK_TASK] Network Task ended");
-    vTaskDelete(NULL);
-}
-
-// Messaging Task - Core 0, High Priority with Load Monitoring
-void messagingTask(void *parameter) {
-    ESP_LOGI(TAG, "[MESSAGING_TASK] Messaging Task started on Core %d with load monitoring", xPortGetCoreID());
-
-    TickType_t lastWakeTime = xTaskGetTickCount();
-    static unsigned long lastLoadReport = 0;
-
-    while (tasksRunning) {
-        // Update message system (high frequency for responsiveness)
-        Messaging::MessageAPI::update();
-
-        // Report message activity for load monitoring
-        unsigned long currentTime = millis();
-        if (currentTime - lastLoadReport >= 100) {  // Report every 100ms for responsiveness
-            reportMessageActivity();
-            lastLoadReport = currentTime;
-        }
-
-        // TODO: Re-enable logo system updates with new Logo system
-        // Temporarily disabled during logo system migration
-
-        // Use adaptive interval based on current system load
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(currentMessagingInterval));
-    }
-
-    ESP_LOGI(TAG, "[MESSAGING_TASK] Messaging Task ended");
-    vTaskDelete(NULL);
-}
-
-#if OTA_ENABLE_UPDATES
-// OTA Task - Core 1, Adaptive Priority (IDLE -> CRITICAL based on activity)
-void otaTask(void *parameter) {
-    ESP_LOGI(TAG, "[OTA_TASK] Adaptive OTA Task started on Core %d", xPortGetCoreID());
-
-    TickType_t lastWakeTime = xTaskGetTickCount();
-    static unsigned long lastOTACheck = 0;
-    static bool wasOTAActive = false;
-
-    // Initialize OTA state
-    setOTAState(OTA_STATE_IDLE);
-
-    while (tasksRunning) {
-        unsigned long currentTime = millis();
-        bool otaActive = Hardware::OTA::OTAManager::isActive();
-
-        // Detect OTA state changes and update system accordingly
-        if (otaActive != wasOTAActive) {
-            if (otaActive) {
-                ESP_LOGI(TAG, "[OTA_TASK] OTA update detected - switching to high-priority mode");
-                setOTAState(OTA_STATE_DOWNLOADING);
-            } else {
-                ESP_LOGI(TAG, "[OTA_TASK] OTA update completed - returning to idle mode");
-                setOTAState(OTA_STATE_IDLE);
-            }
-            wasOTAActive = otaActive;
-        }
-
-        // Only check for OTA updates at adaptive intervals
-        if (currentTime - lastOTACheck >= currentOTAInterval) {
-            lastOTACheck = currentTime;
-
-            // Update OTA state before checking
-            if (!otaActive) {
-                setOTAState(OTA_STATE_CHECKING);
-            }
-
-            // Check for OTA updates or re-initialize if needed
-            Hardware::OTA::OTAManager::update();
-
-            // Return to idle if no activity detected
-            if (!otaActive && !Hardware::OTA::OTAManager::isActive()) {
-                setOTAState(OTA_STATE_IDLE);
-            }
-
-            ESP_LOGD(TAG, "[OTA_TASK] OTA check completed, next check in %ums", currentOTAInterval);
-        }
-
-        // Use dynamic interval for task sleep
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(currentOTAInterval));
-    }
-
-    ESP_LOGI(TAG, "[OTA_TASK] Adaptive OTA Task ended");
-    vTaskDelete(NULL);
-}
-#endif
-
+void updateMessagingEngineIntegration();
 // Audio Task - Core 0, Improved Priority with Adaptive Intervals
 void audioTask(void *parameter) {
     ESP_LOGI(TAG, "[AUDIO_TASK] Audio Task started on Core %d with improved priority management", xPortGetCoreID());
@@ -806,8 +604,7 @@ void audioTask(void *parameter) {
 
     while (tasksRunning) {
         // Check if task is suspended due to emergency/OTA mode
-        if (taskSystemConfig.currentState == TASK_STATE_EMERGENCY ||
-            taskSystemConfig.currentState == TASK_STATE_OTA_ACTIVE) {
+        if (taskSystemConfig.currentState == TASK_STATE_OTA_ACTIVE) {
             // Minimal operations during critical states
             vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(5000));  // 5 second intervals
             continue;
@@ -925,11 +722,16 @@ void audioTask(void *parameter) {
 
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(sleepInterval));
 
-        // OPTIMIZED: Heartbeat logging reduced frequency
+        // OPTIMIZED: Heartbeat logging reduced frequency + InterruptMessagingEngine integration
         static int heartbeat = 0;
         if (++heartbeat % 50 == 0) {  // Reduced from every 10 to every 50
             ESP_LOGD(TAG, "[AUDIO_TASK] Heartbeat: %d (failures: %d, emergency: %s)",
                      heartbeat, consecutiveFailures, emergencyMode ? "YES" : "NO");
+
+            // Update InterruptMessagingEngine integration every ~50 cycles (every ~50 seconds)
+            if (heartbeat % 200 == 0) {  // Every ~200 cycles = ~3-4 minutes
+                updateMessagingEngineIntegration();
+            }
         }
     }
 
@@ -945,10 +747,8 @@ void printTaskStats(void) {
     ESP_LOGI(TAG, "[STATS] Message Load: %u msg/s, Last State Change: %u ms ago",
              taskSystemConfig.messageLoad, millis() - taskSystemConfig.lastStateChange);
     LOG_TASK_CONFIG("LVGL Task", LVGL_TASK_CORE, LVGL_TASK_PRIORITY_HIGH, LVGL_TASK_STACK_SIZE);
-    LOG_TASK_CONFIG_WITH_INTERVAL("Network Task", NETWORK_TASK_CORE, NETWORK_TASK_PRIORITY_HIGH, NETWORK_TASK_STACK_SIZE, currentNetworkInterval);
-    LOG_TASK_CONFIG_WITH_INTERVAL("Messaging Task", MESSAGING_TASK_CORE, MESSAGING_TASK_PRIORITY_HIGH, MESSAGING_TASK_STACK_SIZE, currentMessagingInterval);
-    LOG_TASK_CONFIG_WITH_INTERVAL("OTA Task", OTA_TASK_CORE, OTA_TASK_PRIORITY_IDLE, OTA_TASK_STACK_SIZE, currentOTAInterval);
     LOG_TASK_CONFIG("Audio Task", AUDIO_TASK_CORE, AUDIO_TASK_PRIORITY_NORMAL, AUDIO_TASK_STACK_SIZE);
+    ESP_LOGI(TAG, "[STATS] Core 1: InterruptMessagingEngine (dedicated)");
     ESP_LOGI(TAG, "[STATS] =========================");
 }
 
@@ -960,29 +760,6 @@ void printTaskLoadAnalysis(void) {
         UBaseType_t currentPriority = uxTaskPriorityGet(lvglTaskHandle);
         ESP_LOGI(TAG, "[ANALYSIS] LVGL Task: Current Priority %d, Stack HWM: %d bytes",
                  currentPriority, uxTaskGetStackHighWaterMark(lvglTaskHandle) * sizeof(StackType_t));
-    }
-
-    if (networkTaskHandle) {
-        UBaseType_t currentPriority = uxTaskPriorityGet(networkTaskHandle);
-        ESP_LOGI(TAG, "[ANALYSIS] Network Task: Current Priority %d, Stack HWM: %d bytes",
-                 currentPriority, uxTaskGetStackHighWaterMark(networkTaskHandle) * sizeof(StackType_t));
-    }
-
-    if (messagingTaskHandle) {
-        UBaseType_t currentPriority = uxTaskPriorityGet(messagingTaskHandle);
-        ESP_LOGI(TAG, "[ANALYSIS] Messaging Task: Current Priority %d, Stack HWM: %d bytes",
-                 currentPriority, uxTaskGetStackHighWaterMark(messagingTaskHandle) * sizeof(StackType_t));
-    }
-
-    if (otaTaskHandle) {
-        UBaseType_t currentPriority = uxTaskPriorityGet(otaTaskHandle);
-        eTaskState taskState = eTaskGetState(otaTaskHandle);
-        const char *stateStr = (taskState == eReady) ? "Ready" : (taskState == eRunning) ? "Running"
-                                                             : (taskState == eBlocked)   ? "Blocked"
-                                                             : (taskState == eSuspended) ? "Suspended"
-                                                                                         : "Unknown";
-        ESP_LOGI(TAG, "[ANALYSIS] OTA Task: Current Priority %d, State: %s, Stack HWM: %d bytes",
-                 currentPriority, stateStr, uxTaskGetStackHighWaterMark(otaTaskHandle) * sizeof(StackType_t));
     }
 
     if (audioTaskHandle) {
@@ -1000,16 +777,14 @@ void printTaskLoadAnalysis(void) {
     ESP_LOGI(TAG, "[ANALYSIS] Free Heap: %d bytes, Free Stack (this task): %d bytes",
              esp_get_free_heap_size(), uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
 
-    // Performance optimization summary
-    uint32_t otaEfficiencyGain = (OTA_UPDATE_INTERVAL_IDLE / 2000) * 100;  // Percentage improvement
-    ESP_LOGI(TAG, "[ANALYSIS] OTA Task Efficiency Gain: %u%% (from 2s to %us intervals when idle)",
-             otaEfficiencyGain, OTA_UPDATE_INTERVAL_IDLE / 1000);
+    // Performance optimization summary - Network-free mode eliminates OTA polling
+    uint32_t otaEfficiencyGain = 100;  // 100% improvement - no OTA polling in normal mode
+    ESP_LOGI(TAG, "[ANALYSIS] OTA Efficiency Gain: %u%% (OTA polling eliminated in network-free mode)",
+             otaEfficiencyGain);
 
     ESP_LOGI(TAG, "[ANALYSIS] Core Load Distribution:");
-    ESP_LOGI(TAG, "[ANALYSIS]   Core 0: LVGL (Priority %d), Messaging (Priority varies), Audio (Priority varies)",
-             LVGL_TASK_PRIORITY_HIGH);
-    ESP_LOGI(TAG, "[ANALYSIS]   Core 1: Network (Priority %d), OTA (Priority %d-%d adaptive)",
-             NETWORK_TASK_PRIORITY_HIGH, OTA_TASK_PRIORITY_IDLE, OTA_TASK_PRIORITY_CRITICAL);
+    ESP_LOGI(TAG, "[ANALYSIS]   Core 0: LVGL (Priority %d), Audio (Priority %d-%d adaptive)",
+             LVGL_TASK_PRIORITY_HIGH, AUDIO_TASK_PRIORITY_NORMAL);
 
     ESP_LOGI(TAG, "[ANALYSIS] =====================================");
 }
@@ -1035,9 +810,9 @@ uint32_t getLvglTaskHighWaterMark(void) {
     return 0;
 }
 
-uint32_t getNetworkTaskHighWaterMark(void) {
-    if (networkTaskHandle) {
-        return uxTaskGetStackHighWaterMark(networkTaskHandle);
+uint32_t getAudioTaskHighWaterMark(void) {
+    if (audioTaskHandle) {
+        return uxTaskGetStackHighWaterMark(audioTaskHandle);
     }
     return 0;
 }
@@ -1109,35 +884,17 @@ void optimizeTaskPriorities(void) {
         case TASK_STATE_NORMAL:
             // Standard operating priorities
             TASK_SET_PRIORITY_SAFE(lvglTaskHandle, LVGL_TASK_PRIORITY_HIGH, "LVGL task");
-            TASK_SET_PRIORITY_SAFE(messagingTaskHandle, MESSAGING_TASK_PRIORITY_HIGH, "Messaging task");
-            TASK_SET_PRIORITY_SAFE(networkTaskHandle, NETWORK_TASK_PRIORITY_HIGH, "Network task");
             TASK_SET_PRIORITY_SAFE(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL, "Audio task");
-            TASK_SET_PRIORITY_SAFE(otaTaskHandle, OTA_TASK_PRIORITY_IDLE, "OTA task");
             break;
 
         case TASK_STATE_OTA_ACTIVE:
             // Boost OTA priority, maintain UI responsiveness
-            TASK_SET_PRIORITY_SAFE(otaTaskHandle, OTA_TASK_PRIORITY_CRITICAL, "OTA task");
-            TASK_SET_PRIORITY_SAFE(lvglTaskHandle, LVGL_TASK_PRIORITY_CRITICAL, "LVGL task");
-            TASK_SET_PRIORITY_SAFE(networkTaskHandle, NETWORK_TASK_PRIORITY_HIGH, "Network task");
-            TASK_SET_PRIORITY_SAFE(messagingTaskHandle, MESSAGING_TASK_PRIORITY_LOW, "Messaging task");
             TASK_SET_PRIORITY_SAFE(audioTaskHandle, AUDIO_TASK_PRIORITY_SUSPENDED, "Audio task");
             break;
 
         case TASK_STATE_HIGH_LOAD:
             // Boost messaging for high message load
-            TASK_SET_PRIORITY_SAFE(messagingTaskHandle, MESSAGING_TASK_PRIORITY_HIGH, "Messaging task");
-            TASK_SET_PRIORITY_SAFE(lvglTaskHandle, LVGL_TASK_PRIORITY_HIGH, "LVGL task");
-            TASK_SET_PRIORITY_SAFE(networkTaskHandle, NETWORK_TASK_PRIORITY_HIGH, "Network task");
             TASK_SET_PRIORITY_SAFE(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL, "Audio task");
-            TASK_SET_PRIORITY_SAFE(otaTaskHandle, OTA_TASK_PRIORITY_IDLE, "OTA task");
-            break;
-
-        case TASK_STATE_EMERGENCY:
-            // Maximum priority for critical operations
-            TASK_SET_PRIORITY_SAFE(lvglTaskHandle, LVGL_TASK_PRIORITY_CRITICAL, "LVGL task");
-            // Suspend non-critical tasks temporarily
-            TASK_SUSPEND_SAFE(audioTaskHandle, "Audio task");
             break;
 
         default:
@@ -1149,20 +906,14 @@ void adjustTaskIntervals(void) {
     // Update interval variables based on current state
     switch (taskSystemConfig.currentState) {
         case TASK_STATE_NORMAL:
-            currentNetworkInterval = NETWORK_UPDATE_INTERVAL_NORMAL;
-            currentMessagingInterval = (taskSystemConfig.messageLoad > 10) ? MESSAGING_UPDATE_INTERVAL_HIGH_LOAD : MESSAGING_UPDATE_INTERVAL_NORMAL;
             currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
             break;
 
         case TASK_STATE_OTA_ACTIVE:
-            currentNetworkInterval = NETWORK_UPDATE_INTERVAL_OTA;
-            currentMessagingInterval = MESSAGING_UPDATE_INTERVAL_NORMAL;
             currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED;
             break;
 
         case TASK_STATE_HIGH_LOAD:
-            currentNetworkInterval = NETWORK_UPDATE_INTERVAL_NORMAL;
-            currentMessagingInterval = MESSAGING_UPDATE_INTERVAL_HIGH_LOAD;
             currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
             break;
 
@@ -1170,32 +921,14 @@ void adjustTaskIntervals(void) {
             break;
     }
 
-    // OTA-specific interval adjustment
-    switch (taskSystemConfig.otaState) {
-        case OTA_STATE_IDLE:
-            currentOTAInterval = OTA_UPDATE_INTERVAL_IDLE;
-            break;
-        case OTA_STATE_CHECKING:
-            currentOTAInterval = OTA_UPDATE_INTERVAL_CHECKING;
-            break;
-        case OTA_STATE_DOWNLOADING:
-        case OTA_STATE_INSTALLING:
-            currentOTAInterval = OTA_UPDATE_INTERVAL_ACTIVE;
-            break;
-        default:
-            currentOTAInterval = OTA_UPDATE_INTERVAL_CHECKING;
-            break;
-    }
-
-    ESP_LOGD(TAG, "[DYNAMIC] Adjusted intervals - Network: %ums, Messaging: %ums, OTA: %ums, Audio: %ums",
-             currentNetworkInterval, currentMessagingInterval, currentOTAInterval, currentAudioInterval);
+    ESP_LOGD(TAG, "[DYNAMIC] Adjusted intervals - Audio: %ums", currentAudioInterval);
 }
 
 bool enterEmergencyMode(uint32_t durationMs) {
     if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         ESP_LOGW(TAG, "[EMERGENCY] Entering emergency mode for %u ms", durationMs);
         taskSystemConfig.emergencyMode = true;
-        setTaskSystemState(TASK_STATE_EMERGENCY);
+        // setTaskSystemState(TASK_STATE_EMERGENCY);
 
         // Set up timer to exit emergency mode (simplified - in production use FreeRTOS timer)
         // For now, tasks will check and exit after duration
@@ -1231,19 +964,6 @@ void configureForOTADownload(void) {
             ESP_LOGI(TAG, "[OTA] Suspending Audio task for OTA download");
             vTaskSuspend(audioTaskHandle);
         }
-
-        // Reduce messaging priority but don't suspend (may need to receive OTA commands)
-        if (messagingTaskHandle) {
-            vTaskPrioritySet(messagingTaskHandle, MESSAGING_TASK_PRIORITY_LOW);
-        }
-
-        // Boost OTA and network priorities
-        if (otaTaskHandle) {
-            vTaskPrioritySet(otaTaskHandle, OTA_TASK_PRIORITY_CRITICAL);
-        }
-        if (networkTaskHandle) {
-            vTaskPrioritySet(networkTaskHandle, NETWORK_TASK_PRIORITY_HIGH);
-        }
     }
 }
 
@@ -1253,10 +973,6 @@ void configureForOTAInstall(void) {
     // During installation, minimize all non-critical operations
     if (tasksRunning) {
         // Keep only LVGL for user feedback and OTA task for installation
-        if (messagingTaskHandle && eTaskGetState(messagingTaskHandle) != eSuspended) {
-            ESP_LOGI(TAG, "[OTA] Suspending Messaging task for OTA installation");
-            vTaskSuspend(messagingTaskHandle);
-        }
         if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
             ESP_LOGI(TAG, "[OTA] Suspending Audio task for OTA installation");
             vTaskSuspend(audioTaskHandle);
@@ -1295,214 +1011,57 @@ uint32_t getMessageLoadPerSecond(void) {
 }
 
 // =============================================================================
-// NETWORK-FREE ARCHITECTURE FUNCTIONS
+// MESSAGING ENGINE INTEGRATION FUNCTIONS
 // =============================================================================
 
-bool createOTATasks(void) {
-    ESP_LOGI(TAG, "[OTA-MODE] Creating network tasks for OTA operation");
+void reportCore1MessagingStats(uint32_t messagesReceived, uint32_t messagesSent, uint32_t bufferOverruns) {
+    // Update task load metrics with Core 1 messaging statistics
+    if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        taskSystemConfig.taskLoadMetrics[0] = messagesReceived;
+        taskSystemConfig.taskLoadMetrics[1] = messagesSent;
+        taskSystemConfig.taskLoadMetrics[2] = bufferOverruns;
+        taskSystemConfig.taskLoadMetrics[3] = millis();  // timestamp
 
-    if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (taskSystemConfig.networkTasksActive) {
-            ESP_LOGW(TAG, "[OTA-MODE] Network tasks already active");
-            xSemaphoreGiveRecursive(taskConfigMutex);
-            return true;
-        }
+        ESP_LOGD(TAG, "[CORE1] Messaging stats - RX: %u, TX: %u, Overruns: %u",
+                 messagesReceived, messagesSent, bufferOverruns);
 
-        taskSystemConfig.taskMode = TASK_MODE_OTA_ACTIVE;
         xSemaphoreGiveRecursive(taskConfigMutex);
     }
-
-    // Use shared network task creation function
-    if (!createNetworkTasks()) {
-        ESP_LOGE(TAG, "[OTA-MODE] Failed to create network tasks using shared function");
-        return false;
-    }
-
-    // Set OTA task to critical priority for OTA operations
-    if (otaTaskHandle) {
-        vTaskPrioritySet(otaTaskHandle, OTA_TASK_PRIORITY_CRITICAL);
-        ESP_LOGI(TAG, "[OTA-MODE] Boosted OTA task priority to critical for OTA operations");
-    }
-
-    if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        taskSystemConfig.networkTasksActive = true;
-        xSemaphoreGiveRecursive(taskConfigMutex);
-    }
-
-    ESP_LOGI(TAG, "[OTA-MODE] Network tasks created successfully for OTA");
-    return true;
 }
 
-void destroyOTATasks(void) {
-    ESP_LOGI(TAG, "[NETWORK-FREE] Destroying network tasks and returning to network-free mode");
+/**
+ * Complete InterruptMessagingEngine Integration
+ * This function should be called periodically (every 5-10 seconds) to:
+ * 1. Get statistics from InterruptMessagingEngine
+ * 2. Update TaskManager's dynamic priority system
+ * 3. Adjust Core 0 task priorities based on Core 1 messaging load
+ */
+void updateMessagingEngineIntegration(void) {
+    // Get statistics from InterruptMessagingEngine
+    uint32_t messagesReceived, messagesSent, bufferOverruns, core1Routed;
+    Messaging::Core1::InterruptMessagingEngine::getStats(messagesReceived, messagesSent, bufferOverruns, core1Routed);
 
-    if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (!taskSystemConfig.networkTasksActive) {
-            ESP_LOGW(TAG, "[NETWORK-FREE] Network tasks already inactive");
-            xSemaphoreGiveRecursive(taskConfigMutex);
-            return;
+    // Update TaskManager statistics
+    reportCore1MessagingStats(messagesReceived, messagesSent, bufferOverruns);
+
+    // Dynamic priority adjustment based on messaging load
+    if (bufferOverruns > 0) {
+        ESP_LOGW(TAG, "[MESSAGING-INTEGRATION] Buffer overruns detected (%u), optimizing priorities", bufferOverruns);
+        // Give Core 1 more breathing room by slightly reducing Core 0 task frequency
+        if (audioTaskHandle) {
+            // Temporarily reduce audio task priority to reduce Core 0 load
+            vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL - 1);
         }
-
-        taskSystemConfig.taskMode = TASK_MODE_NETWORK_FREE;
-        taskSystemConfig.networkTasksActive = false;
-        xSemaphoreGiveRecursive(taskConfigMutex);
-    }
-
-    // Delete Network task
-    if (networkTaskHandle) {
-        ESP_LOGI(TAG, "[NETWORK-FREE] Deleting Network task");
-        vTaskDelete(networkTaskHandle);
-        networkTaskHandle = NULL;
-    }
-
-    // Delete OTA task
-    if (otaTaskHandle) {
-        ESP_LOGI(TAG, "[NETWORK-FREE] Deleting OTA task");
-        vTaskDelete(otaTaskHandle);
-        otaTaskHandle = NULL;
-    }
-
-    // Wait for tasks to fully terminate
-    vTaskDelay(pdMS_TO_TICKS(100));
-
-    ESP_LOGI(TAG, "[NETWORK-FREE] Network tasks destroyed, freed ~%d bytes", getFreedNetworkMemory());
-}
-
-void switchToNetworkFreeMode(void) {
-    ESP_LOGI(TAG, "[NETWORK-FREE] Switching to network-free mode with resource reallocation");
-
-    destroyOTATasks();
-    reallocateNetworkResources();
-
-    // Boost remaining tasks with freed resources
-    if (audioTaskHandle) {
-        vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL + 1);
-        ESP_LOGI(TAG, "[NETWORK-FREE] Boosted Audio task priority");
-    }
-
-    if (lvglTaskHandle) {
-        vTaskPrioritySet(lvglTaskHandle, LVGL_TASK_PRIORITY_HIGH);
-        ESP_LOGI(TAG, "[NETWORK-FREE] Maintained LVGL task high priority");
-    }
-
-    setTaskSystemState(TASK_STATE_NORMAL);
-
-    ESP_LOGI(TAG, "[NETWORK-FREE] Successfully switched to network-free mode");
-}
-
-void switchToOTAMode(void) {
-    ESP_LOGI(TAG, "[OTA-MODE] Switching to OTA mode with network task creation");
-
-    restoreNetworkResources();
-
-    if (!createOTATasks()) {
-        ESP_LOGE(TAG, "[OTA-MODE] Failed to create OTA tasks");
-        return;
-    }
-
-    // Reduce audio task priority to make room for network operations
-    if (audioTaskHandle) {
-        vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL);
-    }
-
-    setTaskSystemState(TASK_STATE_OTA_ACTIVE);
-    setOTAState(OTA_STATE_CHECKING);
-
-    ESP_LOGI(TAG, "[OTA-MODE] Successfully switched to OTA mode");
-}
-
-size_t getFreedNetworkMemory(void) {
-    // Calculate memory freed from network tasks
-    size_t freedMemory = 0;
-
-    if (taskSystemConfig.taskMode == TASK_MODE_NETWORK_FREE) {
-        freedMemory += NETWORK_TASK_STACK_SIZE;  // Network task stack
-        freedMemory += OTA_TASK_STACK_SIZE;      // OTA task stack
-        freedMemory += 1024;                     // Additional overhead (task control blocks, etc.)
-    }
-
-    return freedMemory;
-}
-
-void reallocateNetworkResources(void) {
-    ESP_LOGI(TAG, "[RESOURCE] Reallocating network resources to UI/audio performance");
-
-    if (taskSystemConfig.taskMode != TASK_MODE_NETWORK_FREE) {
-        ESP_LOGW(TAG, "[RESOURCE] Not in network-free mode, skipping reallocation");
-        return;
-    }
-
-    size_t freedMem = getFreedNetworkMemory();
-    ESP_LOGI(TAG, "[RESOURCE] %d bytes available for reallocation from network tasks", freedMem);
-
-    // Boost task priorities with freed resources
-    if (audioTaskHandle) {
-        vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL + 1);
-    }
-
-    if (messagingTaskHandle) {
-        vTaskPrioritySet(messagingTaskHandle, MESSAGING_TASK_PRIORITY_HIGH);
-    }
-
-    ESP_LOGI(TAG, "[RESOURCE] Resource reallocation completed for network-free operation");
-}
-
-void restoreNetworkResources(void) {
-    ESP_LOGI(TAG, "[RESOURCE] Restoring network resources for OTA operation");
-
-    // Reset task priorities to normal for network operation
-    if (audioTaskHandle) {
-        vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL);
-    }
-
-    if (messagingTaskHandle) {
-        vTaskPrioritySet(messagingTaskHandle, MESSAGING_TASK_PRIORITY_HIGH);
-    }
-
-    ESP_LOGI(TAG, "[RESOURCE] Network resources restored for OTA mode");
-}
-
-TaskMode getCurrentTaskMode(void) {
-    return taskSystemConfig.taskMode;
-}
-
-bool setTaskMode(TaskMode mode) {
-    if (taskConfigMutex && xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        TaskMode oldMode = taskSystemConfig.taskMode;
-
-        if (oldMode == mode) {
-            xSemaphoreGiveRecursive(taskConfigMutex);
-            return true;  // Already in requested mode
+    } else if (messagesReceived > 50) {
+        ESP_LOGI(TAG, "[MESSAGING-INTEGRATION] High message throughput (%u/period), maintaining high performance", messagesReceived);
+        // Ensure optimal performance for high message loads
+        if (audioTaskHandle) {
+            vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL);
         }
-
-        ESP_LOGI(TAG, "[MODE] Switching task mode: %d -> %d", oldMode, mode);
-
-        switch (mode) {
-            case TASK_MODE_NETWORK_FREE:
-                xSemaphoreGiveRecursive(taskConfigMutex);
-                switchToNetworkFreeMode();
-                break;
-
-            case TASK_MODE_OTA_ACTIVE:
-                xSemaphoreGiveRecursive(taskConfigMutex);
-                switchToOTAMode();
-                break;
-
-            default:
-                ESP_LOGE(TAG, "[MODE] Unknown task mode: %d", mode);
-                xSemaphoreGiveRecursive(taskConfigMutex);
-                return false;
-        }
-
-        return true;
     }
 
-    ESP_LOGE(TAG, "[MODE] Failed to acquire task config mutex");
-    return false;
-}
-
-bool isNetworkFree(void) {
-    return taskSystemConfig.taskMode == TASK_MODE_NETWORK_FREE && !taskSystemConfig.networkTasksActive;
+    ESP_LOGD(TAG, "[MESSAGING-INTEGRATION] Core 1 routed %u messages, total RX: %u, TX: %u",
+             core1Routed, messagesReceived, messagesSent);
 }
 
 }  // namespace TaskManager
