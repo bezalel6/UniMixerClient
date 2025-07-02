@@ -1,7 +1,7 @@
 #include "AudioUI.h"
 #include "ui/screens/ui_screenMain.h"
-#include "../logo/LogoManager.h"
-#include "../events/UiEventHandlers.h"
+#include "../../logo/LogoManager.h"
+#include "../../core/UiEventHandlers.h"
 #include <ui/ui.h>
 #include <esp_log.h>
 

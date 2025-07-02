@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AudioData.h"
-#include "../messaging/protocol/MessageData.h"
+#include "../../messaging/protocol/MessageData.h"
 #include <functional>
 #include <vector>
 #include <map>

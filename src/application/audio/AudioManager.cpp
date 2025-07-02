@@ -1,14 +1,14 @@
 #include "AudioManager.h"
-#include "../hardware/DeviceManager.h"
-#include "../messaging/MessageAPI.h"
-#include "../messaging/protocol/MessageConfig.h"
-#include "../logo/LogoManager.h"
-#include "../services/MessageBusLogoSupplier.h"
+#include "../../hardware/DeviceManager.h"
+#include "../../messaging/MessageAPI.h"
+#include "../../messaging/protocol/MessageConfig.h"
+#include "../../logo/LogoManager.h"
+#include "../../logo/MessageBusLogoSupplier.h"
 #include <esp_log.h>
 #include <algorithm>
 #include "ui/ui.h"
 #include "logo/LogoManager.h"
-#include "../../include/ManagerMacros.h"
+#include "../../../include/ManagerMacros.h"
 
 static const char* TAG = "AudioManager";
 

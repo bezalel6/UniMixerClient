@@ -3,7 +3,7 @@
 #include "../../include/MessagingConfig.h"
 #include "../../include/OTAConfig.h"
 #include "../display/DisplayManager.h"
-#include "../events/UiEventHandlers.h"
+#include "../core/UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"
@@ -19,7 +19,7 @@
 #include <ui/ui.h>
 
 // Unified OTA System
-#include "../hardware/OTAManager.h"
+#include "../ota/OTAManager.h"
 
 // Private variables
 static const char *TAG = "AppController";

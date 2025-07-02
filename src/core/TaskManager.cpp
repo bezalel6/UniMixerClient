@@ -3,7 +3,7 @@
 #include "../../include/OTAConfig.h"
 #include "../../include/DebugUtils.h"
 #include "../display/DisplayManager.h"
-#include "../events/UiEventHandlers.h"
+#include "../core/UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../messaging/MessageAPI.h"

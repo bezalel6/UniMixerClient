@@ -1,5 +1,5 @@
 #include "OTAApplication.h"
-#include "../hardware/OTAManager.h"
+#include "../ota/OTAManager.h"
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include <esp_log.h>
