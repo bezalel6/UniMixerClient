@@ -28,50 +28,134 @@ echo "✅ Directory structure created"
 echo ""
 echo "🎯 PHASE 2: Moving files to new locations..."
 
-# Move to src/core/
-echo "📁 Moving files to src/core/..."
-mv src/main.cpp src/core/
-mv src/boot/BootManager.cpp src/core/ 2>/dev/null || echo "⚠️  BootManager.cpp not found in boot/"
-mv src/boot/BootManager.h src/core/ 2>/dev/null || echo "⚠️  BootManager.h not found in boot/"
-mv src/logging/CoreLoggingFilter.cpp src/core/
-mv src/events/UiEventHandlers.cpp src/core/
-mv src/events/UiEventHandlers.h src/core/
-mv src/application/core/AppController.cpp src/core/
-mv src/application/core/AppController.h src/core/
-mv src/application/core/TaskManager.cpp src/core/
-mv src/application/core/TaskManager.h src/core/
+# Function to safely move files with verification
+safe_move() {
+    local src="$1"
+    local dest="$2"
+    local desc="$3"
+    
+    if [ -f "$src" ]; then
+        echo "  ✅ Moving $desc: $src → $dest"
+        mv "$src" "$dest"
+    else
+        echo "  ⚠️  File not found: $src (skipping $desc)"
+    fi
+}
 
-# Consolidate OTA (handle potential duplicates)
-echo "📁 Consolidating OTA files..."
-if [ -f "src/boot/OTAManager.cpp" ] && [ -f "src/hardware/OTAManager.cpp" ]; then
-    echo "⚠️  Found OTA files in both boot/ and hardware/ - need manual consolidation"
-    echo "   Keeping hardware version, renaming boot version"
-    mv src/boot/OTAManager.cpp src/ota/OTAManager_boot.cpp
-    mv src/boot/OTAManager.h src/ota/OTAManager_boot.h
+# Function to safely move directory contents
+move_directory_contents() {
+    local src_dir="$1"
+    local dest_dir="$2"
+    local desc="$3"
+    
+    if [ -d "$src_dir" ] && [ "$(ls -A $src_dir 2>/dev/null)" ]; then
+        echo "📁 Moving $desc from $src_dir/ to $dest_dir/..."
+        for file in "$src_dir"/*; do
+            if [ -f "$file" ]; then
+                local filename=$(basename "$file")
+                echo "  ✅ Moving: $filename"
+                mv "$file" "$dest_dir/"
+            fi
+        done
+    else
+        echo "  ⚠️  Directory empty or not found: $src_dir (skipping $desc)"
+    fi
+}
+
+# Move to src/core/
+echo "📁 Moving core system files to src/core/..."
+safe_move "src/main.cpp" "src/core/main.cpp" "main entry point"
+safe_move "src/boot/BootManager.cpp" "src/core/BootManager.cpp" "boot manager implementation"
+safe_move "src/boot/BootManager.h" "src/core/BootManager.h" "boot manager header"
+safe_move "src/logging/CoreLoggingFilter.cpp" "src/core/CoreLoggingFilter.cpp" "core logging filter"
+safe_move "src/events/UiEventHandlers.cpp" "src/core/UiEventHandlers.cpp" "UI event handlers"
+safe_move "src/events/UiEventHandlers.h" "src/core/UiEventHandlers.h" "UI event handlers header"
+safe_move "src/application/core/AppController.cpp" "src/core/AppController.cpp" "app controller"
+safe_move "src/application/core/AppController.h" "src/core/AppController.h" "app controller header"
+safe_move "src/application/core/TaskManager.cpp" "src/core/TaskManager.cpp" "task manager"
+safe_move "src/application/core/TaskManager.h" "src/core/TaskManager.h" "task manager header"
+
+# Consolidate OTA (handle potential duplicates intelligently)
+echo "📁 Consolidating OTA system..."
+ota_files_moved=0
+
+# Check for boot OTA files
+if [ -f "src/boot/OTAManager.cpp" ]; then
+    echo "  📋 Found OTA files in boot/ directory"
+    if [ -f "src/hardware/OTAManager.cpp" ]; then
+        echo "  ⚠️  Duplicate OTA managers detected!"
+        echo "     Creating consolidated version..."
+        # Create a backup of boot version
+        safe_move "src/boot/OTAManager.cpp" "src/ota/OTAManager_boot_backup.cpp" "boot OTA backup"
+        safe_move "src/boot/OTAManager.h" "src/ota/OTAManager_boot_backup.h" "boot OTA header backup"
+        echo "     Using hardware/ version as primary"
+    else
+        safe_move "src/boot/OTAManager.cpp" "src/ota/OTAManager.cpp" "boot OTA manager"
+        safe_move "src/boot/OTAManager.h" "src/ota/OTAManager.h" "boot OTA header"
+        ota_files_moved=1
+    fi
 fi
-mv src/hardware/OTAManager.cpp src/ota/ 2>/dev/null
-mv src/hardware/OTAManager.h src/ota/ 2>/dev/null
+
+# Move hardware OTA files (primary version)
+if [ -f "src/hardware/OTAManager.cpp" ]; then
+    safe_move "src/hardware/OTAManager.cpp" "src/ota/OTAManager.cpp" "hardware OTA manager"
+    safe_move "src/hardware/OTAManager.h" "src/ota/OTAManager.h" "hardware OTA header"
+    ota_files_moved=1
+fi
+
+if [ $ota_files_moved -eq 0 ]; then
+    echo "  ⚠️  No OTA manager files found to consolidate"
+fi
 
 # Move logo services
 echo "📁 Moving logo services to src/logo/..."
-mv src/application/services/LogoSupplier.cpp src/logo/
-mv src/application/services/LogoSupplier.h src/logo/
-mv src/application/services/MessageBusLogoSupplier.cpp src/logo/
-mv src/application/services/MessageBusLogoSupplier.h src/logo/
+safe_move "src/application/services/LogoSupplier.cpp" "src/logo/LogoSupplier.cpp" "logo supplier"
+safe_move "src/application/services/LogoSupplier.h" "src/logo/LogoSupplier.h" "logo supplier header"
+safe_move "src/application/services/MessageBusLogoSupplier.cpp" "src/logo/MessageBusLogoSupplier.cpp" "message bus logo supplier"
+safe_move "src/application/services/MessageBusLogoSupplier.h" "src/logo/MessageBusLogoSupplier.h" "message bus logo supplier header"
 
 echo "✅ File moves completed"
 
 echo ""
 echo "🎯 PHASE 3: Cleaning up empty directories..."
 
-# Remove empty directories
-rmdir src/boot 2>/dev/null || echo "📁 src/boot/ not empty or already removed"
-rmdir src/events 2>/dev/null || echo "📁 src/events/ not empty or already removed"  
-rmdir src/logging 2>/dev/null || echo "📁 src/logging/ not empty or already removed"
-rmdir src/application/core 2>/dev/null || echo "📁 src/application/core/ not empty or already removed"
-rmdir src/application/services 2>/dev/null || echo "📁 src/application/services/ not empty or already removed"
+# Function to safely remove empty directories
+safe_rmdir() {
+    local dir="$1"
+    local desc="$2"
+    
+    if [ -d "$dir" ]; then
+        if [ "$(ls -A $dir 2>/dev/null)" ]; then
+            echo "  📁 Directory not empty, keeping: $dir ($desc)"
+            ls -la "$dir" | head -5
+        else
+            echo "  🗑️  Removing empty directory: $dir ($desc)"
+            rmdir "$dir"
+        fi
+    else
+        echo "  ✅ Directory already removed: $dir ($desc)"
+    fi
+}
 
-echo "✅ Empty directories cleaned up"
+# Remove empty directories in order (deepest first)
+safe_rmdir "src/application/core" "application core directory"
+safe_rmdir "src/application/services" "application services directory"
+safe_rmdir "src/boot" "boot directory"
+safe_rmdir "src/events" "events directory"
+safe_rmdir "src/logging" "logging directory"
+
+# Check if application directory can be removed (only if completely empty)
+if [ -d "src/application" ]; then
+    remaining=$(find src/application -type f | wc -l)
+    if [ $remaining -eq 0 ]; then
+        echo "  �️  Application directory is now empty, removing..."
+        rmdir src/application 2>/dev/null || echo "  ⚠️  Could not remove src/application (may have subdirectories)"
+    else
+        echo "  📁 Application directory has $remaining files remaining, keeping it"
+    fi
+fi
+
+echo "✅ Directory cleanup completed"
 
 echo ""
 echo "🎯 PHASE 4: Updating include paths..."
