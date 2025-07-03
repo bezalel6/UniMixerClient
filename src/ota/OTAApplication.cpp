@@ -3,6 +3,7 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../application/ui/LVGLMessageHandler.h"
+#include "../core/TaskManager.h"
 #include "BootManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
@@ -37,10 +38,16 @@ bool OTAApplication::init() {
         return false;
     }
 
+    // Initialize TaskManager for OTA progress queue
+    if (!Application::TaskManager::init()) {
+        ESP_LOGE(TAG, "Failed to initialize TaskManager (OTA progress queue)");
+        return false;
+    }
+
     // Show enhanced OTA screen immediately
     ESP_LOGI(TAG, "Showing OTA interface...");
     Application::LVGLMessageHandler::showOtaScreen();
-    
+
     // Give UI time to render
     vTaskDelay(pdMS_TO_TICKS(500));
 

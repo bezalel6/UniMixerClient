@@ -266,6 +266,12 @@ static void handleRequestData(const LVGLMessage_t *msg) {
 static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "OTA: Showing enhanced OTA screen with controls");
 
+    // Check if we're already in OTA mode to prevent duplicate screens
+    if (Boot::BootManager::getCurrentMode() == Boot::BootMode::OTA) {
+        ESP_LOGW(TAG, "OTA: Already in OTA mode, skipping screen creation");
+        return;
+    }
+
     // Create a full-screen enhanced OTA overlay instead of using basic ui_screenOTA
     static lv_obj_t *otaEnhancedScreen = nullptr;
     static lv_obj_t *otaProgressBar = nullptr;
@@ -274,12 +280,59 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     static lv_obj_t *otaRetryButton = nullptr;
     static lv_obj_t *otaRebootButton = nullptr;
     static lv_obj_t *otaStatusLabel = nullptr;
+    static bool otaScreenCreating = false;
 
-    // Clean up any existing enhanced screen
+    // Prevent multiple simultaneous creations
+    if (otaScreenCreating) {
+        ESP_LOGW(TAG, "OTA: Screen creation already in progress, skipping");
+        return;
+    }
+
+    otaScreenCreating = true;
+
+    // Safer cleanup - only delete if it exists and is valid, and give LVGL time to process
     if (otaEnhancedScreen && lv_obj_is_valid(otaEnhancedScreen)) {
+        ESP_LOGI(TAG, "OTA: Cleaning up existing enhanced screen");
+
+        // Remove all event callbacks first to prevent crashes
+        lv_obj_remove_event_cb(otaEnhancedScreen, nullptr);
+
+        // Clear all child event callbacks
+        uint32_t child_count = lv_obj_get_child_count(otaEnhancedScreen);
+        for (uint32_t i = 0; i < child_count; i++) {
+            lv_obj_t *child = lv_obj_get_child(otaEnhancedScreen, i);
+            if (child && lv_obj_is_valid(child)) {
+                lv_obj_remove_event_cb(child, nullptr);
+
+                // Clear grandchildren event callbacks too
+                uint32_t grandchild_count = lv_obj_get_child_count(child);
+                for (uint32_t j = 0; j < grandchild_count; j++) {
+                    lv_obj_t *grandchild = lv_obj_get_child(child, j);
+                    if (grandchild && lv_obj_is_valid(grandchild)) {
+                        lv_obj_remove_event_cb(grandchild, nullptr);
+                    }
+                }
+            }
+        }
+
+        // Give LVGL time to process the event callback removals
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // Now safely delete the screen
         lv_obj_del(otaEnhancedScreen);
         otaEnhancedScreen = nullptr;
+
+        // Give LVGL time to process the deletion
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
+
+    // Reset all static pointers
+    otaProgressBar = nullptr;
+    otaProgressLabel = nullptr;
+    otaLogArea = nullptr;
+    otaRetryButton = nullptr;
+    otaRebootButton = nullptr;
+    otaStatusLabel = nullptr;
 
     // Create full-screen OTA interface
     otaEnhancedScreen = lv_obj_create(lv_scr_act());
@@ -292,7 +345,7 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     // Title
     lv_obj_t *titleLabel = lv_label_create(otaEnhancedScreen);
     lv_label_set_text(titleLabel, "OTA FIRMWARE UPDATE");
-    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_26, LV_PART_MAIN);
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00CCFF), LV_PART_MAIN);
     lv_obj_set_align(titleLabel, LV_ALIGN_TOP_MID);
     lv_obj_set_y(titleLabel, 20);
@@ -358,10 +411,10 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     lv_textarea_set_cursor_click_pos(otaLogArea, false);
     lv_obj_set_style_bg_color(otaLogArea, lv_color_hex(0x111111), LV_PART_MAIN);
     lv_obj_set_style_text_color(otaLogArea, lv_color_hex(0x00FF00), LV_PART_MAIN);
-    lv_obj_set_style_text_font(otaLogArea, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_font(otaLogArea, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_add_flag(otaLogArea, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Button container (initially hidden)
+    // Button container (always visible for user control)
     lv_obj_t *buttonContainer = lv_obj_create(otaEnhancedScreen);
     lv_obj_set_size(buttonContainer, 400, 60);
     lv_obj_set_align(buttonContainer, LV_ALIGN_BOTTOM_MID);
@@ -370,12 +423,35 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     lv_obj_set_style_border_opa(buttonContainer, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_flex_flow(buttonContainer, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(buttonContainer, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_add_flag(buttonContainer, LV_OBJ_FLAG_HIDDEN); // Hidden initially
+    // Always visible - user can exit OTA mode at any time
 
-    // Retry button
+    // Exit OTA Mode button (always visible)
+    lv_obj_t *exitOtaButton = lv_btn_create(buttonContainer);
+    lv_obj_set_size(exitOtaButton, 120, 45);
+    lv_obj_set_style_bg_color(exitOtaButton, lv_color_hex(0xFF6600), LV_PART_MAIN);
+
+    lv_obj_t *exitLabel = lv_label_create(exitOtaButton);
+    lv_label_set_text(exitLabel, "EXIT OTA");
+    lv_obj_center(exitLabel);
+    lv_obj_set_style_text_color(exitLabel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(exitLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+
+    // Add exit OTA click handler
+    lv_obj_add_event_cb(exitOtaButton, [](lv_event_t *e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            ESP_LOGI(TAG, "OTA: Exit OTA button clicked - returning to normal mode");
+            // Clear OTA request and reboot normally
+            Boot::BootManager::clearBootRequest();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart();
+        }
+    }, LV_EVENT_CLICKED, NULL);
+
+    // Retry button (initially hidden, shown on failure)
     otaRetryButton = lv_btn_create(buttonContainer);
     lv_obj_set_size(otaRetryButton, 120, 45);
     lv_obj_set_style_bg_color(otaRetryButton, lv_color_hex(0x3366FF), LV_PART_MAIN);
+    lv_obj_add_flag(otaRetryButton, LV_OBJ_FLAG_HIDDEN); // Hidden initially
 
     lv_obj_t *retryLabel = lv_label_create(otaRetryButton);
     lv_label_set_text(retryLabel, "RETRY");
@@ -387,19 +463,16 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     lv_obj_add_event_cb(otaRetryButton, [](lv_event_t *e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             ESP_LOGI(TAG, "OTA: Retry button clicked - restarting OTA process");
-            // Add log entry
-            if (otaLogArea && lv_obj_is_valid(otaLogArea)) {
-                lv_textarea_add_text(otaLogArea, "User requested retry - restarting OTA...\n");
-            }
             // Request OTA restart
             Boot::BootManager::requestOTAMode();
         }
     }, LV_EVENT_CLICKED, NULL);
 
-    // Reboot button
+    // Reboot button (initially hidden, shown on failure)
     otaRebootButton = lv_btn_create(buttonContainer);
     lv_obj_set_size(otaRebootButton, 120, 45);
     lv_obj_set_style_bg_color(otaRebootButton, lv_color_hex(0xFF3333), LV_PART_MAIN);
+    lv_obj_add_flag(otaRebootButton, LV_OBJ_FLAG_HIDDEN); // Hidden initially
 
     lv_obj_t *rebootLabel = lv_label_create(otaRebootButton);
     lv_label_set_text(rebootLabel, "REBOOT");
@@ -411,10 +484,6 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     lv_obj_add_event_cb(otaRebootButton, [](lv_event_t *e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
             ESP_LOGI(TAG, "OTA: Reboot button clicked - exiting OTA mode");
-            // Add log entry
-            if (otaLogArea && lv_obj_is_valid(otaLogArea)) {
-                lv_textarea_add_text(otaLogArea, "User requested reboot - exiting OTA mode...\n");
-            }
             // Clear OTA request and reboot normally
             Boot::BootManager::clearBootRequest();
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -424,7 +493,7 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
 
     // Store references for later updates
     static lv_obj_t **storedRefs[] = {
-        &otaEnhancedScreen, &otaProgressBar, &otaProgressLabel, 
+        &otaEnhancedScreen, &otaProgressBar, &otaProgressLabel,
         &otaLogArea, &otaRetryButton, &otaRebootButton, &otaStatusLabel
     };
 
@@ -432,6 +501,9 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
 
     // Force immediate UI refresh
     lv_refr_now(lv_disp_get_default());
+
+    // Reset creation flag
+    otaScreenCreating = false;
 }
 
 static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
@@ -510,12 +582,12 @@ static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
         char logEntry[150];
         snprintf(logEntry, sizeof(logEntry), "[%d%%] %s\n", data.progress, data.message);
         lv_textarea_add_text(otaLogArea, logEntry);
-        
+
         // Auto-scroll to bottom
         lv_textarea_set_cursor_pos(otaLogArea, LV_TEXTAREA_CURSOR_LAST);
     }
 
-    // Update status and show buttons if failed
+    // Update status and show retry/reboot buttons if failed
     if (otaStatusLabel && lv_obj_is_valid(otaStatusLabel)) {
         if (data.progress >= 100) {
             lv_label_set_text(otaStatusLabel, "UPDATE COMPLETE");
@@ -523,8 +595,8 @@ static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
         } else if (strstr(data.message, "fail") || strstr(data.message, "error") || strstr(data.message, "timeout")) {
             lv_label_set_text(otaStatusLabel, "UPDATE FAILED");
             lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0xFF0000), LV_PART_MAIN);
-            
-            // Show retry/reboot buttons - find button container and unhide it
+
+            // Show retry/reboot buttons - find them in the button container
             lv_obj_t *currentScreen = lv_scr_act();
             if (currentScreen) {
                 uint32_t child_count = lv_obj_get_child_count(currentScreen);
@@ -534,8 +606,15 @@ static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
                         uint32_t gc_count = lv_obj_get_child_count(child);
                         for (uint32_t j = 0; j < gc_count; j++) {
                             lv_obj_t *grandchild = lv_obj_get_child(child, j);
-                            if (grandchild && lv_obj_get_width(grandchild) == 400 && lv_obj_has_flag(grandchild, LV_OBJ_FLAG_HIDDEN)) {
-                                lv_obj_remove_flag(grandchild, LV_OBJ_FLAG_HIDDEN);
+                            if (grandchild && lv_obj_get_width(grandchild) == 400) {
+                                // This is the button container - show retry and reboot buttons
+                                uint32_t btn_count = lv_obj_get_child_count(grandchild);
+                                for (uint32_t k = 0; k < btn_count; k++) {
+                                    lv_obj_t *btn = lv_obj_get_child(grandchild, k);
+                                    if (btn && lv_obj_has_flag(btn, LV_OBJ_FLAG_HIDDEN)) {
+                                        lv_obj_remove_flag(btn, LV_OBJ_FLAG_HIDDEN);
+                                    }
+                                }
                                 ESP_LOGI(TAG, "OTA: Showing retry/reboot buttons due to failure");
                                 break;
                             }
@@ -552,6 +631,50 @@ static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
 
 static void handleHideOtaScreen(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "OTA: Hiding OTA screen and restoring previous screen");
+
+    // Clean up enhanced OTA screen if it exists
+    lv_obj_t *currentScreen = lv_scr_act();
+    if (currentScreen) {
+        uint32_t child_count = lv_obj_get_child_count(currentScreen);
+        for (uint32_t i = 0; i < child_count; i++) {
+            lv_obj_t *child = lv_obj_get_child(currentScreen, i);
+            if (child && lv_obj_get_width(child) == LV_HOR_RES && lv_obj_get_height(child) == LV_VER_RES) {
+                // This is likely our enhanced OTA screen - clean it up safely
+                ESP_LOGI(TAG, "OTA: Cleaning up enhanced OTA screen");
+
+                // Remove all event callbacks first
+                lv_obj_remove_event_cb(child, nullptr);
+
+                // Clear all child event callbacks
+                uint32_t gc_count = lv_obj_get_child_count(child);
+                for (uint32_t j = 0; j < gc_count; j++) {
+                    lv_obj_t *grandchild = lv_obj_get_child(child, j);
+                    if (grandchild && lv_obj_is_valid(grandchild)) {
+                        lv_obj_remove_event_cb(grandchild, nullptr);
+
+                        // Clear grandchildren event callbacks too
+                        uint32_t ggc_count = lv_obj_get_child_count(grandchild);
+                        for (uint32_t k = 0; k < ggc_count; k++) {
+                            lv_obj_t *ggchild = lv_obj_get_child(grandchild, k);
+                            if (ggchild && lv_obj_is_valid(ggchild)) {
+                                lv_obj_remove_event_cb(ggchild, nullptr);
+                            }
+                        }
+                    }
+                }
+
+                // Give LVGL time to process the event callback removals
+                vTaskDelay(pdMS_TO_TICKS(10));
+
+                // Now safely delete the screen
+                lv_obj_del(child);
+
+                // Give LVGL time to process the deletion
+                vTaskDelay(pdMS_TO_TICKS(10));
+                break;
+            }
+        }
+    }
 
     // Get the previous screen that was saved
     static lv_obj_t *previousScreen = nullptr;
