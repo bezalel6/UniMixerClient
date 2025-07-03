@@ -33,6 +33,7 @@
 #include "DebugUtils.h"
 #include "BuildInfo.h"
 #include "../../ui/UniversalDialog.h"
+#include "EnhancedOTAUI.h"
 #include <cstring>
 #include <map>
 #include <esp_log.h>
@@ -264,11 +265,11 @@ static void handleRequestData(const LVGLMessage_t *msg) {
 }
 
 static void handleShowOtaScreen(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "OTA: Showing enhanced OTA screen with controls");
+    ESP_LOGI(TAG, "OTA: Showing multithreaded enhanced OTA screen");
 
-    // Check if we're already in OTA mode to prevent duplicate screens
-    if (Boot::BootManager::getCurrentMode() == Boot::BootMode::OTA_UPDATE) {
-        ESP_LOGW(TAG, "OTA: Already in OTA mode, skipping screen creation");
+    // Use the new enhanced OTA UI system
+    if (!UI::OTA::createEnhancedOTAScreen()) {
+        ESP_LOGE(TAG, "Failed to create enhanced OTA screen");
         return;
     }
 
@@ -502,11 +503,15 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     // Force immediate UI refresh
     lv_refr_now(lv_disp_get_default());
 
-    // Reset creation flag
-    otaScreenCreating = false;
 }
 
 static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
+    const auto &data = msg->data.ota_screen_progress;
+    ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
+
+    // Use the new enhanced OTA UI system for updates
+    UI::OTA::updateEnhancedOTAScreen();
+    UI::OTA::addLogMessage(data.message);
     const auto &data = msg->data.ota_screen_progress;
     ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
 

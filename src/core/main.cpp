@@ -3,6 +3,7 @@
 #include "core/AppController.h"
 #include "hardware/DeviceManager.h"
 #include "ota/OTAApplication.h"
+#include "MultithreadedOTAApplication.h"
 #include <Arduino.h>
 
 /*
@@ -65,17 +66,18 @@ void setup() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    log_i("=== OTA BOOT MODE ===");
-    log_i("Starting dedicated OTA application");
+    log_i("=== MULTITHREADED OTA BOOT MODE ===");
+    log_i("Starting advanced multithreaded OTA application");
 
-    if (!OTA::OTAApplication::init()) {
-      log_e("Failed to initialize OTA application");
+    if (!OTA::MultithreadedOTAApplication::init()) {
+      log_e("Failed to initialize multithreaded OTA application");
       Boot::BootManager::requestNormalMode();
       ESP.restart();
     }
 
-    log_i("OTA Application initialized successfully");
-    log_i("Architecture: Minimal OTA-only mode");
+    log_i("Multithreaded OTA Application initialized successfully");
+    log_i("Architecture: Responsive dual-core OTA with 60 FPS UI");
+    log_i("Core 0: 60 FPS UI updates | Core 1: Network + Download operations");
     break;
 
   case Boot::BootMode::FACTORY:
@@ -107,9 +109,9 @@ void loop() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    // OTA application loop
-    OTA::OTAApplication::run();
-    delay(10); // Slightly longer delay for OTA operations
+    // Multithreaded OTA application loop
+    OTA::MultithreadedOTAApplication::run();
+    delay(250); // Longer delay since all work is done in background tasks
     break;
 
   default:
