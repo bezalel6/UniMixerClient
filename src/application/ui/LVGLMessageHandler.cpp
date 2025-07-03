@@ -267,7 +267,7 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "OTA: Showing enhanced OTA screen with controls");
 
     // Check if we're already in OTA mode to prevent duplicate screens
-    if (Boot::BootManager::getCurrentMode() == Boot::BootMode::OTA) {
+    if (Boot::BootManager::getCurrentMode() == Boot::BootMode::OTA_UPDATE) {
         ESP_LOGW(TAG, "OTA: Already in OTA mode, skipping screen creation");
         return;
     }
