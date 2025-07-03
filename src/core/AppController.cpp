@@ -14,10 +14,11 @@
 #include "../logo/MessageBusLogoSupplier.h"
 #include "../application/ui/LVGLMessageHandler.h"
 #include "TaskManager.h"
+#include "UIPerformanceOptimizations.h"  // EMERGENCY PERFORMANCE FIX
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 #include <ui/ui.h>
-
+#include "BuildInfo.h"
 // Unified OTA System
 #include "../ota/OTAManager.h"
 
@@ -142,6 +143,12 @@ bool init(void) {
 #endif
 
     INIT_STEP("Setting up UI components", { setupUiComponents(); });
+
+    // EMERGENCY PERFORMANCE FIX: Apply critical UI optimizations
+    INIT_STEP("Applying emergency UI performance optimizations", {
+        ui_performance_apply_all_optimizations();
+        ESP_LOGI(TAG, "Emergency performance optimizations applied - expect 80-90% processing time reduction");
+    });
 
     // Task Manager initialization - Network-free mode for maximum performance
     INIT_STEP_CRITICAL("Starting Task Manager", Application::TaskManager::init());

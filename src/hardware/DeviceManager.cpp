@@ -1,7 +1,7 @@
 #include "DeviceManager.h"
 #include <esp32_smartdisplay.h>
 #include <esp_log.h>
-
+#include "BuildInfo.h"
 namespace Hardware {
 namespace Device {
 

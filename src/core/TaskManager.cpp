@@ -451,8 +451,8 @@ void lvglTask(void *parameter) {
             }
 #endif
 
-            // Shorter sleep during startup to handle heavy UI initialization
-            uint32_t idleSleep = startupPhase ? 20 : 100;  // 20ms during startup, 100ms normal
+            // PERFORMANCE: Optimized sleep during startup to handle heavy UI initialization
+            uint32_t idleSleep = startupPhase ? 10 : 50;  // PERFORMANCE: 10ms during startup, 50ms normal (reduced from 20/100)
             vTaskDelay(pdMS_TO_TICKS(idleSleep));
             continue;
         }
@@ -552,7 +552,7 @@ void lvglTask(void *parameter) {
 #endif
         }
 
-        // Dynamic delay based on work done and system state
+        // PERFORMANCE: Dynamic delay based on work done and system state - optimized intervals
         uint32_t delay_ms;
         if (startupPhase) {
             // Startup phase - more aggressive processing
@@ -563,18 +563,18 @@ void lvglTask(void *parameter) {
             } else if (hasMessages) {
                 delay_ms = 5;  // Short delay for startup activity
             } else {
-                delay_ms = 10;  // Moderate delay during startup
+                delay_ms = 8;  // PERFORMANCE: Reduced from 10ms for faster startup
             }
         } else {
-            // Normal operation
+            // PERFORMANCE: Normal operation - optimized for responsiveness
             if (hasInvalidations) {
                 delay_ms = 1;  // Immediate redraw needed
             } else if (shouldProcessTimers) {
-                delay_ms = 10;  // Timer processing - smooth updates
+                delay_ms = 8;  // PERFORMANCE: Reduced from 10ms for smoother updates
             } else if (hasMessages) {
-                delay_ms = 25;  // Recent activity - moderate delay
+                delay_ms = 20;  // PERFORMANCE: Reduced from 25ms for better responsiveness
             } else {
-                delay_ms = 50;  // Minimal activity - longer delay
+                delay_ms = 40;  // PERFORMANCE: Reduced from 50ms for more responsive idle state
             }
         }
 
