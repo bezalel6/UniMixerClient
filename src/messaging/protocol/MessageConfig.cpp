@@ -31,6 +31,7 @@ const MessageProtocol::InternalMessageType INT_MSG_UI_UPDATE = MessageProtocol::
 const MessageProtocol::InternalMessageType INT_MSG_AUDIO_STATE_UPDATE = MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE;
 const MessageProtocol::InternalMessageType INT_MSG_AUDIO_UI_REFRESH = MessageProtocol::InternalMessageType::AUDIO_UI_REFRESH;
 const MessageProtocol::InternalMessageType INT_MSG_SD_STATUS = MessageProtocol::InternalMessageType::SD_STATUS;
+const MessageProtocol::InternalMessageType INT_MSG_ASSET_RESPONSE = MessageProtocol::InternalMessageType::ASSET_RESPONSE;
 
 // =============================================================================
 // LEGACY STRING-BASED MESSAGE TYPE CONFIGURATION (Deprecated)

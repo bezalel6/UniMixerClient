@@ -27,34 +27,39 @@ bool AudioManager::init() {
     state.clear();
     callbacks.clear();
 
-    // Subscribe to audio status updates using new external message system
-    Messaging::MessageAPI::subscribeToExternal(Messaging::Config::EXT_MSG_STATUS_UPDATE,
-                                               [this](const Messaging::ExternalMessage& message) {
-                                                   ESP_LOGD(TAG, "Received external audio status update from device: %s", message.deviceId.c_str());
+    // Subscribe to audio status updates using internal message system
+    Messaging::MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE,
+                                               [this](const Messaging::InternalMessage& message) {
+                                                   ESP_LOGD(TAG, "Received internal audio state update");
 
-                                                   // Parse the audio status data directly from the external message
-                                                   Messaging::AudioStatusData data = Messaging::parseStatusResponse(message);
+                                                   // Extract AudioStatusData from the typed data
+                                                   auto* audioData = message.getTypedData<Messaging::AudioStatusData>();
+                                                   if (audioData) {
+                                                       Messaging::AudioStatusData data = *audioData;
 
-                                                   ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
+                                                       ESP_LOGD(TAG, "Origin: %s", (!data.originatingDeviceId || data.originatingDeviceId.isEmpty()) ? "None" : data.originatingDeviceId.c_str());
 
-                                                   // DEBUG: Log default device volume conversion
-                                                   if (data.hasDefaultDevice) {
-                                                       ESP_LOGI(TAG, "Received default device: %s, volume: %d",
-                                                                data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
+                                                       // DEBUG: Log default device volume conversion
+                                                       if (data.hasDefaultDevice) {
+                                                           ESP_LOGI(TAG, "Received default device: %s, volume: %d",
+                                                                    data.defaultDevice.friendlyName.c_str(), data.defaultDevice.volume);
+                                                       }
+
+                                                       // Check and request logos for all detected audio processes
+                                                       this->checkAndRequestLogosForAudioProcesses(data);
+
+                                                       // Convert AudioStatusData to AudioStatus
+                                                       AudioStatus status;
+                                                       status.setAudioLevels(data.getCompatibleAudioLevels());
+                                                       status.defaultDevice = data.getCompatibleDefaultDevice();
+                                                       status.hasDefaultDevice = data.hasDefaultDevice;
+                                                       status.timestamp = data.timestamp;
+
+                                                       // Process the audio status
+                                                       this->onAudioStatusReceived(status);
+                                                   } else {
+                                                       ESP_LOGW(TAG, "Received audio state update without AudioStatusData");
                                                    }
-
-                                                   // Check and request logos for all detected audio processes
-                                                   this->checkAndRequestLogosForAudioProcesses(data);
-
-                                                   // Convert AudioStatusData to AudioStatus
-                                                   AudioStatus status;
-                                                   status.setAudioLevels(data.getCompatibleAudioLevels());
-                                                   status.defaultDevice = data.getCompatibleDefaultDevice();
-                                                   status.hasDefaultDevice = data.hasDefaultDevice;
-                                                   status.timestamp = data.timestamp;
-
-                                                   // Process the audio status
-                                                   this->onAudioStatusReceived(status);
                                                });
 
     initialized = true;

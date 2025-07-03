@@ -32,6 +32,7 @@ extern const MessageProtocol::InternalMessageType INT_MSG_UI_UPDATE;
 extern const MessageProtocol::InternalMessageType INT_MSG_AUDIO_STATE_UPDATE;
 extern const MessageProtocol::InternalMessageType INT_MSG_AUDIO_UI_REFRESH;
 extern const MessageProtocol::InternalMessageType INT_MSG_SD_STATUS;
+extern const MessageProtocol::InternalMessageType INT_MSG_ASSET_RESPONSE;
 
 // =============================================================================
 // LEGACY STRING-BASED MESSAGE TYPE CONFIGURATION (Deprecated)

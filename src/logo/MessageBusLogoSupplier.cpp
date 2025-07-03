@@ -46,10 +46,14 @@ bool MessageBusLogoSupplier::init() {
         return false;
     }
 
-    // Subscribe to asset responses using new external message type system
-    Messaging::MessageAPI::subscribeToExternal(Messaging::Config::EXT_MSG_ASSET_RESPONSE,
-                                               [this](const Messaging::ExternalMessage& message) {
-                                                   this->onAssetResponse(message);
+    // Subscribe to asset responses using internal message system
+    Messaging::MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::ASSET_RESPONSE,
+                                               [this](const Messaging::InternalMessage& message) {
+                                                   // Extract the asset response data
+                                                   auto* assetData = message.getTypedData<Messaging::AssetResponseData>();
+                                                   if (assetData) {
+                                                       this->onAssetResponse(*assetData);
+                                                   }
                                                });
 
     // Clear statistics
@@ -73,8 +77,8 @@ void MessageBusLogoSupplier::deinit() {
 
     ESP_LOGI(TAG, "Deinitializing MessageBusLogoSupplier");
 
-    // Unsubscribe from external messages
-    Messaging::MessageAPI::unsubscribeFromExternal(Messaging::Config::EXT_MSG_ASSET_RESPONSE);
+    // Unsubscribe from internal messages
+    Messaging::MessageAPI::unsubscribeFromInternal(MessageProtocol::InternalMessageType::ASSET_RESPONSE);
 
     // Fail all pending requests
     if (requestMutex && xSemaphoreTake(requestMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
@@ -188,18 +192,48 @@ String MessageBusLogoSupplier::getStatus() const {
 // PRIVATE METHODS
 // =============================================================================
 
-void MessageBusLogoSupplier::onAssetResponse(const Messaging::ExternalMessage& message) {
+void MessageBusLogoSupplier::onAssetResponse(const Messaging::AssetResponseData& assetData) {
     REQUIRE_INIT_VOID("MessageBusLogoSupplier", initialized, TAG);
 
-    ESP_LOGD(TAG, "Received external asset response from device: %s", message.deviceId.c_str());
+    ESP_LOGD(TAG, "Received asset response from device: %s", assetData.deviceId.c_str());
 
-    // Parse response from the message parsed data
-    String jsonPayload;
-    serializeJson(message.parsedData, jsonPayload);
-    AssetResponse response = parseAssetResponse(jsonPayload);
+    // Convert AssetResponseData to AssetResponse
+    AssetResponse response = createAssetResponse(assetData.success, assetData.processName.c_str(),
+                                                 assetData.requestId.c_str(), assetData.errorMessage.c_str());
+    response.width = assetData.width;
+    response.height = assetData.height;
+    response.format = assetData.format;
+    response.timestamp = assetData.timestamp;
+
     if (response.requestId.isEmpty()) {
         ESP_LOGW(TAG, "Invalid asset response - missing request ID");
         return;
+    }
+
+    // Decode base64 asset data if present
+    if (assetData.success && !assetData.assetDataBase64.isEmpty()) {
+        size_t decodedSize = (assetData.assetDataBase64.length() * 3) / 4;
+        if (decodedSize > 0 && decodedSize <= 100000) {  // 100KB max size
+#if CONFIG_SPIRAM_USE_MALLOC
+            response.assetData = (uint8_t*)ps_malloc(decodedSize);
+#else
+            response.assetData = (uint8_t*)malloc(decodedSize);
+#endif
+            if (response.assetData) {
+                size_t actualSize = 0;
+                int result = mbedtls_base64_decode(response.assetData, decodedSize,
+                                                   &actualSize, (const unsigned char*)assetData.assetDataBase64.c_str(),
+                                                   assetData.assetDataBase64.length());
+                if (result == 0) {
+                    response.assetDataSize = actualSize;
+                    response.hasAssetData = true;
+                } else {
+                    free(response.assetData);
+                    response.assetData = nullptr;
+                    ESP_LOGW(TAG, "Failed to decode base64 asset data");
+                }
+            }
+        }
     }
 
     // Save asset data if successful and data is present

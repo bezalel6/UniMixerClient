@@ -78,12 +78,7 @@ class MessageCore {
      */
     bool publishExternal(const ExternalMessage& message);
 
-    /**
-     * Subscribe to external messages by type (before conversion)
-     * Useful for raw protocol handling on Core 1
-     */
-    void subscribeToExternal(MessageProtocol::ExternalMessageType messageType, ExternalMessageCallback callback);
-    void unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType);
+
 
     // =============================================================================
     // INTERNAL MESSAGE HANDLING (ESP32 Internal Communication)
@@ -169,8 +164,7 @@ class MessageCore {
     // Transport management
     std::map<String, TransportInterface> transports;
 
-    // External message subscriptions (by type)
-    std::unordered_map<MessageProtocol::ExternalMessageType, std::vector<ExternalMessageCallback>> externalSubscriptions;
+
 
     // Internal message subscriptions (by type)
     std::unordered_map<MessageProtocol::InternalMessageType, std::vector<InternalMessageCallback>> internalSubscriptions;

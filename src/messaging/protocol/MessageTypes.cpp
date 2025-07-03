@@ -42,7 +42,7 @@ class ExternalMessageTypeRegistry::Impl {
         initialized = true;
     }
 };
-
+                
 class InternalMessageTypeRegistry::Impl {
    public:
     std::unordered_map<std::string, InternalMessageType> stringToEnumMap;
@@ -64,6 +64,7 @@ class InternalMessageTypeRegistry::Impl {
         stringToEnumMap["UI_UPDATE"] = InternalMessageType::UI_UPDATE;
         stringToEnumMap["BUTTON_PRESS"] = InternalMessageType::BUTTON_PRESS;
         stringToEnumMap["UI_REFRESH"] = InternalMessageType::UI_REFRESH;
+        stringToEnumMap["ASSET_RESPONSE"] = InternalMessageType::ASSET_RESPONSE;
 
         // File system messages
         stringToEnumMap["SD_STATUS"] = InternalMessageType::SD_STATUS;
@@ -97,6 +98,7 @@ class InternalMessageTypeRegistry::Impl {
         enumToStringArray[static_cast<size_t>(InternalMessageType::UI_UPDATE)] = "UI_UPDATE";
         enumToStringArray[static_cast<size_t>(InternalMessageType::BUTTON_PRESS)] = "BUTTON_PRESS";
         enumToStringArray[static_cast<size_t>(InternalMessageType::UI_REFRESH)] = "UI_REFRESH";
+        enumToStringArray[static_cast<size_t>(InternalMessageType::ASSET_RESPONSE)] = "ASSET_RESPONSE";
 
         initialized = true;
     }

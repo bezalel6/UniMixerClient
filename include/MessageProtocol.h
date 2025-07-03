@@ -83,6 +83,7 @@ enum class InternalMessageType : uint16_t {
     BUTTON_PRESS = 202,
     UI_REFRESH = 203,
     DEBUG_UI_LOG = 204,
+    ASSET_RESPONSE = 205,
 
     // === FILE SYSTEM (Internal Hardware) ===
     SD_STATUS = 300,

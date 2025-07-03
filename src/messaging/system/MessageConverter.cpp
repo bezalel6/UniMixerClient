@@ -40,6 +40,7 @@ MessageConverter::externalToInternal(const ExternalMessage &external) {
 
   // Convert based on message type
   switch (external.messageType) {
+    case MessageProtocol::ExternalMessageType::STATUS_MESSAGE:
   case MessageProtocol::ExternalMessageType::STATUS_UPDATE: {
     // Audio status update -> Multiple internal messages
     AudioStatusData audioData = parseStatusResponse(external);
@@ -57,8 +58,11 @@ MessageConverter::externalToInternal(const ExternalMessage &external) {
   }
 
   case MessageProtocol::ExternalMessageType::ASSET_RESPONSE: {
-    // Asset response -> Internal asset message
-    InternalMessage msg(MessageProtocol::InternalMessageType::UI_UPDATE);
+    // Asset response -> Internal asset response message
+    InternalMessage msg(MessageProtocol::InternalMessageType::ASSET_RESPONSE);
+    // Extract relevant asset data to avoid static storage issues
+    AssetResponseData assetData(external);
+    msg.setTypedData(assetData);
     results.push_back(msg);
     break;
   }

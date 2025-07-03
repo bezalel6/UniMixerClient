@@ -65,7 +65,7 @@ class MessageBusLogoSupplier : public LogoSupplier {
     unsigned long requestsFailed = 0;
 
     // Internal methods
-    void onAssetResponse(const Messaging::ExternalMessage& message);
+    void onAssetResponse(const Messaging::AssetResponseData& assetData);
     bool sendAssetRequest(const AssetRequest& request);
     void timeoutExpiredRequests();
     AssetResponse parseAssetResponse(const String& jsonPayload);

@@ -31,8 +31,7 @@
 void setup() {
   // Initialize Core 1-only logging filter FIRST to prevent interference
   // This must be done before any ESP_LOG calls to ensure proper filtering
-  CoreLoggingFilter::init();
-  CoreLoggingFilter::disableFilter();
+
 
   // NOTE: UART/Serial initialization is now handled by InterruptMessagingEngine
   // to avoid driver conflicts
@@ -48,6 +47,9 @@ void setup() {
 
   switch (bootMode) {
   case Boot::BootMode::NORMAL:
+    CoreLoggingFilter::init();
+    // Comment out to actually filter out core0
+    CoreLoggingFilter::disableFilter();
     log_i("=== NORMAL BOOT MODE ===");
     log_i("Starting full UniMixer Client application");
 

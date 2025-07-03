@@ -17,19 +17,18 @@ namespace Messaging {
  *   // Initialize
  *   MessageAPI::init();
  *
- *   // Subscribe to external messages (cross-transport boundaries)
- *   MessageAPI::subscribeToExternal(MessageProtocol::ExternalMessageType::STATUS_UPDATE,
- *       [](const ExternalMessage& msg) {
- *           // Handle external status update
- *   });
- *
- *   // Subscribe to internal messages (ESP32 internal communication)
- *   MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::UI_UPDATE,
+ *   // Subscribe to internal messages (all external messages are converted to internal)
+ *   MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE,
  *       [](const InternalMessage& msg) {
- *           // Handle internal UI update
+ *           // Handle audio state update (converted from external STATUS_UPDATE)
  *   });
  *
- *   // Request audio status
+ *   MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::ASSET_RESPONSE,
+ *       [](const InternalMessage& msg) {
+ *           // Handle asset response (converted from external ASSET_RESPONSE)
+ *   });
+ *
+ *   // Request audio status (sends external message)
  *   MessageAPI::requestAudioStatus();
  *
  *   // Update in main loop
@@ -113,16 +112,10 @@ class MessageAPI {
     }
 
     // =============================================================================
-    // DUAL MESSAGE TYPE SYSTEM - External/Internal Separation
+    // INTERNAL MESSAGE SYSTEM - All external messages converted to internal
     // =============================================================================
 
-    /**
-     * Subscribe to external messages (cross-transport boundaries)
-     */
-    static void subscribeToExternal(MessageProtocol::ExternalMessageType messageType,
-                                    std::function<void(const ExternalMessage&)> callback) {
-        MessageCore::getInstance().subscribeToExternal(messageType, callback);
-    }
+
 
     /**
      * Subscribe to internal messages (ESP32 internal communication)
@@ -153,12 +146,7 @@ class MessageAPI {
         return MessageCore::getInstance().publishInternal(message);
     }
 
-    /**
-     * Unsubscribe from external message type
-     */
-    static void unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
-        MessageCore::getInstance().unsubscribeFromExternal(messageType);
-    }
+
 
     /**
      * Unsubscribe from internal message type

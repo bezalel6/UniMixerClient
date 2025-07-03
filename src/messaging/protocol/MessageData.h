@@ -11,6 +11,55 @@
 
 namespace Messaging {
 
+    // Forward Declarations
+// =============================================================================
+// EXTERNAL MESSAGE TYPES - For messages received over transports
+// =============================================================================
+
+/**
+ * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode, network in OTA mode)
+ * EFFICIENT: Pre-parsed by transport, no raw payload storage
+ * SECURITY: Validation and sanitization required
+ */
+struct ExternalMessage {
+    MessageProtocol::ExternalMessageType messageType;
+    String requestId;
+    String deviceId;
+    String originatingDeviceId;
+    unsigned long timestamp;
+    bool validated = true; //once a message is read and validated using the CrC binary calculation it is considered valid.
+
+    // Type-specific parsed data (transport provides this)
+    JsonDocument parsedData;  // Only the specific data fields, not entire payload
+
+    ExternalMessage() {
+        messageType = MessageProtocol::ExternalMessageType::INVALID;
+        timestamp = millis();
+    }
+
+    ExternalMessage(MessageProtocol::ExternalMessageType type, const String& reqId = "", const String& devId = "")
+        : messageType(type), requestId(reqId), deviceId(devId) {
+        timestamp = millis();
+    }
+
+    // Direct access to parsed data (no lazy loading needed)
+    template <typename T>
+    T get(const String& field, T defaultValue = T{}) const {
+        return parsedData[field] | defaultValue;
+    }
+
+    // Validation and security (no JSON parsing overhead)
+    bool isSelfOriginated() const;
+
+    // Utility methods for external message handling
+    bool requiresResponse() const;
+    MessageProtocol::ExternalMessageCategory getCategory() const {
+        return MessageProtocol::getExternalMessageCategory(messageType);
+    }
+    MessageProtocol::MessagePriority getPriority() const {
+        return MessageProtocol::getExternalMessagePriority(messageType);
+    }
+};    struct InternalMessage;
 // =============================================================================
 // AUDIO DATA STRUCTURES
 // =============================================================================
@@ -128,6 +177,42 @@ struct AudioDeviceData {
         : deviceId(id), friendlyName(name), state(deviceState) {}
 };
 
+/**
+ * Asset response data - extracted from external message for internal routing
+ */
+struct AssetResponseData {
+    String requestId;
+    String deviceId;
+    String processName;
+    bool success = false;
+    String errorMessage;
+    String assetDataBase64;  // Base64 encoded asset data
+    int width = 0;
+    int height = 0;
+    String format;
+    unsigned long timestamp = 0;
+
+    AssetResponseData() = default;
+    AssetResponseData(const   ExternalMessage& external) {
+        requestId = external.requestId;
+        deviceId = external.deviceId;
+        timestamp = external.timestamp;
+
+        // Extract asset-specific fields from parsed data
+        processName = external.parsedData["processName"] | "";
+        success = external.parsedData["success"] | false;
+        errorMessage = external.parsedData["errorMessage"] | "";
+        assetDataBase64 = external.parsedData["assetData"] | "";
+
+        if (external.parsedData["metadata"].is<JsonVariant>()) {
+            auto metadata = external.parsedData["metadata"];
+            width = metadata["width"] | 0;
+            height = metadata["height"] | 0;
+            format = metadata["format"] | "";
+        }
+    }
+};
+
 // =============================================================================
 // TRANSPORT INTERFACE - For External Message Transport
 // =============================================================================
@@ -145,9 +230,6 @@ struct TransportInterface {
     std::function<void()> deinit;                        // Cleanup transport
 };
 
-// Forward Declarations
-struct ExternalMessage;
-struct InternalMessage;
 
 // =============================================================================
 // CALLBACK TYPE DEFINITIONS
@@ -161,54 +243,6 @@ using AudioStatusCallback = std::function<void(const AudioStatusData& data)>;
 using NetworkStatusCallback = std::function<void(const String& status, bool connected)>;
 using SDStatusCallback = std::function<void(const String& status, bool mounted)>;
 
-// =============================================================================
-// EXTERNAL MESSAGE TYPES - For messages received over transports
-// =============================================================================
-
-/**
- * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode, network in OTA mode)
- * EFFICIENT: Pre-parsed by transport, no raw payload storage
- * SECURITY: Validation and sanitization required
- */
-struct ExternalMessage {
-    MessageProtocol::ExternalMessageType messageType;
-    String requestId;
-    String deviceId;
-    String originatingDeviceId;
-    unsigned long timestamp;
-    bool validated = true; //once a message is read and validated using the CrC binary calculation it is considered valid.
-
-    // Type-specific parsed data (transport provides this)
-    JsonDocument parsedData;  // Only the specific data fields, not entire payload
-
-    ExternalMessage() {
-        messageType = MessageProtocol::ExternalMessageType::INVALID;
-        timestamp = millis();
-    }
-
-    ExternalMessage(MessageProtocol::ExternalMessageType type, const String& reqId = "", const String& devId = "")
-        : messageType(type), requestId(reqId), deviceId(devId) {
-        timestamp = millis();
-    }
-
-    // Direct access to parsed data (no lazy loading needed)
-    template <typename T>
-    T get(const String& field, T defaultValue = T{}) const {
-        return parsedData[field] | defaultValue;
-    }
-
-    // Validation and security (no JSON parsing overhead)
-    bool isSelfOriginated() const;
-
-    // Utility methods for external message handling
-    bool requiresResponse() const;
-    MessageProtocol::ExternalMessageCategory getCategory() const {
-        return MessageProtocol::getExternalMessageCategory(messageType);
-    }
-    MessageProtocol::MessagePriority getPriority() const {
-        return MessageProtocol::getExternalMessagePriority(messageType);
-    }
-};
 
 // =============================================================================
 // INTERNAL MESSAGE TYPES - For ESP32 internal communication
@@ -226,6 +260,7 @@ struct InternalMessage {
     unsigned long timestamp;
     uint8_t priority;  // For Core 1 processing queue
     bool requiresResponse = false;
+    bool ownsData = false;  // Track if we need to free the data
 
     InternalMessage() {
         messageType = MessageProtocol::InternalMessageType::INVALID;
@@ -239,6 +274,72 @@ struct InternalMessage {
         priority = static_cast<uint8_t>(MessageProtocol::getInternalMessagePriority(type));
     }
 
+    // Copy constructor
+    InternalMessage(const InternalMessage& other)
+        : messageType(other.messageType), dataSize(other.dataSize),
+          timestamp(other.timestamp), priority(other.priority),
+          requiresResponse(other.requiresResponse) {
+        if (other.data && other.dataSize > 0) {
+            data = malloc(other.dataSize);
+            if (data) {
+                memcpy(data, other.data, other.dataSize);
+                ownsData = true;
+            }
+        }
+    }
+
+    // Move constructor
+    InternalMessage(InternalMessage&& other) noexcept
+        : messageType(other.messageType), data(other.data), dataSize(other.dataSize),
+          timestamp(other.timestamp), priority(other.priority),
+          requiresResponse(other.requiresResponse), ownsData(other.ownsData) {
+        other.data = nullptr;
+        other.ownsData = false;
+    }
+
+    // Assignment operators
+    InternalMessage& operator=(const InternalMessage& other) {
+        if (this != &other) {
+            cleanup();
+            messageType = other.messageType;
+            dataSize = other.dataSize;
+            timestamp = other.timestamp;
+            priority = other.priority;
+            requiresResponse = other.requiresResponse;
+
+            if (other.data && other.dataSize > 0) {
+                data = malloc(other.dataSize);
+                if (data) {
+                    memcpy(data, other.data, other.dataSize);
+                    ownsData = true;
+                }
+            }
+        }
+        return *this;
+    }
+
+    InternalMessage& operator=(InternalMessage&& other) noexcept {
+        if (this != &other) {
+            cleanup();
+            messageType = other.messageType;
+            data = other.data;
+            dataSize = other.dataSize;
+            timestamp = other.timestamp;
+            priority = other.priority;
+            requiresResponse = other.requiresResponse;
+            ownsData = other.ownsData;
+
+            other.data = nullptr;
+            other.ownsData = false;
+        }
+        return *this;
+    }
+
+    // Destructor
+    ~InternalMessage() {
+        cleanup();
+    }
+
     // Type-safe data accessors
     template <typename T>
     T* getTypedData() const {
@@ -247,9 +348,16 @@ struct InternalMessage {
 
     template <typename T>
     bool setTypedData(const T& payload) {
-        static T staticPayload = payload;  // Simple static storage
-        data = &staticPayload;
+        cleanup();  // Clean up any existing data
+
+        data = malloc(sizeof(T));
+        if (!data) {
+            return false;
+        }
+
+        memcpy(data, &payload, sizeof(T));
         dataSize = sizeof(T);
+        ownsData = true;
         return true;
     }
 
@@ -264,6 +372,16 @@ struct InternalMessage {
     }
     MessageProtocol::MessagePriority getPriority() const {
         return MessageProtocol::getInternalMessagePriority(messageType);
+    }
+
+private:
+    void cleanup() {
+        if (ownsData && data) {
+            free(data);
+        }
+        data = nullptr;
+        dataSize = 0;
+        ownsData = false;
     }
 };
 

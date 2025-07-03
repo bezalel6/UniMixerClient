@@ -29,7 +29,6 @@ bool MessageCore::init() {
     ESP_LOGW(TAG, "Initializing MessageCore with dual architecture...");
 
     // Clear any existing state
-    externalSubscriptions.clear();
     internalSubscriptions.clear();
     internalWildcardSubscribers.clear();
     transports.clear();
@@ -66,7 +65,6 @@ void MessageCore::deinit() {
     }
 
     // Clear all state
-    externalSubscriptions.clear();
     internalSubscriptions.clear();
     internalWildcardSubscribers.clear();
     transports.clear();
@@ -226,40 +224,12 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
         }
     }
 
-    // Notify external message subscribers (for raw protocol handling)
-    auto it = externalSubscriptions.find(message.messageType);
-    if (it != externalSubscriptions.end()) {
-        for (auto& callback : it->second) {
-            try {
-                callback(message);
-            } catch (...) {
-                ESP_LOGE(TAG, "External callback exception for messageType: %d",
-                         LOG_EXTERNAL_MSG_TYPE(message.messageType));
-            }
-        }
-    }
+
 
     return success;
 }
 
-void MessageCore::subscribeToExternal(MessageProtocol::ExternalMessageType messageType, ExternalMessageCallback callback) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe to external - not initialized");
-        return;
-    }
 
-    ESP_LOGW(TAG, "Subscribing to external messageType: %d", LOG_EXTERNAL_MSG_TYPE(messageType));
-    externalSubscriptions[messageType].push_back(callback);
-}
-
-void MessageCore::unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
-    auto it = externalSubscriptions.find(messageType);
-    if (it != externalSubscriptions.end()) {
-        ESP_LOGW(TAG, "Unsubscribing from external messageType: %d",
-                 LOG_EXTERNAL_MSG_TYPE(messageType));
-        externalSubscriptions.erase(it);
-    }
-}
 
 // =============================================================================
 // INTERNAL MESSAGE HANDLING (ESP32 Internal Communication)
@@ -370,11 +340,6 @@ bool MessageCore::publishAudioVolumeUpdate(const String& processName, int volume
 size_t MessageCore::getSubscriptionCount() const {
     size_t count = 0;
 
-    // Count external subscriptions
-    for (const auto& [messageType, callbacks] : externalSubscriptions) {
-        count += callbacks.size();
-    }
-
     // Count internal subscriptions
     for (const auto& [messageType, callbacks] : internalSubscriptions) {
         count += callbacks.size();
@@ -414,13 +379,12 @@ String MessageCore::getStatusInfo() const {
     info += "- Initialized: " + String(initialized ? "Yes" : "No") + "\n";
     info += "- Total subscriptions: " + String(getSubscriptionCount()) + "\n";
 
-    // EXTERNAL MESSAGE STATS (Core 1 processing)
-    info += "- External subscriptions: " + String(externalSubscriptions.size()) + " (Core 1)\n";
+    // EXTERNAL MESSAGE STATS (Transport layer only - no subscriptions)
     info += "- External received: " + String(externalMessagesReceived) + "\n";
     info += "- External published: " + String(externalMessagesPublished) + "\n";
     info += "- Invalid messages: " + String(invalidMessagesReceived) + "\n";
 
-    // INTERNAL MESSAGE STATS (Core routing)
+    // INTERNAL MESSAGE STATS (All subscriptions are internal)
     info += "- Internal subscriptions: " + String(internalSubscriptions.size()) + " (Smart routing)\n";
     info += "- Internal wildcards: " + String(internalWildcardSubscribers.size()) + "\n";
     info += "- Internal published: " + String(internalMessagesPublished) + "\n";
