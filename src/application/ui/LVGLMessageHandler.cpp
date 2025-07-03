@@ -506,12 +506,9 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
 }
 
 static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.ota_screen_progress;
-    ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
-
     // Use the new enhanced OTA UI system for updates
     UI::OTA::updateEnhancedOTAScreen();
-    UI::OTA::addLogMessage(data.message);
+    UI::OTA::addLogMessage(msg->data.ota_screen_progress.message);
     const auto &data = msg->data.ota_screen_progress;
     ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
 

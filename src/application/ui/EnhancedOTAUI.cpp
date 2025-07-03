@@ -97,7 +97,7 @@ static void exitButtonEventHandler(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Exit button clicked - returning to normal mode");
         addLogMessage("User requested exit to normal mode");
-        
+
         // Clear OTA request and restart normally
         Boot::BootManager::clearBootRequest();
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -109,11 +109,11 @@ static void retryButtonEventHandler(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Retry button clicked - restarting OTA process");
         addLogMessage("User requested OTA retry");
-        
+
         // Hide retry/reboot buttons
         if (s_retryButton) lv_obj_add_flag(s_retryButton, LV_OBJ_FLAG_HIDDEN);
         if (s_rebootButton) lv_obj_add_flag(s_rebootButton, LV_OBJ_FLAG_HIDDEN);
-        
+
         MultiOTA::retryOTA();
     }
 }
@@ -122,7 +122,7 @@ static void rebootButtonEventHandler(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Reboot button clicked - restarting system");
         addLogMessage("User requested system reboot");
-        
+
         // Clear OTA request and restart
         Boot::BootManager::clearBootRequest();
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -217,7 +217,7 @@ static void createLogSection(lv_obj_t* parent) {
     lv_textarea_set_cursor_click_pos(s_logArea, false);
     lv_obj_set_style_bg_color(s_logArea, lv_color_hex(0x111111), LV_PART_MAIN);
     lv_obj_set_style_text_color(s_logArea, lv_color_hex(0x00FF00), LV_PART_MAIN);
-    lv_obj_set_style_text_font(s_logArea, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_logArea, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_add_flag(s_logArea, LV_OBJ_FLAG_SCROLLABLE);
 }
 
@@ -228,7 +228,7 @@ static void createStatsSection(lv_obj_t* parent) {
     lv_obj_set_align(s_statsLabel, LV_ALIGN_TOP_RIGHT);
     lv_obj_set_pos(s_statsLabel, -10, 10);
     lv_obj_set_style_text_color(s_statsLabel, lv_color_hex(0xAAAAA), LV_PART_MAIN);
-    lv_obj_set_style_text_font(s_statsLabel, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_statsLabel, &lv_font_montserrat_12, LV_PART_MAIN);
 }
 
 static void createControlButtons(lv_obj_t* parent) {
@@ -304,7 +304,7 @@ bool createEnhancedOTAScreen() {
     // Title
     lv_obj_t* titleLabel = lv_label_create(s_otaScreen);
     lv_label_set_text(titleLabel, "MULTITHREADED OTA UPDATE");
-    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_26, LV_PART_MAIN);
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00CCFF), LV_PART_MAIN);
     lv_obj_set_align(titleLabel, LV_ALIGN_TOP_MID);
     lv_obj_set_y(titleLabel, 20);
@@ -329,7 +329,7 @@ void updateEnhancedOTAScreen() {
     if (!s_uiCreated) return;
 
     uint32_t now = millis();
-    
+
     // Throttle updates to prevent UI overload (10 FPS for progress updates)
     if (now - s_lastProgressUpdate < 100) return;
     s_lastProgressUpdate = now;
@@ -345,7 +345,7 @@ void updateEnhancedOTAScreen() {
     // Update progress label
     if (s_progressLabel && lv_obj_is_valid(s_progressLabel)) {
         char progressText[256];
-        snprintf(progressText, sizeof(progressText), "%d%% - %s", 
+        snprintf(progressText, sizeof(progressText), "%d%% - %s",
                  progress.overallProgress, progress.detailedMessage);
         lv_label_set_text(s_progressLabel, progressText);
     }
@@ -386,7 +386,7 @@ void updateEnhancedOTAScreen() {
     if (s_statsLabel && lv_obj_is_valid(s_statsLabel) && (now - s_lastStatsUpdate >= 2000)) {
         MultiOTA::OTAStats_t stats = MultiOTA::getStats();
         char statsText[128];
-        snprintf(statsText, sizeof(statsText), 
+        snprintf(statsText, sizeof(statsText),
                  "UI: %luB | Net: %luB | Down: %luB | Mon: %luB | Errors: %lu",
                  stats.uiTaskHighWaterMark,
                  stats.networkTaskHighWaterMark,
@@ -410,19 +410,19 @@ void updateEnhancedOTAScreen() {
 
 void addLogMessage(const char* message) {
     if (!s_uiCreated || !message) return;
-    
+
     if (s_logArea && lv_obj_is_valid(s_logArea)) {
         // Add timestamp and message
         char timestampedMessage[300];
         uint32_t seconds = millis() / 1000;
         uint32_t minutes = seconds / 60;
         seconds = seconds % 60;
-        
-        snprintf(timestampedMessage, sizeof(timestampedMessage), 
+
+        snprintf(timestampedMessage, sizeof(timestampedMessage),
                  "[%02lu:%02lu] %s\n", minutes, seconds, message);
-        
+
         lv_textarea_add_text(s_logArea, timestampedMessage);
-        
+
         // Auto-scroll to bottom
         lv_textarea_set_cursor_pos(s_logArea, LV_TEXTAREA_CURSOR_LAST);
     }
@@ -436,7 +436,7 @@ void destroyEnhancedOTAScreen() {
     if (s_otaScreen && lv_obj_is_valid(s_otaScreen)) {
         // Remove all event callbacks first
         lv_obj_remove_event_cb(s_otaScreen, nullptr);
-        
+
         // Clear all child event callbacks
         uint32_t child_count = lv_obj_get_child_count(s_otaScreen);
         for (uint32_t i = 0; i < child_count; i++) {
@@ -451,7 +451,7 @@ void destroyEnhancedOTAScreen() {
 
         // Delete the screen
         lv_obj_del(s_otaScreen);
-        
+
         // Give LVGL time to process deletion
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -468,7 +468,7 @@ void destroyEnhancedOTAScreen() {
     s_exitButton = nullptr;
     s_retryButton = nullptr;
     s_rebootButton = nullptr;
-    
+
     s_uiCreated = false;
 
     ESP_LOGI(TAG, "Enhanced OTA screen destroyed");
