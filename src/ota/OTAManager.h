@@ -136,6 +136,7 @@ class OTAManager {
     // HTTP UPDATE IMPLEMENTATION
     // =============================================================================
 
+    static HTTPUpdate httpUpdate;
     static bool downloadAndInstall(void);
     static void setupHTTPUpdateCallbacks(void);
     static void onHTTPUpdateProgress(int current, int total);

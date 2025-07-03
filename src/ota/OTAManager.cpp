@@ -93,6 +93,9 @@ bool OTAManager::emergencyMode = false;
 uint32_t OTAManager::lastWatchdogReset = 0;
 uint32_t OTAManager::lastTaskYield = 0;
 
+// HTTPUpdate object
+HTTPUpdate OTAManager::httpUpdate;
+
 // =============================================================================
 // WATCHDOG SAFETY FUNCTIONS
 // =============================================================================

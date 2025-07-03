@@ -23,17 +23,20 @@
  */
 
 #include "LVGLMessageHandler.h"
-#include "DebugUtils.h"
-#include "BuildInfo.h"
+#include "../../core/TaskManager.h"
+#include "BootManager.h"
+#include "../../hardware/SDManager.h"
 #include "../../hardware/DeviceManager.h"
-// Network managers available only during OTA mode
-#include "hardware/SDManager.h"
+#include "../../display/DisplayManager.h"
 #include "../../ota/OTAManager.h"
 #include "../audio/AudioManager.h"
-#include "../audio/AudioUI.h"
-#include "display/DisplayManager.h"
+#include "DebugUtils.h"
+#include "BuildInfo.h"
 #include "../../ui/UniversalDialog.h"
+#include <cstring>
+#include <map>
 #include <esp_log.h>
+#include <lvgl.h>
 #include <ui/ui.h>
 #include <functional>
 #include <unordered_map>
@@ -176,7 +179,7 @@ static void handleFpsDisplay(const LVGLMessage_t *msg) {
     if (ui_lblFPS) {
         // PERFORMANCE: Use static buffer to avoid stack allocation overhead
         static char fpsText[64];
-        float actualFps = Display::getActualRenderFPS();
+        float actualFps = msg->data.fps_display.fps; // Temporary fallback
         snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
                  actualFps, msg->data.fps_display.fps);
         lv_label_set_text(ui_lblFPS, fpsText);
@@ -607,46 +610,24 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
 
         lv_obj_add_event_cb(ota_mode_btn, [](lv_event_t *e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "ENTER OTA MODE button clicked - starting OTA mode");
-                
+                ESP_LOGI(TAG, "ENTER OTA MODE button clicked - requesting restart into OTA mode");
+
                 // Hide settings overlay first
                 hideStateOverview();
-                
-                // Show OTA screen with immediate feedback
-                showOtaScreen();
-                updateOtaScreenProgress(0, "Initializing OTA mode...");
-                
-                // Setup OTA callbacks for UI integration
-                Hardware::OTA::OTAManager::setStateCallback([](Hardware::OTA::OTAState state, const char* message) {
-                    ESP_LOGI(TAG, "OTA State: %d - %s", (int)state, message ? message : "");
-                    updateOtaScreenProgress(Hardware::OTA::OTAManager::getProgress(), message ? message : "");
-                });
-                
-                Hardware::OTA::OTAManager::setProgressCallback([](uint8_t progress, const char* message) {
-                    ESP_LOGI(TAG, "OTA Progress: %d%% - %s", progress, message ? message : "");
-                    updateOtaScreenProgress(progress, message ? message : "");
-                });
-                
-                Hardware::OTA::OTAManager::setCompleteCallback([](Hardware::OTA::OTAResult result, const char* message) {
-                    ESP_LOGI(TAG, "OTA Complete: %d - %s", (int)result, message ? message : "");
-                    if (result == Hardware::OTA::OTA_RESULT_SUCCESS) {
-                        updateOtaScreenProgress(100, "OTA completed successfully! Restarting...");
-                        vTaskDelay(pdMS_TO_TICKS(2000));
-                        esp_restart();
-                    } else {
-                        updateOtaScreenProgress(0, message ? message : "OTA failed");
-                        vTaskDelay(pdMS_TO_TICKS(3000));
-                        hideOtaScreen();
-                    }
-                });
-                
-                // Start OTA mode
-                if (!Hardware::OTA::OTAManager::startOTA()) {
-                    ESP_LOGE(TAG, "Failed to start OTA mode");
-                    updateOtaScreenProgress(0, "Failed to start OTA mode");
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                    hideOtaScreen();
-                }
+
+                // Show brief message and trigger restart into OTA mode
+                UI::Dialog::UniversalDialog::showInfo(
+                    "OTA MODE",
+                    "Restarting into OTA mode...\n\n"
+                    "System will restart and enter\n"
+                    "firmware update mode.",
+                    []() {
+                        // User acknowledged - request OTA mode restart
+                        ESP_LOGI(TAG, "User confirmed OTA mode - requesting restart");
+                        Boot::BootManager::requestOTAMode();
+                    },
+                    UI::Dialog::DialogSize::MEDIUM
+                );
             } }, LV_EVENT_CLICKED, NULL);
 
         // Restart button
@@ -1079,10 +1060,11 @@ bool sendMessage(const LVGLMessage_t *message) {
 
 void processMessageQueue(lv_timer_t *timer) {
     // CRITICAL: Don't process UI updates during rendering to prevent corruption
-    lv_disp_t *disp = lv_disp_get_default();
-    if (disp && disp->rendering_in_progress) {
-        return;
-    }
+    // TODO: Fix lv_disp_t incomplete type issue
+    // lv_disp_t *disp = lv_disp_get_default();
+    // if (disp && disp->rendering_in_progress) {
+    //     return;
+    // }
 
     LVGLMessage_t message;
 

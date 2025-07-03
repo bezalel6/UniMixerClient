@@ -42,7 +42,7 @@ class ExternalMessageTypeRegistry::Impl {
         initialized = true;
     }
 };
-                
+
 class InternalMessageTypeRegistry::Impl {
    public:
     std::unordered_map<std::string, InternalMessageType> stringToEnumMap;
@@ -176,7 +176,7 @@ InternalMessageCategory getInternalMessageCategory(InternalMessageType type) {
     return InternalMessageCategory::UNKNOWN;
 }
 
-// =============================================================================
+// ==================================================================   ===========
 // PRIORITY FUNCTIONS
 // =============================================================================
 

@@ -2,6 +2,7 @@
 #include "../ota/OTAManager.h"
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
+#include "BootManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 
@@ -37,7 +38,16 @@ bool OTAApplication::init() {
 
     applicationRunning = true;
     initialized = true;
+
     ESP_LOGI(TAG, "OTA Application initialized successfully");
+
+    // Start OTA process immediately
+    ESP_LOGI(TAG, "Starting OTA process...");
+    if (!Hardware::OTA::OTAManager::startOTA()) {
+        ESP_LOGE(TAG, "Failed to start OTA process");
+        return false;
+    }
+
     return true;
 }
 
@@ -55,11 +65,33 @@ void OTAApplication::run() {
     // Feed watchdog
     esp_task_wdt_reset();
 
-    // Check if we should exit
-    if (!Hardware::OTA::OTAManager::isActive() &&
-        Hardware::OTA::OTAManager::getCurrentState() == Hardware::OTA::OTA_IDLE) {
-        // OTA completed or failed, exit application
-        applicationRunning = false;
+    // Check if OTA process is complete
+    if (!Hardware::OTA::OTAManager::isActive()) {
+        Hardware::OTA::OTAState state = Hardware::OTA::OTAManager::getCurrentState();
+
+        if (state == Hardware::OTA::OTA_SUCCESS) {
+            ESP_LOGI(TAG, "OTA completed successfully - preparing to restart");
+            // Clear the OTA request flag
+            Boot::BootManager::clearBootRequest();
+            // Small delay for logging
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            // Restart (will boot into normal mode)
+            esp_restart();
+        } else if (state == Hardware::OTA::OTA_FAILED || state == Hardware::OTA::OTA_CANCELLED) {
+            ESP_LOGW(TAG, "OTA failed or cancelled - returning to normal mode");
+            // Clear the OTA request flag
+            Boot::BootManager::clearBootRequest();
+            // Request normal mode and restart
+            Boot::BootManager::requestNormalMode();
+            // Small delay for logging
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart();
+        }
+
+        // If still idle, exit application
+        if (state == Hardware::OTA::OTA_IDLE) {
+            applicationRunning = false;
+        }
     }
 
     // Simple delay
@@ -78,18 +110,6 @@ void OTAApplication::cleanup() {
     Hardware::Device::deinit();
 
     ESP_LOGI(TAG, "OTA Application cleaned up");
-}
-
-bool startOTA() {
-    ESP_LOGI(TAG, "Starting OTA process");
-
-    if (!applicationRunning) {
-        ESP_LOGE(TAG, "Cannot start OTA - application not initialized");
-        return false;
-    }
-
-    // OTAManager handles network initialization internally
-    return Hardware::OTA::OTAManager::startOTA();
 }
 
 }  // namespace OTA
