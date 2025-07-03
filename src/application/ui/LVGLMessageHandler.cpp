@@ -264,50 +264,285 @@ static void handleRequestData(const LVGLMessage_t *msg) {
 }
 
 static void handleShowOtaScreen(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "OTA: Showing OTA screen");
+    ESP_LOGI(TAG, "OTA: Showing enhanced OTA screen with controls");
 
-    // Switch to OTA screen with smooth animation
-    if (lv_scr_act() != ui_screenOTA) {
-        _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, ui_screenOTA_screen_init);
+    // Create a full-screen enhanced OTA overlay instead of using basic ui_screenOTA
+    static lv_obj_t *otaEnhancedScreen = nullptr;
+    static lv_obj_t *otaProgressBar = nullptr;
+    static lv_obj_t *otaProgressLabel = nullptr;
+    static lv_obj_t *otaLogArea = nullptr;
+    static lv_obj_t *otaRetryButton = nullptr;
+    static lv_obj_t *otaRebootButton = nullptr;
+    static lv_obj_t *otaStatusLabel = nullptr;
+
+    // Clean up any existing enhanced screen
+    if (otaEnhancedScreen && lv_obj_is_valid(otaEnhancedScreen)) {
+        lv_obj_del(otaEnhancedScreen);
+        otaEnhancedScreen = nullptr;
     }
 
-    // Initialize OTA screen with default values
-    if (ui_barOTAUpdateProgress) {
-        lv_bar_set_value(ui_barOTAUpdateProgress, 0, LV_ANIM_OFF);
-    }
-    if (ui_lblOTAUpdateProgress) {
-        lv_label_set_text(ui_lblOTAUpdateProgress, "Starting OTA update...");
-    }
+    // Create full-screen OTA interface
+    otaEnhancedScreen = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(otaEnhancedScreen, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(otaEnhancedScreen, 0, 0);
+    lv_obj_set_style_bg_color(otaEnhancedScreen, lv_color_hex(0x001122), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(otaEnhancedScreen, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_remove_flag(otaEnhancedScreen, LV_OBJ_FLAG_SCROLLABLE);
 
-    ESP_LOGI(TAG, "OTA: Screen transition completed");
+    // Title
+    lv_obj_t *titleLabel = lv_label_create(otaEnhancedScreen);
+    lv_label_set_text(titleLabel, "OTA FIRMWARE UPDATE");
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00CCFF), LV_PART_MAIN);
+    lv_obj_set_align(titleLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(titleLabel, 20);
+
+    // Progress container
+    lv_obj_t *progressContainer = lv_obj_create(otaEnhancedScreen);
+    lv_obj_set_size(progressContainer, 600, 80);
+    lv_obj_set_align(progressContainer, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(progressContainer, 80);
+    lv_obj_set_style_bg_color(progressContainer, lv_color_hex(0x002244), LV_PART_MAIN);
+    lv_obj_set_style_border_color(progressContainer, lv_color_hex(0x0066AA), LV_PART_MAIN);
+    lv_obj_set_style_border_width(progressContainer, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(progressContainer, 10, LV_PART_MAIN);
+    lv_obj_remove_flag(progressContainer, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Progress bar
+    otaProgressBar = lv_bar_create(progressContainer);
+    lv_obj_set_size(otaProgressBar, 550, 20);
+    lv_obj_set_align(otaProgressBar, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(otaProgressBar, 15);
+    lv_bar_set_value(otaProgressBar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(otaProgressBar, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(otaProgressBar, lv_color_hex(0x00AA00), LV_PART_INDICATOR);
+
+    // Progress label
+    otaProgressLabel = lv_label_create(progressContainer);
+    lv_label_set_text(otaProgressLabel, "0% - Starting OTA update...");
+    lv_obj_set_align(otaProgressLabel, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(otaProgressLabel, -10);
+    lv_obj_set_style_text_color(otaProgressLabel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(otaProgressLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+
+    // Status label (for errors, success, etc.)
+    otaStatusLabel = lv_label_create(otaEnhancedScreen);
+    lv_label_set_text(otaStatusLabel, "OTA MODE ACTIVE");
+    lv_obj_set_align(otaStatusLabel, LV_ALIGN_TOP_MID);
+    lv_obj_set_y(otaStatusLabel, 180);
+    lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0x00FF88), LV_PART_MAIN);
+    lv_obj_set_style_text_font(otaStatusLabel, &lv_font_montserrat_16, LV_PART_MAIN);
+
+    // Log area
+    lv_obj_t *logContainer = lv_obj_create(otaEnhancedScreen);
+    lv_obj_set_size(logContainer, 700, 200);
+    lv_obj_set_align(logContainer, LV_ALIGN_CENTER);
+    lv_obj_set_y(logContainer, 40);
+    lv_obj_set_style_bg_color(logContainer, lv_color_hex(0x000011), LV_PART_MAIN);
+    lv_obj_set_style_border_color(logContainer, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_border_width(logContainer, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(logContainer, 5, LV_PART_MAIN);
+
+    lv_obj_t *logTitle = lv_label_create(logContainer);
+    lv_label_set_text(logTitle, "OTA LOG");
+    lv_obj_set_align(logTitle, LV_ALIGN_TOP_LEFT);
+    lv_obj_set_pos(logTitle, 10, 5);
+    lv_obj_set_style_text_color(logTitle, lv_color_hex(0x888888), LV_PART_MAIN);
+    lv_obj_set_style_text_font(logTitle, &lv_font_montserrat_12, LV_PART_MAIN);
+
+    otaLogArea = lv_textarea_create(logContainer);
+    lv_obj_set_size(otaLogArea, 680, 165);
+    lv_obj_set_align(otaLogArea, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(otaLogArea, -5);
+    lv_textarea_set_text(otaLogArea, "OTA system initialized\nWaiting for firmware update...\n");
+    lv_textarea_set_cursor_click_pos(otaLogArea, false);
+    lv_obj_set_style_bg_color(otaLogArea, lv_color_hex(0x111111), LV_PART_MAIN);
+    lv_obj_set_style_text_color(otaLogArea, lv_color_hex(0x00FF00), LV_PART_MAIN);
+    lv_obj_set_style_text_font(otaLogArea, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_add_flag(otaLogArea, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Button container (initially hidden)
+    lv_obj_t *buttonContainer = lv_obj_create(otaEnhancedScreen);
+    lv_obj_set_size(buttonContainer, 400, 60);
+    lv_obj_set_align(buttonContainer, LV_ALIGN_BOTTOM_MID);
+    lv_obj_set_y(buttonContainer, -20);
+    lv_obj_set_style_bg_opa(buttonContainer, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(buttonContainer, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_flex_flow(buttonContainer, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(buttonContainer, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(buttonContainer, LV_OBJ_FLAG_HIDDEN); // Hidden initially
+
+    // Retry button
+    otaRetryButton = lv_btn_create(buttonContainer);
+    lv_obj_set_size(otaRetryButton, 120, 45);
+    lv_obj_set_style_bg_color(otaRetryButton, lv_color_hex(0x3366FF), LV_PART_MAIN);
+
+    lv_obj_t *retryLabel = lv_label_create(otaRetryButton);
+    lv_label_set_text(retryLabel, "RETRY");
+    lv_obj_center(retryLabel);
+    lv_obj_set_style_text_color(retryLabel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(retryLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+
+    // Add retry click handler
+    lv_obj_add_event_cb(otaRetryButton, [](lv_event_t *e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            ESP_LOGI(TAG, "OTA: Retry button clicked - restarting OTA process");
+            // Add log entry
+            if (otaLogArea && lv_obj_is_valid(otaLogArea)) {
+                lv_textarea_add_text(otaLogArea, "User requested retry - restarting OTA...\n");
+            }
+            // Request OTA restart
+            Boot::BootManager::requestOTAMode();
+        }
+    }, LV_EVENT_CLICKED, NULL);
+
+    // Reboot button
+    otaRebootButton = lv_btn_create(buttonContainer);
+    lv_obj_set_size(otaRebootButton, 120, 45);
+    lv_obj_set_style_bg_color(otaRebootButton, lv_color_hex(0xFF3333), LV_PART_MAIN);
+
+    lv_obj_t *rebootLabel = lv_label_create(otaRebootButton);
+    lv_label_set_text(rebootLabel, "REBOOT");
+    lv_obj_center(rebootLabel);
+    lv_obj_set_style_text_color(rebootLabel, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(rebootLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+
+    // Add reboot click handler
+    lv_obj_add_event_cb(otaRebootButton, [](lv_event_t *e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+            ESP_LOGI(TAG, "OTA: Reboot button clicked - exiting OTA mode");
+            // Add log entry
+            if (otaLogArea && lv_obj_is_valid(otaLogArea)) {
+                lv_textarea_add_text(otaLogArea, "User requested reboot - exiting OTA mode...\n");
+            }
+            // Clear OTA request and reboot normally
+            Boot::BootManager::clearBootRequest();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart();
+        }
+    }, LV_EVENT_CLICKED, NULL);
+
+    // Store references for later updates
+    static lv_obj_t **storedRefs[] = {
+        &otaEnhancedScreen, &otaProgressBar, &otaProgressLabel, 
+        &otaLogArea, &otaRetryButton, &otaRebootButton, &otaStatusLabel
+    };
+
+    ESP_LOGI(TAG, "OTA: Enhanced screen created successfully with log and controls");
+
+    // Force immediate UI refresh
+    lv_refr_now(lv_disp_get_default());
 }
 
 static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
     const auto &data = msg->data.ota_screen_progress;
-    ESP_LOGI(TAG, "OTA: Updating progress to %d%% - %s", data.progress, data.message);
+    ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
 
-    // Ensure we're on the OTA screen
-    if (lv_scr_act() != ui_screenOTA) {
-        ESP_LOGW(TAG, "OTA: Progress update but not on OTA screen, switching");
-        _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_NONE, 0, 0, ui_screenOTA_screen_init);
+    // Find our enhanced OTA objects (they're static in the show function)
+    static lv_obj_t *otaProgressBar = nullptr;
+    static lv_obj_t *otaProgressLabel = nullptr;
+    static lv_obj_t *otaLogArea = nullptr;
+    static lv_obj_t *otaStatusLabel = nullptr;
+    static lv_obj_t *otaRetryButton = nullptr;
+    static lv_obj_t *otaRebootButton = nullptr;
+
+    // Find elements by traversing the screen (this is a workaround since we can't easily share static vars between functions)
+    lv_obj_t *currentScreen = lv_scr_act();
+    if (currentScreen) {
+        // Look for our enhanced OTA screen elements
+        uint32_t child_count = lv_obj_get_child_count(currentScreen);
+        for (uint32_t i = 0; i < child_count; i++) {
+            lv_obj_t *child = lv_obj_get_child(currentScreen, i);
+            if (child && lv_obj_get_width(child) == LV_HOR_RES && lv_obj_get_height(child) == LV_VER_RES) {
+                // This might be our enhanced OTA screen
+                uint32_t grandchild_count = lv_obj_get_child_count(child);
+                for (uint32_t j = 0; j < grandchild_count; j++) {
+                    lv_obj_t *grandchild = lv_obj_get_child(child, j);
+                    if (grandchild) {
+                        // Look for progress bar
+                        if (lv_obj_check_type(grandchild, &lv_obj_class)) {
+                            uint32_t ggc_count = lv_obj_get_child_count(grandchild);
+                            for (uint32_t k = 0; k < ggc_count; k++) {
+                                lv_obj_t *ggchild = lv_obj_get_child(grandchild, k);
+                                if (ggchild && lv_obj_check_type(ggchild, &lv_bar_class)) {
+                                    otaProgressBar = ggchild;
+                                }
+                                if (ggchild && lv_obj_check_type(ggchild, &lv_label_class)) {
+                                    otaProgressLabel = ggchild;
+                                }
+                            }
+                        }
+                        // Look for textarea (log area)
+                        if (lv_obj_check_type(grandchild, &lv_obj_class)) {
+                            uint32_t ggc_count = lv_obj_get_child_count(grandchild);
+                            for (uint32_t k = 0; k < ggc_count; k++) {
+                                lv_obj_t *ggchild = lv_obj_get_child(grandchild, k);
+                                if (ggchild && lv_obj_check_type(ggchild, &lv_textarea_class)) {
+                                    otaLogArea = ggchild;
+                                }
+                            }
+                        }
+                        // Look for status label and buttons
+                        if (lv_obj_check_type(grandchild, &lv_label_class)) {
+                            otaStatusLabel = grandchild;
+                        }
+                    }
+                }
+                break;
+            }
+        }
     }
 
-    // Update progress bar with smooth animation for visual feedback
-    if (ui_barOTAUpdateProgress) {
-        lv_bar_set_value(ui_barOTAUpdateProgress, data.progress, LV_ANIM_ON);
+    // Update progress bar
+    if (otaProgressBar && lv_obj_is_valid(otaProgressBar)) {
+        lv_bar_set_value(otaProgressBar, data.progress, LV_ANIM_ON);
     }
 
-    // Update status message
-    if (ui_lblOTAUpdateProgress) {
-        lv_label_set_text(ui_lblOTAUpdateProgress, data.message);
+    // Update progress label
+    if (otaProgressLabel && lv_obj_is_valid(otaProgressLabel)) {
+        char progressText[128];
+        snprintf(progressText, sizeof(progressText), "%d%% - %s", data.progress, data.message);
+        lv_label_set_text(otaProgressLabel, progressText);
     }
 
-    // Add visual feedback for completion
-    if (data.progress >= 100) {
-        ESP_LOGI(TAG, "OTA: Update appears complete, preparing for reboot");
-        if (ui_Label2) {
-            lv_label_set_text(ui_Label2, "COMPLETE");
-            lv_obj_set_style_text_color(ui_Label2, lv_color_hex(0x00FF00), LV_PART_MAIN);
+    // Add to log
+    if (otaLogArea && lv_obj_is_valid(otaLogArea)) {
+        char logEntry[150];
+        snprintf(logEntry, sizeof(logEntry), "[%d%%] %s\n", data.progress, data.message);
+        lv_textarea_add_text(otaLogArea, logEntry);
+        
+        // Auto-scroll to bottom
+        lv_textarea_set_cursor_pos(otaLogArea, LV_TEXTAREA_CURSOR_LAST);
+    }
+
+    // Update status and show buttons if failed
+    if (otaStatusLabel && lv_obj_is_valid(otaStatusLabel)) {
+        if (data.progress >= 100) {
+            lv_label_set_text(otaStatusLabel, "UPDATE COMPLETE");
+            lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0x00FF00), LV_PART_MAIN);
+        } else if (strstr(data.message, "fail") || strstr(data.message, "error") || strstr(data.message, "timeout")) {
+            lv_label_set_text(otaStatusLabel, "UPDATE FAILED");
+            lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0xFF0000), LV_PART_MAIN);
+            
+            // Show retry/reboot buttons - find button container and unhide it
+            lv_obj_t *currentScreen = lv_scr_act();
+            if (currentScreen) {
+                uint32_t child_count = lv_obj_get_child_count(currentScreen);
+                for (uint32_t i = 0; i < child_count; i++) {
+                    lv_obj_t *child = lv_obj_get_child(currentScreen, i);
+                    if (child && lv_obj_get_width(child) == LV_HOR_RES) {
+                        uint32_t gc_count = lv_obj_get_child_count(child);
+                        for (uint32_t j = 0; j < gc_count; j++) {
+                            lv_obj_t *grandchild = lv_obj_get_child(child, j);
+                            if (grandchild && lv_obj_get_width(grandchild) == 400 && lv_obj_has_flag(grandchild, LV_OBJ_FLAG_HIDDEN)) {
+                                lv_obj_remove_flag(grandchild, LV_OBJ_FLAG_HIDDEN);
+                                ESP_LOGI(TAG, "OTA: Showing retry/reboot buttons due to failure");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 #include "../ota/OTAManager.h"
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
+#include "../application/ui/LVGLMessageHandler.h"
 #include "BootManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
@@ -29,6 +30,19 @@ bool OTAApplication::init() {
         ESP_LOGE(TAG, "Failed to initialize display");
         return false;
     }
+
+    // Initialize LVGL message handler for UI updates
+    if (!Application::LVGLMessageHandler::init()) {
+        ESP_LOGE(TAG, "Failed to initialize LVGL message handler");
+        return false;
+    }
+
+    // Show enhanced OTA screen immediately
+    ESP_LOGI(TAG, "Showing OTA interface...");
+    Application::LVGLMessageHandler::showOtaScreen();
+    
+    // Give UI time to render
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // Initialize OTA manager
     if (!Hardware::OTA::OTAManager::init()) {
@@ -61,6 +75,10 @@ void OTAApplication::run() {
 
     // Update display for user feedback
     Display::update();
+    Display::tickUpdate();
+
+    // Process LVGL message queue for UI updates
+    Application::LVGLMessageHandler::processMessageQueue(nullptr);
 
     // Feed watchdog
     esp_task_wdt_reset();
@@ -106,6 +124,7 @@ void OTAApplication::cleanup() {
 
     // Deinitialize in reverse order
     Hardware::OTA::OTAManager::deinit();
+    Application::LVGLMessageHandler::deinit();
     Display::deinit();
     Hardware::Device::deinit();
 

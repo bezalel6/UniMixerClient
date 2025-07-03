@@ -379,28 +379,60 @@ bool OTAManager::startNetwork(void) {
 
     if (!networkInitialized) {
         ESP_LOGW(TAG, "[NETWORK] Starting minimal network for OTA");
+        updateProgress(8, "Initializing WiFi adapter...");
 
         WiFi.mode(WIFI_STA);
         WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
         networkInitialized = true;
 
-        updateProgress(5, "Connecting to WiFi...");
+        updateProgress(10, "Connecting to WiFi network...");
     }
 
     feedWatchdogAndYield("network connection");
 
     if (WiFi.status() == WL_CONNECTED) {
         ESP_LOGW(TAG, "[NETWORK] WiFi connected: %s", WiFi.localIP().toString().c_str());
-        updateProgress(20, "WiFi connected");
+        char ipMsg[64];
+        snprintf(ipMsg, sizeof(ipMsg), "WiFi connected - IP: %s", WiFi.localIP().toString().c_str());
+        updateProgress(22, ipMsg);
         return true;
     }
 
-    // Update connection progress
+    // Update connection progress with more detailed status
     static uint32_t lastProgressUpdate = 0;
     if (millis() - lastProgressUpdate > 2000) {
-        static uint8_t connectProgress = 5;
-        connectProgress = min(connectProgress + 2, 18);
-        updateProgress(connectProgress, "Connecting to WiFi...");
+        static uint8_t connectProgress = 10;
+        
+        // Provide status based on WiFi state
+        wl_status_t status = WiFi.status();
+        const char* statusMsg = "Connecting to WiFi...";
+        
+        switch (status) {
+            case WL_IDLE_STATUS:
+                statusMsg = "WiFi initializing...";
+                break;
+            case WL_NO_SSID_AVAIL:
+                statusMsg = "WiFi network not found - check SSID";
+                break;
+            case WL_SCAN_COMPLETED:
+                statusMsg = "WiFi scan complete - attempting connection";
+                break;
+            case WL_CONNECT_FAILED:
+                statusMsg = "WiFi connection failed - check password";
+                break;
+            case WL_CONNECTION_LOST:
+                statusMsg = "WiFi connection lost - retrying";
+                break;
+            case WL_DISCONNECTED:
+                statusMsg = "WiFi disconnected - attempting reconnection";
+                break;
+            default:
+                statusMsg = "Establishing WiFi connection...";
+                break;
+        }
+        
+        connectProgress = min(connectProgress + 1, 20);
+        updateProgress(connectProgress, statusMsg);
         lastProgressUpdate = millis();
         feedWatchdogAndYield("WiFi connection progress");
     }
@@ -459,15 +491,21 @@ void OTAManager::onHTTPUpdateProgress(int current, int total) {
 }
 
 bool OTAManager::downloadAndInstall(void) {
-    if (!isNetworkReady()) return false;
+    if (!isNetworkReady()) {
+        updateProgress(currentProgress, "Network not ready - cannot download firmware");
+        return false;
+    }
 
     ESP_LOGW(TAG, "[DOWNLOAD] Starting firmware download from: %s", OTA_SERVER_URL);
+    updateProgress(35, "Connecting to firmware server...");
 
     setupHTTPUpdateCallbacks();
     feedWatchdogAndYield("pre-download");
 
     // Create WiFi client for HTTP update
     WiFiClient client;
+    updateProgress(40, "Requesting firmware from server...");
+    
     HTTPUpdateResult result = httpUpdate.update(client, String(OTA_SERVER_URL), "");
 
     feedWatchdogAndYield("post-download");
@@ -475,21 +513,24 @@ bool OTAManager::downloadAndInstall(void) {
     switch (result) {
         case HTTP_UPDATE_FAILED:
             ESP_LOGE(TAG, "[DOWNLOAD] Failed: %s", httpUpdate.getLastErrorString().c_str());
-            completeOTA(OTA_RESULT_DOWNLOAD_FAILED, "Download failed");
+            updateProgress(currentProgress, "Download failed - check server connection");
+            completeOTA(OTA_RESULT_DOWNLOAD_FAILED, "Download failed - server error");
             return false;
 
         case HTTP_UPDATE_NO_UPDATES:
             ESP_LOGW(TAG, "[DOWNLOAD] No updates available");
+            updateProgress(100, "Firmware is already up to date");
             completeOTA(OTA_RESULT_SUCCESS, "Already up to date");
             return true;
 
         case HTTP_UPDATE_OK:
             ESP_LOGW(TAG, "[DOWNLOAD] Download completed successfully");
-            updateProgress(80, "Download complete, installing...");
+            updateProgress(80, "Download complete - firmware verified");
             return true;
 
         default:
             ESP_LOGE(TAG, "[DOWNLOAD] Unknown result: %d", result);
+            updateProgress(currentProgress, "Unknown download error occurred");
             completeOTA(OTA_RESULT_DOWNLOAD_FAILED, "Unknown download error");
             return false;
     }
@@ -504,39 +545,45 @@ void OTAManager::processStateMachine(void) {
 
     switch (currentState) {
         case OTA_USER_INITIATED:
+            updateProgress(5, "OTA mode activated - initializing WiFi connection");
             enterState(OTA_CONNECTING, "Connecting to WiFi...");
             break;
 
         case OTA_CONNECTING:
             if (startNetwork()) {
+                updateProgress(25, "WiFi connection established - preparing download");
                 enterState(OTA_CONNECTED, "WiFi connected, starting download...");
             } else if (millis() - otaStartTime > OTA_NETWORK_CONNECT_TIMEOUT_MS) {
-                completeOTA(OTA_RESULT_NETWORK_FAILED, "Failed to connect to WiFi");
+                updateProgress(0, "WiFi connection timeout - check network settings");
+                completeOTA(OTA_RESULT_NETWORK_FAILED, "Failed to connect to WiFi - timeout");
             }
             break;
 
         case OTA_CONNECTED:
+            updateProgress(30, "Contacting OTA server for firmware update");
             enterState(OTA_DOWNLOADING, "Downloading firmware...");
             break;
 
         case OTA_DOWNLOADING:
             if (downloadAndInstall()) {
+                updateProgress(85, "Download complete - beginning installation");
                 enterState(OTA_INSTALLING, "Installing firmware...");
             }
             break;
 
         case OTA_INSTALLING:
-            updateProgress(90, "Installing firmware...");
+            updateProgress(90, "Installing firmware - do not power off device");
             safeDelay(1000, "installation");
-            updateProgress(95, "Finalizing installation...");
+            updateProgress(95, "Finalizing installation and verifying integrity");
             safeDelay(500, "finalization");
+            updateProgress(100, "Installation complete - preparing to reboot");
             completeOTA(OTA_RESULT_SUCCESS, "OTA completed successfully");
             break;
 
         case OTA_SUCCESS:
         case OTA_FAILED:
         case OTA_CANCELLED:
-            enterState(OTA_CLEANUP, "Cleaning up...");
+            enterState(OTA_CLEANUP, "Cleaning up resources...");
             break;
 
         case OTA_CLEANUP:
