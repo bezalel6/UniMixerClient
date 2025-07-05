@@ -1,7 +1,6 @@
 #include "AppController.h"
 #include "ManagerMacros.h"
 #include "MessagingConfig.h"
-#include "OTAConfig.h"
 #include "../display/DisplayManager.h"
 #include "UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
@@ -19,8 +18,6 @@
 #include <esp_task_wdt.h>
 #include <ui/ui.h>
 #include "BuildInfo.h"
-// Unified OTA System
-#include "../ota/OTAManager.h"
 
 // Private variables
 static const char *TAG = "AppController";
@@ -72,10 +69,9 @@ bool init(void) {
 
     INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::init());
 
-    // Network-Free Architecture - OTAManager handles network on-demand
+    // Network-Free Architecture
     INIT_STEP("Configuring Network-Free Architecture", {
         ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
-        ESP_LOGI(TAG, "[NETWORK-FREE] OTAManager will handle network communications on-demand");
 
 #if MESSAGING_DEFAULT_TRANSPORT == 0 || MESSAGING_DEFAULT_TRANSPORT == 2
         // MQTT completely removed - pure network-free architecture
@@ -135,12 +131,6 @@ bool init(void) {
     INIT_STEP_CRITICAL("Initializing Audio System",
                        Application::Audio::AudioManager::getInstance().init() &&
                            Application::Audio::AudioUI::getInstance().init());
-
-#if OTA_ENABLE_UPDATES
-    INIT_STEP_CRITICAL("Initializing Unified OTA Manager (Network-Free)",
-                       Hardware::OTA::OTAManager::init());
-    ESP_LOGI(TAG, "Unified OTA Manager initialized successfully - network-free mode active");
-#endif
 
     INIT_STEP("Setting up UI components", { setupUiComponents(); });
 
@@ -206,14 +196,8 @@ void deinit(void) {
     // Deinitialize Logo Manager
     Logo::LogoManager::getInstance().deinit();
 
-#if OTA_ENABLE_UPDATES
-    Hardware::OTA::OTAManager::deinit();
-#endif
-
     // Shutdown messaging system (handlers will clean up automatically)
     Messaging::MessageAPI::shutdown();
-
-    // Network communications handled by OTAManager - no separate deinit needed
 
     Display::deinit();
     Hardware::SD::deinit();
@@ -274,10 +258,7 @@ void setupUiComponents(void) {
     // =========================================================================
     // NETWORK-FREE ARCHITECTURE: OTA UI SETUP
     // =========================================================================
-#if OTA_ENABLE_UPDATES
-    Application::LVGLMessageHandler::updateOTAProgress(0, false, false, "OTA Ready (Network-Free Mode)");
-    ESP_LOGI(TAG, "[NETWORK-FREE] OTA UI configured for on-demand operation");
-#endif
+    // OTA system will be replaced with SimpleOTA implementation
 
     // =========================================================================
     // FILE EXPLORER NAVIGATION SETUP

@@ -2,8 +2,7 @@
 #include "CoreLoggingFilter.h"
 #include "core/AppController.h"
 #include "hardware/DeviceManager.h"
-#include "ota/OTAApplication.h"
-#include "MultithreadedOTAApplication.h"
+#include "SimpleOTA.h"
 #include <Arduino.h>
 
 /*
@@ -66,18 +65,33 @@ void setup() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    log_i("=== MULTITHREADED OTA BOOT MODE ===");
-    log_i("Starting advanced multithreaded OTA application");
+    log_i("=== SIMPLE OTA BOOT MODE ===");
+    log_i("Starting SimpleOTA with dual-core architecture");
 
-    if (!OTA::MultithreadedOTAApplication::init()) {
-      log_e("Failed to initialize multithreaded OTA application");
+    // Initialize basic hardware for OTA
+    if (!Hardware::Device::init()) {
+      log_e("Failed to initialize device manager for OTA");
       Boot::BootManager::requestNormalMode();
       ESP.restart();
     }
 
-    log_i("Multithreaded OTA Application initialized successfully");
-    log_i("Architecture: Responsive dual-core OTA with 60 FPS UI");
-    log_i("Core 0: 60 FPS UI updates | Core 1: Network + Download operations");
+    // Initialize SimpleOTA with default configuration
+    if (!SimpleOTA::initWithDefaults()) {
+      log_e("Failed to initialize SimpleOTA");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+
+    // Start OTA update process
+    if (!SimpleOTA::startUpdate()) {
+      log_e("Failed to start OTA update");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+
+    log_i("SimpleOTA initialized successfully");
+    log_i("Architecture: Dual-core with smooth LVGL UI");
+    log_i("Core 0: 60 FPS UI updates | Core 1: Network operations");
     break;
 
   case Boot::BootMode::FACTORY:
@@ -109,9 +123,14 @@ void loop() {
     break;
 
   case Boot::BootMode::OTA_UPDATE:
-    // Multithreaded OTA application loop
-    OTA::MultithreadedOTAApplication::run();
-    delay(250); // Longer delay since all work is done in background tasks
+    // SimpleOTA handles everything in background tasks
+    // Just need to check if we should exit
+    if (!SimpleOTA::isRunning()) {
+      log_i("OTA completed - returning to normal mode");
+      Boot::BootManager::requestNormalMode();
+      ESP.restart();
+    }
+    delay(100);  // Light delay since everything runs in background
     break;
 
   default:

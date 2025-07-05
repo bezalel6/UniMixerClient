@@ -28,12 +28,12 @@
 #include "../../hardware/SDManager.h"
 #include "../../hardware/DeviceManager.h"
 #include "../../display/DisplayManager.h"
-#include "../../ota/OTAManager.h"
+// OTA includes removed - will be replaced with SimpleOTA
 #include "../audio/AudioManager.h"
 #include "DebugUtils.h"
 #include "BuildInfo.h"
 #include "../../ui/UniversalDialog.h"
-#include "EnhancedOTAUI.h"
+// EnhancedOTAUI removed - will be replaced with SimpleOTA UI
 #include <cstring>
 #include <map>
 #include <esp_log.h>
@@ -265,13 +265,10 @@ static void handleRequestData(const LVGLMessage_t *msg) {
 }
 
 static void handleShowOtaScreen(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "OTA: Showing multithreaded enhanced OTA screen");
+    ESP_LOGI(TAG, "OTA: Showing OTA screen (simplified during refactoring)");
 
-    // Use the new enhanced OTA UI system
-    if (!UI::OTA::createEnhancedOTAScreen()) {
-        ESP_LOGE(TAG, "Failed to create enhanced OTA screen");
-        return;
-    }
+    // Enhanced OTA UI system removed during refactoring
+    // Will be replaced with SimpleOTA UI
 
     // Create a full-screen enhanced OTA overlay instead of using basic ui_screenOTA
     static lv_obj_t *otaEnhancedScreen = nullptr;
@@ -506,9 +503,8 @@ static void handleShowOtaScreen(const LVGLMessage_t *msg) {
 }
 
 static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
-    // Use the new enhanced OTA UI system for updates
-    UI::OTA::updateEnhancedOTAScreen();
-    UI::OTA::addLogMessage(msg->data.ota_screen_progress.message);
+    // Enhanced OTA UI system removed during refactoring
+    // Will be replaced with SimpleOTA UI updates
     const auto &data = msg->data.ota_screen_progress;
     ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
 

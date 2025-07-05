@@ -1,6 +1,5 @@
 #include "TaskManager.h"
 #include "MessagingConfig.h"
-#include "OTAConfig.h"
 #include "DebugUtils.h"
 #include "../display/DisplayManager.h"
 #include "UiEventHandlers.h"
