@@ -78,6 +78,20 @@ class MessageCore {
      */
     bool publishExternal(const ExternalMessage& message);
 
+    /**
+     * Subscribe to external messages by type
+     */
+    void subscribeToExternal(MessageProtocol::ExternalMessageType messageType, ExternalMessageCallback callback);
+
+    /**
+     * Subscribe to all external messages (wildcard)
+     */
+    void subscribeToAllExternal(ExternalMessageCallback callback);
+
+    /**
+     * Unsubscribe from external messages
+     */
+    void unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType);
 
 
     // =============================================================================
@@ -164,7 +178,11 @@ class MessageCore {
     // Transport management
     std::map<String, TransportInterface> transports;
 
+    // External message subscriptions (by type)
+    std::unordered_map<MessageProtocol::ExternalMessageType, std::vector<ExternalMessageCallback>> externalSubscriptions;
 
+    // External wildcard subscribers
+    std::vector<ExternalMessageCallback> externalWildcardSubscribers;
 
     // Internal message subscriptions (by type)
     std::unordered_map<MessageProtocol::InternalMessageType, std::vector<InternalMessageCallback>> internalSubscriptions;
@@ -187,6 +205,11 @@ class MessageCore {
      * Convert external message to internal messages and route them
      */
     void convertAndRouteExternal(const ExternalMessage& external);
+
+    /**
+     * Route external message to appropriate external subscribers
+     */
+    void routeExternalMessage(const ExternalMessage& external);
 
     /**
      * Route internal message to appropriate core/subscribers
