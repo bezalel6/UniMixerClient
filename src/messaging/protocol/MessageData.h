@@ -329,6 +329,116 @@ struct InternalMessage {
 };
 
 // =============================================================================
+// MESSAGE FACTORY MACROS - Centralized Code Generation
+// =============================================================================
+
+/**
+ * COMPREHENSIVE MESSAGE FACTORY MACRO SYSTEM
+ * 
+ * These macros eliminate code duplication and centralize:
+ * - Data structure definitions
+ * - Safe string copying with null termination
+ * - Memory management
+ * - InternalMessage construction
+ * 
+ * Usage patterns:
+ * - STRING_MESSAGE: Single string field
+ * - STRING_BOOL_MESSAGE: String + boolean field
+ * - STRING_INT_MESSAGE: String + integer field
+ * - DUAL_STRING_MESSAGE: Two string fields
+ * - CORE_SYNC_MESSAGE: Special core-to-core messages
+ */
+
+// Safe string copying with null termination
+#define SAFE_STRING_COPY(dest, src, size) do { \
+    strncpy(dest, src.c_str(), size - 1); \
+    dest[size - 1] = '\0'; \
+} while(0)
+
+// Generate data structure with single string field
+#define DEFINE_STRING_DATA_STRUCT(StructName, fieldName, fieldSize) \
+    struct StructName { \
+        char fieldName[fieldSize]; \
+    }
+
+// Generate data structure with string + boolean fields
+#define DEFINE_STRING_BOOL_DATA_STRUCT(StructName, strField, strSize, boolField) \
+    struct StructName { \
+        char strField[strSize]; \
+        bool boolField; \
+    }
+
+// Generate data structure with string + integer fields
+#define DEFINE_STRING_INT_DATA_STRUCT(StructName, strField, strSize, intField) \
+    struct StructName { \
+        char strField[strSize]; \
+        int intField; \
+    }
+
+// Generate data structure with dual string fields
+#define DEFINE_DUAL_STRING_DATA_STRUCT(StructName, field1, size1, field2, size2) \
+    struct StructName { \
+        char field1[size1]; \
+        char field2[size2]; \
+    }
+
+// Generate data structure with dual uint8_t fields
+#define DEFINE_DUAL_UINT8_DATA_STRUCT(StructName, field1, field2) \
+    struct StructName { \
+        uint8_t field1; \
+        uint8_t field2; \
+    }
+
+// Complete message factory method for single string
+#define STRING_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam) \
+    static InternalMessage funcName(const String& strParam) { \
+        DEFINE_STRING_DATA_STRUCT(dataStruct, strField, strSize); \
+        dataStruct data; \
+        SAFE_STRING_COPY(data.strField, strParam, strSize); \
+        return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
+    }
+
+// Complete message factory method for string + boolean
+#define STRING_BOOL_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam, boolField, boolParam) \
+    static InternalMessage funcName(const String& strParam, bool boolParam) { \
+        DEFINE_STRING_BOOL_DATA_STRUCT(dataStruct, strField, strSize, boolField); \
+        dataStruct data; \
+        SAFE_STRING_COPY(data.strField, strParam, strSize); \
+        data.boolField = boolParam; \
+        return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
+    }
+
+// Complete message factory method for string + integer
+#define STRING_INT_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam, intField, intParam) \
+    static InternalMessage funcName(const String& strParam, int intParam) { \
+        DEFINE_STRING_INT_DATA_STRUCT(dataStruct, strField, strSize, intField); \
+        dataStruct data; \
+        SAFE_STRING_COPY(data.strField, strParam, strSize); \
+        data.intField = intParam; \
+        return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
+    }
+
+// Complete message factory method for dual strings
+#define DUAL_STRING_MESSAGE_FACTORY(funcName, msgType, dataStruct, field1, size1, param1, field2, size2, param2) \
+    static InternalMessage funcName(const String& param1, const String& param2) { \
+        DEFINE_DUAL_STRING_DATA_STRUCT(dataStruct, field1, size1, field2, size2); \
+        dataStruct data; \
+        SAFE_STRING_COPY(data.field1, param1, size1); \
+        SAFE_STRING_COPY(data.field2, param2, size2); \
+        return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
+    }
+
+// Complete message factory method for dual uint8_t
+#define DUAL_UINT8_MESSAGE_FACTORY(funcName, msgType, dataStruct, field1, field2, param1, param2) \
+    static InternalMessage funcName(uint8_t param1, uint8_t param2) { \
+        DEFINE_DUAL_UINT8_DATA_STRUCT(dataStruct, field1, field2); \
+        dataStruct data; \
+        data.field1 = param1; \
+        data.field2 = param2; \
+        return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
+    }
+
+// =============================================================================
 // MESSAGE FACTORY - Type-safe message creation
 // =============================================================================
 
@@ -338,16 +448,27 @@ public:
     static ExternalMessage createStatusRequest(const String& deviceId = "");
     static ExternalMessage createAssetRequest(const String& processName, const String& deviceId = "");
 
-    // Create typed internal messages
-    static InternalMessage createAudioVolumeMessage(const String& processName, int volume);
-    static InternalMessage createUIUpdateMessage(const String& component, const String& data);
-    static InternalMessage createSystemStatusMessage(const String& status);
-    static InternalMessage createWifiStatusMessage(const String& status, bool connected);
-    static InternalMessage createNetworkInfoMessage(const String& ssid, const String& ip);
-    static InternalMessage createSDStatusMessage(const String& status, bool mounted);
-    static InternalMessage createAudioDeviceChangeMessage(const String& deviceName);
-    static InternalMessage createCoreToCoreSyncMessage(uint8_t fromCore, uint8_t toCore);
-    static InternalMessage createDebugUILogMessage(const String& logMessage);
+    // MACRO-GENERATED INTERNAL MESSAGE FACTORIES
+    // These use the comprehensive macro system above to eliminate code duplication
+
+    // Single string message factories
+    STRING_MESSAGE_FACTORY(createSystemStatusMessage, MEMORY_STATUS, SystemStatusData, status, 64, status)
+    STRING_MESSAGE_FACTORY(createAudioDeviceChangeMessage, AUDIO_DEVICE_CHANGE, AudioDeviceChangeData, deviceName, 64, deviceName)
+    STRING_MESSAGE_FACTORY(createDebugUILogMessage, DEBUG_UI_LOG, DebugLogData, logMessage, 256, logMessage)
+
+    // String + boolean message factories
+    STRING_BOOL_MESSAGE_FACTORY(createWifiStatusMessage, WIFI_STATUS, WifiStatusData, status, 32, status, connected, connected)
+    STRING_BOOL_MESSAGE_FACTORY(createSDStatusMessage, SD_STATUS, SDStatusData, status, 32, status, mounted, mounted)
+
+    // String + integer message factories
+    STRING_INT_MESSAGE_FACTORY(createAudioVolumeMessage, AUDIO_STATE_UPDATE, AudioVolumeData, processName, 64, processName, volume, volume)
+
+    // Dual string message factories
+    DUAL_STRING_MESSAGE_FACTORY(createNetworkInfoMessage, NETWORK_INFO, NetworkInfoData, ssid, 64, ssid, ip, 16, ip)
+    DUAL_STRING_MESSAGE_FACTORY(createUIUpdateMessage, UI_UPDATE, UIUpdateData, component, 32, component, data, 128, data)
+
+    // Dual uint8_t message factories
+    DUAL_UINT8_MESSAGE_FACTORY(createCoreToCoreSyncMessage, TASK_SYNC, CoreSyncData, fromCore, toCore, fromCore, toCore)
 };
 
 // =============================================================================
