@@ -70,7 +70,7 @@ extern const unsigned long MESSAGE_LOG_TRUNCATE_LENGTH;
 // TRANSPORT NAMES
 // =============================================================================
 
-// Network transports available only during OTA mode
+// Network transports not currently available
 extern const char* TRANSPORT_NAME_SERIAL;
 
 String generateRequestId();

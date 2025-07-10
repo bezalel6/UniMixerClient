@@ -155,11 +155,11 @@ void MessageCore::handleExternalMessage(const ExternalMessage& external) {
     logExternalMessage("IN", external);
 
     // Check if we should ignore self-originated messages
-    if (external.isSelfOriginated()) {
-        ESP_LOGW(TAG, "Ignoring self-originated external message: %d",
-                 LOG_EXTERNAL_MSG_TYPE(external.messageType));
-        return;
-    }
+    // if (external.isSelfOriginated()) {
+    //     ESP_LOGW(TAG, "Ignoring self-originated external message: %d",
+    //              LOG_EXTERNAL_MSG_TYPE(external.messageType));
+    //     return;
+    // }
 
     // Process external message (validation + conversion + routing)
     convertAndRouteExternal(external);
@@ -442,7 +442,8 @@ void MessageCore::routeInternalMessage(const InternalMessage& internal) {
         }
     }
 
-    ESP_LOGV(TAG, "Routed internal message: %d (Core %d)",
+
+        ESP_LOGV(TAG, "Routed internal message: %d (Core %d)",
              LOG_INTERNAL_MSG_TYPE(internal.messageType),
              internal.shouldRouteToCore1() ? 1 : 0);
 }

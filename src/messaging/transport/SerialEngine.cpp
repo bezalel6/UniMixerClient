@@ -523,11 +523,17 @@ bool InterruptMessagingEngine::parseCompleteMessage(const char* buffer, size_t l
         return false;
     }
 
-    // Use MessageCore's existing parsing
+    // Use new type-safe parsing
     String messageStr(buffer);
-    message = MessageParser::parseExternalMessage(messageStr);
+    auto parseResult = MessageParser::parseExternalMessage(messageStr);
 
-    return (message.messageType != MessageProtocol::ExternalMessageType::INVALID);
+    if (parseResult.isValid()) {
+        message = parseResult.getValue();
+        return true;
+    } else {
+        ESP_LOGW(TAG, "Failed to parse message: %s", parseResult.getError().c_str());
+        return false;
+    }
 }
 
 void InterruptMessagingEngine::routeExternalMessage(const ExternalMessage& message) {

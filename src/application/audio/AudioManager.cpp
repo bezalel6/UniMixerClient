@@ -471,8 +471,19 @@ void AudioManager::publishStatusUpdate() {
     statusData.reason = Messaging::Config::REASON_UPDATE_RESPONSE;
     statusData.originatingDeviceId = Messaging::Config::DEVICE_ID;
 
-    String statusJson = Messaging::MessageAPI::createStatusResponse(statusData);
-    Messaging::ExternalMessage externalMsg = Messaging::MessageParser::parseExternalMessage(statusJson);
+        auto statusJsonResult = Messaging::MessageAPI::createStatusResponse(statusData);
+    if (!statusJsonResult.isValid()) {
+        ESP_LOGE(TAG, "Failed to create status response: %s", statusJsonResult.getError().c_str());
+        return;
+    }
+
+    auto parseResult = Messaging::MessageAPI::parseExternalMessage(statusJsonResult.getValue());
+    if (!parseResult.isValid()) {
+        ESP_LOGE(TAG, "Failed to parse status response: %s", parseResult.getError().c_str());
+        return;
+    }
+
+    Messaging::ExternalMessage externalMsg = parseResult.getValue();
     bool published = Messaging::MessageAPI::publishExternal(externalMsg);
 
     LOG_INFO_IF(published, TAG, "Published status update with %d sessions", state.currentStatus.getDeviceCount());

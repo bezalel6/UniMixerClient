@@ -3,21 +3,64 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <vector>
+#include <memory>
 #include <functional>
 #include <esp_log.h>
 #include "../../application/audio/AudioData.h"
 #include "MessageConfig.h"
-#include <MessageProtocol.h>  // Direct import instead of relative path
+#include <MessageProtocol.h>
 
 namespace Messaging {
 
-    // Forward Declarations
+// =============================================================================
+// FORWARD DECLARATIONS
+// =============================================================================
+
+struct ExternalMessage;
+struct InternalMessage;
+
+// =============================================================================
+// TYPE-SAFE MESSAGE PARSING RESULT
+// =============================================================================
+
+/**
+ * Result wrapper for type-safe message parsing
+ */
+template<typename T>
+struct ParseResult {
+    bool success = false;
+    T data;
+    String error;
+
+    ParseResult() = default;
+
+    // Factory function for success case
+    static ParseResult<T> createSuccess(const T& value) {
+        ParseResult<T> result;
+        result.success = true;
+        result.data = value;
+        return result;
+    }
+
+    // Factory function for error case
+    static ParseResult<T> createError(const String& err) {
+        ParseResult<T> result;
+        result.success = false;
+        result.error = err;
+        return result;
+    }
+
+    bool isValid() const { return success; }
+    const T& getValue() const { return data; }
+    const String& getError() const { return error; }
+};
+
 // =============================================================================
 // EXTERNAL MESSAGE TYPES - For messages received over transports
 // =============================================================================
 
 /**
- * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode, network in OTA mode)
+ * EXTERNAL MESSAGE - Received over available transports (Serial in normal mode)
  * EFFICIENT: Pre-parsed by transport, no raw payload storage
  * SECURITY: Validation and sanitization required
  */
@@ -27,31 +70,38 @@ struct ExternalMessage {
     String deviceId;
     String originatingDeviceId;
     unsigned long timestamp;
-    bool validated = true; //once a message is read and validated using the CrC binary calculation it is considered valid.
+    bool validated = false;
 
     // Type-specific parsed data (transport provides this)
-    JsonDocument parsedData;  // Only the specific data fields, not entire payload
+    JsonDocument parsedData;
 
-    ExternalMessage() {
+    ExternalMessage() : parsedData(1024) {
         messageType = MessageProtocol::ExternalMessageType::INVALID;
         timestamp = millis();
     }
 
     ExternalMessage(MessageProtocol::ExternalMessageType type, const String& reqId = "", const String& devId = "")
-        : messageType(type), requestId(reqId), deviceId(devId) {
+        : messageType(type), requestId(reqId), deviceId(devId), parsedData(1024) {
         timestamp = millis();
     }
 
-    // Direct access to parsed data (no lazy loading needed)
+    // Direct access to parsed data with type safety
     template <typename T>
-    T get(const String& field, T defaultValue = T{}) const {
-        return parsedData[field] | defaultValue;
+    T get(const String& field, const T& defaultValue = T{}) const {
+        auto value = parsedData[field];
+        if (value.isNull()) {
+            return defaultValue;
+        }
+        return value.as<T>();
     }
 
-    // Validation and security (no JSON parsing overhead)
-    bool isSelfOriginated() const;
+    // Check if field exists
+    bool hasField(const String& field) const {
+        return !parsedData[field].isNull();
+    }
 
-    // Utility methods for external message handling
+    // Validation and security methods (implemented in MessageData.cpp)
+    bool isSelfOriginated() const;
     bool requiresResponse() const;
     MessageProtocol::ExternalMessageCategory getCategory() const {
         return MessageProtocol::getExternalMessageCategory(messageType);
@@ -59,7 +109,8 @@ struct ExternalMessage {
     MessageProtocol::MessagePriority getPriority() const {
         return MessageProtocol::getExternalMessagePriority(messageType);
     }
-};    struct InternalMessage;
+};
+
 // =============================================================================
 // AUDIO DATA STRUCTURES
 // =============================================================================
@@ -193,24 +244,7 @@ struct AssetResponseData {
     unsigned long timestamp = 0;
 
     AssetResponseData() = default;
-    AssetResponseData(const   ExternalMessage& external) {
-        requestId = external.requestId;
-        deviceId = external.deviceId;
-        timestamp = external.timestamp;
-
-        // Extract asset-specific fields from parsed data
-        processName = external.parsedData["processName"] | "";
-        success = external.parsedData["success"] | false;
-        errorMessage = external.parsedData["errorMessage"] | "";
-        assetDataBase64 = external.parsedData["assetData"] | "";
-
-        if (external.parsedData["metadata"].is<JsonVariant>()) {
-            auto metadata = external.parsedData["metadata"];
-            width = metadata["width"] | 0;
-            height = metadata["height"] | 0;
-            format = metadata["format"] | "";
-        }
-    }
+    AssetResponseData(const ExternalMessage& external);
 };
 
 // =============================================================================
@@ -221,15 +255,17 @@ struct AssetResponseData {
  * Transport interface for external message communication
  * Handles sending and receiving messages across transport boundaries
  */
-struct TransportInterface {
-    std::function<bool(const String& payload)> sendRaw;  // Send raw JSON payload
-    std::function<bool()> isConnected;                   // Check connection status
-    std::function<void()> update;                        // Update transport state
-    std::function<String()> getStatus;                   // Get transport status
-    std::function<bool()> init;                          // Initialize transport
-    std::function<void()> deinit;                        // Cleanup transport
-};
+class TransportInterface {
+public:
+    std::function<bool(const String& payload)> sendRaw;
+    std::function<bool()> isConnected;
+    std::function<void()> update;
+    std::function<String()> getStatus;
+    std::function<bool()> init;
+    std::function<void()> deinit;
 
+    TransportInterface() = default;
+};
 
 // =============================================================================
 // CALLBACK TYPE DEFINITIONS
@@ -237,12 +273,9 @@ struct TransportInterface {
 
 using ExternalMessageCallback = std::function<void(const ExternalMessage& message)>;
 using InternalMessageCallback = std::function<void(const InternalMessage& message)>;
-
-// Specific callback types for better type safety
 using AudioStatusCallback = std::function<void(const AudioStatusData& data)>;
 using NetworkStatusCallback = std::function<void(const String& status, bool connected)>;
 using SDStatusCallback = std::function<void(const String& status, bool mounted)>;
-
 
 // =============================================================================
 // INTERNAL MESSAGE TYPES - For ESP32 internal communication
@@ -255,109 +288,29 @@ using SDStatusCallback = std::function<void(const String& status, bool mounted)>
  */
 struct InternalMessage {
     MessageProtocol::InternalMessageType messageType;
-    void* data = nullptr;  // Type-safe data payload
+    std::shared_ptr<uint8_t[]> data;
     size_t dataSize = 0;
     unsigned long timestamp;
-    uint8_t priority;  // For Core 1 processing queue
+    uint8_t priority;
     bool requiresResponse = false;
-    bool ownsData = false;  // Track if we need to free the data
 
-    InternalMessage() {
-        messageType = MessageProtocol::InternalMessageType::INVALID;
-        timestamp = millis();
-        priority = static_cast<uint8_t>(MessageProtocol::getInternalMessagePriority(messageType));
-    }
-
-    InternalMessage(MessageProtocol::InternalMessageType type, void* payload = nullptr, size_t size = 0)
-        : messageType(type), data(payload), dataSize(size) {
-        timestamp = millis();
-        priority = static_cast<uint8_t>(MessageProtocol::getInternalMessagePriority(type));
-    }
-
-    // Copy constructor
-    InternalMessage(const InternalMessage& other)
-        : messageType(other.messageType), dataSize(other.dataSize),
-          timestamp(other.timestamp), priority(other.priority),
-          requiresResponse(other.requiresResponse) {
-        if (other.data && other.dataSize > 0) {
-            data = malloc(other.dataSize);
-            if (data) {
-                memcpy(data, other.data, other.dataSize);
-                ownsData = true;
-            }
-        }
-    }
-
-    // Move constructor
-    InternalMessage(InternalMessage&& other) noexcept
-        : messageType(other.messageType), data(other.data), dataSize(other.dataSize),
-          timestamp(other.timestamp), priority(other.priority),
-          requiresResponse(other.requiresResponse), ownsData(other.ownsData) {
-        other.data = nullptr;
-        other.ownsData = false;
-    }
-
-    // Assignment operators
-    InternalMessage& operator=(const InternalMessage& other) {
-        if (this != &other) {
-            cleanup();
-            messageType = other.messageType;
-            dataSize = other.dataSize;
-            timestamp = other.timestamp;
-            priority = other.priority;
-            requiresResponse = other.requiresResponse;
-
-            if (other.data && other.dataSize > 0) {
-                data = malloc(other.dataSize);
-                if (data) {
-                    memcpy(data, other.data, other.dataSize);
-                    ownsData = true;
-                }
-            }
-        }
-        return *this;
-    }
-
-    InternalMessage& operator=(InternalMessage&& other) noexcept {
-        if (this != &other) {
-            cleanup();
-            messageType = other.messageType;
-            data = other.data;
-            dataSize = other.dataSize;
-            timestamp = other.timestamp;
-            priority = other.priority;
-            requiresResponse = other.requiresResponse;
-            ownsData = other.ownsData;
-
-            other.data = nullptr;
-            other.ownsData = false;
-        }
-        return *this;
-    }
-
-    // Destructor
-    ~InternalMessage() {
-        cleanup();
-    }
+    InternalMessage();
+    InternalMessage(MessageProtocol::InternalMessageType type, const void* payload = nullptr, size_t size = 0);
 
     // Type-safe data accessors
     template <typename T>
     T* getTypedData() const {
-        return static_cast<T*>(data);
+        if (data && dataSize >= sizeof(T)) {
+            return reinterpret_cast<T*>(data.get());
+        }
+        return nullptr;
     }
 
     template <typename T>
     bool setTypedData(const T& payload) {
-        cleanup();  // Clean up any existing data
-
-        data = malloc(sizeof(T));
-        if (!data) {
-            return false;
-        }
-
-        memcpy(data, &payload, sizeof(T));
         dataSize = sizeof(T);
-        ownsData = true;
+        data.reset(new uint8_t[dataSize]);
+        memcpy(data.get(), &payload, dataSize);
         return true;
     }
 
@@ -373,16 +326,28 @@ struct InternalMessage {
     MessageProtocol::MessagePriority getPriority() const {
         return MessageProtocol::getInternalMessagePriority(messageType);
     }
+};
 
-private:
-    void cleanup() {
-        if (ownsData && data) {
-            free(data);
-        }
-        data = nullptr;
-        dataSize = 0;
-        ownsData = false;
-    }
+// =============================================================================
+// MESSAGE FACTORY - Type-safe message creation
+// =============================================================================
+
+class MessageFactory {
+public:
+    // Create typed external messages
+    static ExternalMessage createStatusRequest(const String& deviceId = "");
+    static ExternalMessage createAssetRequest(const String& processName, const String& deviceId = "");
+
+    // Create typed internal messages
+    static InternalMessage createAudioVolumeMessage(const String& processName, int volume);
+    static InternalMessage createUIUpdateMessage(const String& component, const String& data);
+    static InternalMessage createSystemStatusMessage(const String& status);
+    static InternalMessage createWifiStatusMessage(const String& status, bool connected);
+    static InternalMessage createNetworkInfoMessage(const String& ssid, const String& ip);
+    static InternalMessage createSDStatusMessage(const String& status, bool mounted);
+    static InternalMessage createAudioDeviceChangeMessage(const String& deviceName);
+    static InternalMessage createCoreToCoreSyncMessage(uint8_t fromCore, uint8_t toCore);
+    static InternalMessage createDebugUILogMessage(const String& logMessage);
 };
 
 // =============================================================================
@@ -403,132 +368,47 @@ std::vector<InternalMessage> externalToInternal(const ExternalMessage& external)
  */
 ExternalMessage internalToExternal(const InternalMessage& internal);
 
-/**
- * Create InternalMessage for common operations (convenience functions)
- */
-InternalMessage createAudioVolumeMessage(const String& processName, int volume);
-InternalMessage createUIUpdateMessage(const String& component, const String& data);
-InternalMessage createSystemStatusMessage(const String& status);
-
-// New convenience functions for specific internal message types
-InternalMessage createWifiStatusMessage(const String& status, bool connected);
-InternalMessage createNetworkInfoMessage(const String& ssid, const String& ip);
-InternalMessage createSDStatusMessage(const String& status, bool mounted);
-InternalMessage createAudioDeviceChangeMessage(const String& deviceName);
-InternalMessage createCoreToCoreSyncMessage(uint8_t fromCore, uint8_t toCore);
-InternalMessage createDebugUILogMessage(const String& logMessage);
-
 }  // namespace MessageConverter
 
 // =============================================================================
 // NAMESPACE ALIASES FOR CONVENIENCE
 // =============================================================================
 
-// Short aliases for common types to reduce typing
 using ExtMsg = ExternalMessage;
 using IntMsg = InternalMessage;
 using ExtMsgType = MessageProtocol::ExternalMessageType;
 using IntMsgType = MessageProtocol::InternalMessageType;
 
 // =============================================================================
-// MESSAGE PARSING UTILITIES
+// TYPE-SAFE MESSAGE PARSING UTILITIES
 // =============================================================================
 
 namespace MessageParser {
 
 /**
- * Parse external message type from JSON payload
- * EFFICIENT: Direct string comparison with enum mapping
- * UPDATED: Uses single camelCase constant for field name
+ * Parse external message type from JSON payload with error handling
  */
-inline MessageProtocol::ExternalMessageType parseExternalMessageType(const String& jsonPayload) {
-    JsonDocument doc;  // Use default dynamic allocation
-    if (deserializeJson(doc, jsonPayload) != DeserializationError::Ok) {
-        ESP_LOGW("MessageParser", "Failed to parse messageType from JSON: %s", jsonPayload.c_str());
-        return MessageProtocol::ExternalMessageType::INVALID;
-    }
-
-    // Use single camelCase constant
-    if (doc[MessageProtocol::JsonFields::MESSAGE_TYPE].is<int>()) {
-        return DESERIALIZE_EXTERNAL_MSG_TYPE(doc, MessageProtocol::JsonFields::MESSAGE_TYPE, MessageProtocol::ExternalMessageType::INVALID);
-    }
-
-    ESP_LOGW("MessageParser", "No valid messageType field found in JSON");
-    return MessageProtocol::ExternalMessageType::INVALID;
-}
+ParseResult<MessageProtocol::ExternalMessageType> parseExternalMessageType(const String& jsonPayload);
 
 /**
- * Parse complete external message from JSON payload
- * EFFICIENT: Single JSON parse, direct field extraction
- * UPDATED: Uses single camelCase constants for all fields
+ * Parse complete external message from JSON payload with comprehensive error handling
  */
-inline ExternalMessage parseExternalMessage(const String& jsonPayload) {
-    using namespace MessageProtocol::JsonFields;
-
-    // Use default JsonDocument with automatic memory allocation for Unicode support
-    JsonDocument doc;
-
-    DeserializationError error = deserializeJson(doc, jsonPayload);
-    if (error) {
-        ESP_LOGW("MessageParser", "JSON deserialization failed: %s", error.c_str());
-        ESP_LOGW("MessageParser", "Failed payload: %s", jsonPayload.c_str());
-        return ExternalMessage();
-    }
-
-    // Parse messageType using single camelCase constant
-    MessageProtocol::ExternalMessageType type = MessageProtocol::ExternalMessageType::INVALID;
-
-    if (doc[MESSAGE_TYPE].is<int>()) {
-        type = SAFE_DESERIALIZE_EXTERNAL_MSG_TYPE(doc, MESSAGE_TYPE);
-    }
-
-    if (type == MessageProtocol::ExternalMessageType::INVALID) {
-        ESP_LOGW("MessageParser", "Invalid or missing messageType field in JSON");
-        ESP_LOGW("MessageParser", "Available fields in JSON:");
-        for (JsonPair kv : doc.as<JsonObject>()) {
-            ESP_LOGW("MessageParser", "  - %s", kv.key().c_str());
-        }
-        return ExternalMessage();
-    }
-
-    // Parse other core fields using camelCase constants
-    String requestId = doc[REQUEST_ID] | "";
-    String deviceId = doc[DEVICE_ID] | "";
-    String originatingDeviceId = doc[ORIGINATING_DEVICE_ID] | "";
-    unsigned long timestamp = doc[TIMESTAMP] | millis();
-
-    ExternalMessage message(type, requestId, deviceId);
-    message.originatingDeviceId = originatingDeviceId;
-    message.timestamp = timestamp;
-    message.parsedData = doc;  // Store the parsed JSON data
-
-    ESP_LOGD("MessageParser", "Successfully parsed external message: type=%d, deviceId=%s",
-             static_cast<int>(type), deviceId.c_str());
-
-    return message;
-}
+ParseResult<ExternalMessage> parseExternalMessage(const String& jsonPayload);
 
 /**
  * Check if message should be ignored (self-originated, invalid, etc.)
  */
-inline bool shouldIgnoreMessage(const ExternalMessage& message, const String& myDeviceId = Config::DEVICE_ID) {
-    // Ignore invalid messages
-    if (message.messageType == MessageProtocol::ExternalMessageType::INVALID) {
-        return true;
-    }
+bool shouldIgnoreMessage(const ExternalMessage& message, const String& myDeviceId = Config::getDeviceId());
 
-    // Ignore self-originated messages
-    if (message.deviceId == myDeviceId) {
-        return true;
-    }
+/**
+ * Type-safe audio status parsing
+ */
+ParseResult<AudioStatusData> parseAudioStatusData(const ExternalMessage& message);
 
-    // Ignore messages from our own device ID in originatingDeviceId
-    if (!message.originatingDeviceId.isEmpty() && message.originatingDeviceId == myDeviceId) {
-        return true;
-    }
-
-    return false;
-}
+/**
+ * Type-safe asset response parsing
+ */
+ParseResult<AssetResponseData> parseAssetResponseData(const ExternalMessage& message);
 
 }  // namespace MessageParser
 
@@ -536,124 +416,28 @@ inline bool shouldIgnoreMessage(const ExternalMessage& message, const String& my
 // MESSAGE SERIALIZATION UTILITIES
 // =============================================================================
 
+namespace MessageSerializer {
+
 /**
- * Serialize ExternalMessage to JSON string
+ * Serialize ExternalMessage to JSON string with error handling
  */
-String serializeExternalMessage(const ExternalMessage& message);
+ParseResult<String> serializeExternalMessage(const ExternalMessage& message);
 
 /**
  * Serialize InternalMessage to JSON string (for debugging/logging)
  */
-String serializeInternalMessage(const InternalMessage& message);
-
-// =============================================================================
-// AUDIO DATA PARSING UTILITIES
-// =============================================================================
-
-/**
- * Parse audio status response from external message
- * UPDATED: Uses basic JsonVariant operations compatible with ArduinoJson v7
- */
-inline AudioStatusData parseStatusResponse(const ExternalMessage& message) {
-    using namespace MessageProtocol::JsonFields;
-
-    AudioStatusData data;
-
-    if (message.messageType != MessageProtocol::ExternalMessageType::STATUS_UPDATE &&
-        message.messageType != MessageProtocol::ExternalMessageType::STATUS_MESSAGE) {
-        return data;
-    }
-
-    // Extract sessions using basic variant operations
-    auto sessionsVariant = message.parsedData[SESSIONS];
-    if (!sessionsVariant.isNull() && sessionsVariant.is<JsonVariant>()) {
-        size_t sessionCount = sessionsVariant.size();
-        for (size_t i = 0; i < sessionCount; i++) {
-            auto sessionVar = sessionsVariant[i];
-            if (!sessionVar.isNull()) {
-                SessionStatusData session;
-                session.processId = sessionVar[PROCESS_ID].as<int>();
-                session.processName = sessionVar[PROCESS_NAME].as<String>();
-                session.displayName = sessionVar[DISPLAY_NAME].as<String>();
-                session.volume = sessionVar[VOLUME].as<float>();
-                session.isMuted = sessionVar[IS_MUTED].as<bool>();
-                session.state = sessionVar[STATE].as<String>();
-                data.sessions.push_back(session);
-            }
-        }
-    }
-
-    // Extract default device using basic variant operations
-    auto defaultVar = message.parsedData[DEFAULT_DEVICE];
-    if (!defaultVar.isNull() && defaultVar.is<JsonVariant>()) {
-        data.defaultDevice.friendlyName = defaultVar[FRIENDLY_NAME].as<String>();
-        data.defaultDevice.volume = defaultVar[VOLUME].as<float>();
-        data.defaultDevice.isMuted = defaultVar[IS_MUTED].as<bool>();
-        data.defaultDevice.dataFlow = defaultVar[DATA_FLOW].as<String>();
-        data.defaultDevice.deviceRole = defaultVar[DEVICE_ROLE].as<String>();
-        data.hasDefaultDevice = true;
-    }
-
-    // Extract metadata using basic operations
-    data.timestamp = message.timestamp;
-    data.reason = message.parsedData[REASON].as<String>();
-    data.originatingDeviceId = message.parsedData[ORIGINATING_DEVICE_ID].as<String>();
-    data.originatingRequestId = message.parsedData[ORIGINATING_REQUEST_ID].as<String>();
-    data.activeSessionCount = message.parsedData[ACTIVE_SESSION_COUNT].as<int>();
-
-    return data;
-}
+ParseResult<String> serializeInternalMessage(const InternalMessage& message);
 
 /**
  * Create status response JSON from audio status data
- * UPDATED: Uses simple camelCase constants for field names
  */
-inline String createStatusResponse(const AudioStatusData& data) {
-    using namespace MessageProtocol::JsonFields;
+ParseResult<String> createStatusResponse(const AudioStatusData& data);
 
-    JsonDocument doc;
-    doc[MESSAGE_TYPE] = SERIALIZE_EXTERNAL_MSG_TYPE(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
-    doc[DEVICE_ID] = Config::getDeviceId();
-    doc[TIMESTAMP] = data.timestamp;
-    doc[ACTIVE_SESSION_COUNT] = data.activeSessionCount;
+/**
+ * Create asset request JSON
+ */
+ParseResult<String> createAssetRequest(const String& processName, const String& deviceId = "");
 
-    if (!data.reason.isEmpty()) {
-        doc[REASON] = data.reason;
-    }
-
-    if (!data.originatingDeviceId.isEmpty()) {
-        doc[ORIGINATING_DEVICE_ID] = data.originatingDeviceId;
-    }
-
-    if (!data.originatingRequestId.isEmpty()) {
-        doc[ORIGINATING_REQUEST_ID] = data.originatingRequestId;
-    }
-
-    // Serialize sessions using camelCase constants
-    JsonArray sessionsArray = doc[SESSIONS].to<JsonArray>();
-    for (const auto& session : data.sessions) {
-        JsonObject sessionObj = sessionsArray.add<JsonObject>();
-        sessionObj[PROCESS_ID] = session.processId;
-        sessionObj[PROCESS_NAME] = session.processName;
-        sessionObj[DISPLAY_NAME] = session.displayName;
-        sessionObj[VOLUME] = session.volume;
-        sessionObj[IS_MUTED] = session.isMuted;
-        sessionObj[STATE] = session.state;
-    }
-
-    // Serialize default device using camelCase constants
-    if (data.hasDefaultDevice) {
-        JsonObject defaultObj = doc[DEFAULT_DEVICE].to<JsonObject>();
-        defaultObj[FRIENDLY_NAME] = data.defaultDevice.friendlyName;
-        defaultObj[VOLUME] = data.defaultDevice.volume;
-        defaultObj[IS_MUTED] = data.defaultDevice.isMuted;
-        defaultObj[DATA_FLOW] = data.defaultDevice.dataFlow;
-        defaultObj[DEVICE_ROLE] = data.defaultDevice.deviceRole;
-    }
-
-    String jsonString;
-    serializeJson(doc, jsonString);
-    return jsonString;
-}
+}  // namespace MessageSerializer
 
 }  // namespace Messaging

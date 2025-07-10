@@ -14,7 +14,6 @@ namespace LVGLMessageHandler {
 typedef enum {
     MSG_UPDATE_WIFI_STATUS,
     MSG_UPDATE_NETWORK_INFO,
-    MSG_UPDATE_OTA_PROGRESS,
     MSG_UPDATE_FPS_DISPLAY,
     MSG_UPDATE_BUILD_TIME_DISPLAY,
     MSG_SCREEN_CHANGE,
@@ -30,11 +29,6 @@ typedef enum {
     MSG_UPDATE_SINGLE_DEVICE,
     MSG_UPDATE_BALANCE_DEVICES,
 
-    // Dedicated messages for the custom, non-conflicting OTA screen
-    MSG_SHOW_OTA_SCREEN,
-    MSG_UPDATE_OTA_SCREEN_PROGRESS,
-    MSG_HIDE_OTA_SCREEN,
-
     // State overview messages
     MSG_SHOW_STATE_OVERVIEW,
     MSG_UPDATE_STATE_OVERVIEW,
@@ -48,11 +42,6 @@ typedef enum {
     MSG_FORMAT_SD_CONFIRM,
     MSG_FORMAT_SD_PROGRESS,
     MSG_FORMAT_SD_COMPLETE,
-
-    // BULLETPROOF: OTA status indicator messages
-    MSG_SHOW_OTA_STATUS_INDICATOR,
-    MSG_UPDATE_OTA_STATUS_INDICATOR,
-    MSG_HIDE_OTA_STATUS_INDICATOR,
 
     // Debug UI logging message
     MSG_DEBUG_UI_LOG,
@@ -74,13 +63,6 @@ typedef struct {
             const char *ssid;
             const char *ip;
         } network_info;
-
-        struct {
-            uint8_t progress;
-            bool in_progress;
-            bool success;
-            char message[64];
-        } ota_progress;
 
         struct {
             float fps;
@@ -123,11 +105,6 @@ typedef struct {
             int time;
             int delay;
         } screen_change;
-
-        struct {
-            uint8_t progress;
-            char message[64];
-        } ota_screen_progress;
 
         // State overview data
         struct {
@@ -172,15 +149,6 @@ typedef struct {
             char message[64];
         } sd_format;
 
-        // BULLETPROOF: OTA status indicator data
-        struct {
-            bool show;
-            uint8_t progress;
-            char status[32];
-            bool is_error;
-            bool pulsing;
-        } ota_status_indicator;
-
         // Debug UI log data
         struct {
             char message[256];
@@ -201,8 +169,6 @@ void processComplexMessage(const LVGLMessage_t *message);
 // Helper functions for common messages
 bool updateWifiStatus(const char *status, bool connected);
 bool updateNetworkInfo(const char *ssid, const char *ip);
-bool updateOTAProgress(uint8_t progress, bool in_progress, bool success,
-                       const char *message);
 bool updateFpsDisplay(float fps);
 bool updateBuildTimeDisplay();
 bool changeScreen(void *screen, int anim_type, int time, int delay);
@@ -220,12 +186,6 @@ bool updateBalanceDevices(const char *device1_name, const char *device2_name);
 // Convenience function to update volume for the currently active tab
 bool updateCurrentTabVolume(int volume);
 
-// Helper functions for the custom OTA screen
-bool showOtaScreen(void);
-bool updateOtaScreenProgress(uint8_t progress, const char *msg);
-bool hideOtaScreen(void);
-void updateOtaScreenDirectly(uint8_t progress, const char *msg);
-
 // Helper functions for state overview
 bool showStateOverview(void);
 bool updateStateOverview(void);
@@ -239,11 +199,6 @@ bool requestSDFormat(void);
 bool confirmSDFormat(void);
 bool updateSDFormatProgress(uint8_t progress, const char *message);
 bool completeSDFormat(bool success, const char *message);
-
-// BULLETPROOF: Helper functions for OTA status indicators on any screen
-bool showOTAStatusIndicator(uint8_t progress, const char *status, bool is_error = false, bool pulsing = false);
-bool updateOTAStatusIndicator(uint8_t progress, const char *status, bool is_error = false, bool pulsing = false);
-bool hideOTAStatusIndicator(void);
 
 // Helper function for debug UI logging
 bool sendDebugUILog(const char *message);

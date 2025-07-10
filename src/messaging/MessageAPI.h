@@ -2,263 +2,84 @@
 
 #include "system/MessageCore.h"
 #include "protocol/MessageData.h"
-#include "protocol/MessageConfig.h"
 
 namespace Messaging {
 
 /**
- * Clean API interface for the dual architecture messaging system
- *
- * This is the ONLY header that application components should include.
- * It provides a simple, stable interface while hiding implementation details.
- *
- * Usage example:
- *
- *   // Initialize
- *   MessageAPI::init();
- *
- *   // Subscribe to internal messages (all external messages are converted to internal)
- *   MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::AUDIO_STATE_UPDATE,
- *       [](const InternalMessage& msg) {
- *           // Handle audio state update (converted from external STATUS_UPDATE)
- *   });
- *
- *   MessageAPI::subscribeToInternal(MessageProtocol::InternalMessageType::ASSET_RESPONSE,
- *       [](const InternalMessage& msg) {
- *           // Handle asset response (converted from external ASSET_RESPONSE)
- *   });
- *
- *   // Request audio status (sends external message)
- *   MessageAPI::requestAudioStatus();
- *
- *   // Update in main loop
- *   MessageAPI::update();
+ * High-level messaging API for application layer
+ * Provides simplified access to messaging functionality
  */
 class MessageAPI {
-   public:
-    // =============================================================================
-    // SYSTEM LIFECYCLE
-    // =============================================================================
+public:
+    // === CORE MANAGEMENT ===
+    static bool initialize();
+    static void shutdown();
+    static bool isHealthy();
+    static void update();
 
-    /**
-     * Initialize the messaging system
-     */
-    static bool init() {
-        return MessageCore::getInstance().init();
-    }
-
-    /**
-     * Shutdown the messaging system
-     */
-    static void shutdown() {
-        MessageCore::getInstance().deinit();
-    }
-
-    /**
-     * Update the messaging system (call from main loop)
-     */
-    static void update() {
-        MessageCore::getInstance().update();
-    }
-
-    /**
-     * Check if system is healthy and operational
-     */
-    static bool isHealthy() {
-        return MessageCore::getInstance().isHealthy();
-    }
-
-    /**
-     * Get detailed status information
-     */
-    static String getStatus() {
-        return MessageCore::getInstance().getStatusInfo();
-    }
-
-    // =============================================================================
-    // TRANSPORT MANAGEMENT
-    // =============================================================================
-
-    // Network transports (MQTT, HTTP, etc.) available only during OTA mode
-    // Normal mode uses only local transports (Serial, etc.) for maximum performance
-
-    /**
-     * Register Serial transport
-     */
+    // === TRANSPORT MANAGEMENT ===
     static void registerSerialTransport(
-        std::function<bool(const String& payload)> sendFunction,
+        std::function<bool(const String&)> sendFunction,
         std::function<bool()> isConnectedFunction,
-        std::function<void()> updateFunction = nullptr) {
-        TransportInterface transport;
-        transport.sendRaw = sendFunction;
-        transport.isConnected = isConnectedFunction;
-        transport.update = updateFunction;
+        std::function<void()> updateFunction
+    );
 
-        MessageCore::getInstance().registerTransport(Config::TRANSPORT_NAME_SERIAL, transport);
-    }
+    // === EXTERNAL MESSAGE PUBLISHING ===
+    static bool publishExternal(const ExternalMessage& message);
+    static bool requestAudioStatus();
 
-    /**
-     * Remove a transport
-     */
-    static void unregisterTransport(const String& name) {
-        MessageCore::getInstance().unregisterTransport(name);
-    }
+    // === INTERNAL MESSAGE SUBSCRIPTION ===
+    static void subscribeToInternal(
+        MessageProtocol::InternalMessageType messageType,
+        std::function<void(const InternalMessage&)> callback
+    );
 
-    /**
-     * Get transport status summary
-     */
-    static String getTransportStatus() {
-        return MessageCore::getInstance().getTransportStatus();
-    }
+    static void subscribeToAllInternal(
+        std::function<void(const InternalMessage&)> callback
+    );
 
-    // =============================================================================
-    // INTERNAL MESSAGE SYSTEM - All external messages converted to internal
-    // =============================================================================
+    // === EXTERNAL MESSAGE SUBSCRIPTION ===
+    static void subscribeToExternal(
+        MessageProtocol::ExternalMessageType messageType,
+        std::function<void(const ExternalMessage&)> callback
+    );
 
+    static void subscribeToAllExternal(
+        std::function<void(const ExternalMessage&)> callback
+    );
 
+    // === INTERNAL MESSAGE PUBLISHING ===
+    static bool publishInternal(const InternalMessage& message);
+    static bool publishWifiStatus(const String& status, bool connected);
+    static bool publishNetworkInfo(const String& ssid, const String& ip);
+    static bool publishSDStatus(const String& status, bool mounted);
+    static bool publishAudioDeviceChange(const String& deviceName);
+    static bool publishUIUpdate(const String& component, const String& data);
+    static bool publishSystemStatus(const String& status);
+    static bool publishDebugUILog(const String& logMessage);
 
-    /**
-     * Subscribe to internal messages (ESP32 internal communication)
-     */
-    static void subscribeToInternal(MessageProtocol::InternalMessageType messageType,
-                                    std::function<void(const InternalMessage&)> callback) {
-        MessageCore::getInstance().subscribeToInternal(messageType, callback);
-    }
+    // === MESSAGE PARSING (Updated for new ParseResult API) ===
+    static ParseResult<ExternalMessage> parseExternalMessage(const String& jsonPayload);
+    static ParseResult<MessageProtocol::ExternalMessageType> parseExternalMessageType(const String& jsonPayload);
 
-    /**
-     * Subscribe to all internal messages (wildcard)
-     */
-    static void subscribeToAllInternal(std::function<void(const InternalMessage&)> callback) {
-        MessageCore::getInstance().subscribeToAllInternal(callback);
-    }
+    // === MESSAGE CREATION (Updated for new ParseResult API) ===
+    static ParseResult<String> createStatusResponse(const AudioStatusData& data);
+    static ParseResult<String> createAssetRequest(const String& processName, const String& deviceId = "");
 
-    /**
-     * Publish external message (cross-transport boundaries)
-     */
-    static bool publishExternal(const ExternalMessage& message) {
-        return MessageCore::getInstance().publishExternal(message);
-    }
+    // === AUDIO DATA PARSING (Updated for new ParseResult API) ===
+    static ParseResult<AudioStatusData> parseAudioStatus(const ExternalMessage& message);
 
-    /**
-     * Publish internal message (ESP32 internal communication)
-     */
-    static bool publishInternal(const InternalMessage& message) {
-        return MessageCore::getInstance().publishInternal(message);
-    }
+    // === STATISTICS AND STATUS ===
+    static String getStats();
+    static String getTransportStatus();
 
+private:
+    static bool initialized;
+    static MessageCore* messageCore;
 
-
-    /**
-     * Unsubscribe from internal message type
-     */
-    static void unsubscribeFromInternal(MessageProtocol::InternalMessageType messageType) {
-        MessageCore::getInstance().unsubscribeFromInternal(messageType);
-    }
-
-    // =============================================================================
-    // CONVENIENCE METHODS
-    // =============================================================================
-
-    /**
-     * Request audio status from external system
-     */
-    static bool requestAudioStatus() {
-        return MessageCore::getInstance().requestAudioStatus();
-    }
-
-    /**
-     * Send audio command to external system
-     */
-    static bool sendAudioCommand(MessageProtocol::ExternalMessageType commandType,
-                                 const String& target = "", int value = -1) {
-        return MessageCore::getInstance().sendAudioCommand(commandType, target, value);
-    }
-
-    /**
-     * Publish internal UI update
-     */
-    static bool publishUIUpdate(const String& component, const String& data) {
-        return MessageCore::getInstance().publishUIUpdate(component, data);
-    }
-
-    /**
-     * Publish internal audio volume update
-     */
-    static bool publishAudioVolumeUpdate(const String& processName, int volume) {
-        return MessageCore::getInstance().publishAudioVolumeUpdate(processName, volume);
-    }
-
-    /**
-     * Send debug message to UI debug log area
-     */
-    static bool publishDebugUILog(const String& logMessage) {
-        InternalMessage msg = MessageConverter::createDebugUILogMessage(logMessage);
-        return MessageCore::getInstance().publishInternal(msg);
-    }
-
-    // =============================================================================
-    // STATISTICS & DIAGNOSTICS
-    // =============================================================================
-
-    /**
-     * Get total number of active subscriptions
-     */
-    static size_t getSubscriptionCount() {
-        return MessageCore::getInstance().getSubscriptionCount();
-    }
-
-    /**
-     * Get number of registered transports
-     */
-    static size_t getTransportCount() {
-        return MessageCore::getInstance().getTransportCount();
-    }
-
-    // =============================================================================
-    // MESSAGE PARSING UTILITIES
-    // =============================================================================
-
-    /**
-     * Parse external message from JSON payload
-     */
-    static ExternalMessage parseExternalMessage(const String& jsonPayload) {
-        return MessageParser::parseExternalMessage(jsonPayload);
-    }
-
-    /**
-     * Parse external message type from JSON payload
-     */
-    static MessageProtocol::ExternalMessageType parseExternalMessageType(const String& jsonPayload) {
-        return MessageParser::parseExternalMessageType(jsonPayload);
-    }
-
-    /**
-     * Check if external message should be ignored
-     */
-    static bool shouldIgnoreMessage(const ExternalMessage& message) {
-        return MessageParser::shouldIgnoreMessage(message);
-    }
-
-    /**
-     * Parse audio status response from external message
-     */
-    static AudioStatusData parseAudioStatus(const ExternalMessage& message) {
-        return parseStatusResponse(message);
-    }
-
-    /**
-     * Create status response JSON from audio status data
-     */
-    static String createStatusResponse(const AudioStatusData& data) {
-        return Messaging::createStatusResponse(data);
-    }
-
-   private:
-    // Static-only class
-    MessageAPI() = delete;
-    ~MessageAPI() = delete;
-    MessageAPI(const MessageAPI&) = delete;
-    MessageAPI& operator=(const MessageAPI&) = delete;
+    // Helper functions
+    static MessageCore& getMessageCore();
+    static bool ensureInitialized();
 };
 
-}  // namespace Messaging
+} // namespace Messaging

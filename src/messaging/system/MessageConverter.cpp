@@ -43,7 +43,12 @@ MessageConverter::externalToInternal(const ExternalMessage &external) {
     case MessageProtocol::ExternalMessageType::STATUS_MESSAGE:
   case MessageProtocol::ExternalMessageType::STATUS_UPDATE: {
     // Audio status update -> Multiple internal messages
-    AudioStatusData audioData = parseStatusResponse(external);
+    auto parseResult = MessageParser::parseAudioStatusData(external);
+    if (!parseResult.isValid()) {
+        ESP_LOGW(TAG, "Failed to parse audio status data: %s", parseResult.getError().c_str());
+        break;
+    }
+    AudioStatusData audioData = parseResult.getValue();
 
     // Create internal message for audio manager
     InternalMessage audioMsg(

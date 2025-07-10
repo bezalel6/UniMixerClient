@@ -28,12 +28,10 @@
 #include "../../hardware/SDManager.h"
 #include "../../hardware/DeviceManager.h"
 #include "../../display/DisplayManager.h"
-// OTA includes removed - will be replaced with SimpleOTA
 #include "../audio/AudioManager.h"
 #include "DebugUtils.h"
 #include "BuildInfo.h"
 #include "../../ui/UniversalDialog.h"
-// EnhancedOTAUI removed - will be replaced with SimpleOTA UI
 #include <cstring>
 #include <map>
 #include <esp_log.h>
@@ -46,18 +44,7 @@
 
 // BULLETPROOF: External UI screen declarations
 extern lv_obj_t *ui_screenMain;
-extern lv_obj_t *ui_screenOTA;
 extern lv_obj_t *ui_screenDebug;
-
-// BULLETPROOF: External UI component declarations
-extern lv_obj_t *ui_barOTAUpdateProgress;
-extern lv_obj_t *ui_lblOTAUpdateProgress;
-extern lv_obj_t *ui_Label2;
-
-// Custom OTA screen elements, managed by the UI task
-static lv_obj_t *custom_ota_screen = NULL;
-static lv_obj_t *custom_ota_label = NULL;
-static lv_obj_t *custom_ota_bar = NULL;
 
 // State overview overlay elements
 static lv_obj_t *state_overlay = NULL;
@@ -89,7 +76,6 @@ static std::unordered_map<int, MessageHandler> messageHandlers;
 static const char *messageTypeNames[] = {
     [MSG_UPDATE_WIFI_STATUS] = "WIFI_STATUS",
     [MSG_UPDATE_NETWORK_INFO] = "NETWORK_INFO",
-    [MSG_UPDATE_OTA_PROGRESS] = "OTA_PROGRESS",
     [MSG_UPDATE_FPS_DISPLAY] = "FPS_DISPLAY",
     [MSG_UPDATE_BUILD_TIME_DISPLAY] = "BUILD_TIME_DISPLAY",
     [MSG_SCREEN_CHANGE] = "SCREEN_CHANGE",
@@ -100,9 +86,6 @@ static const char *messageTypeNames[] = {
     [MSG_UPDATE_MASTER_DEVICE] = "MASTER_DEVICE",
     [MSG_UPDATE_SINGLE_DEVICE] = "SINGLE_DEVICE",
     [MSG_UPDATE_BALANCE_DEVICES] = "BALANCE_DEVICES",
-    [MSG_SHOW_OTA_SCREEN] = "SHOW_OTA_SCREEN",
-    [MSG_UPDATE_OTA_SCREEN_PROGRESS] = "OTA_SCREEN_PROGRESS",
-    [MSG_HIDE_OTA_SCREEN] = "HIDE_OTA_SCREEN",
     [MSG_SHOW_STATE_OVERVIEW] = "SHOW_STATE_OVERVIEW",
     [MSG_UPDATE_STATE_OVERVIEW] = "UPDATE_STATE_OVERVIEW",
     [MSG_HIDE_STATE_OVERVIEW] = "HIDE_STATE_OVERVIEW",
@@ -111,9 +94,6 @@ static const char *messageTypeNames[] = {
     [MSG_FORMAT_SD_CONFIRM] = "FORMAT_SD_CONFIRM",
     [MSG_FORMAT_SD_PROGRESS] = "FORMAT_SD_PROGRESS",
     [MSG_FORMAT_SD_COMPLETE] = "FORMAT_SD_COMPLETE",
-    [MSG_SHOW_OTA_STATUS_INDICATOR] = "SHOW_OTA_STATUS_INDICATOR",
-    [MSG_UPDATE_OTA_STATUS_INDICATOR] = "UPDATE_OTA_STATUS_INDICATOR",
-    [MSG_HIDE_OTA_STATUS_INDICATOR] = "HIDE_OTA_STATUS_INDICATOR",
     [MSG_DEBUG_UI_LOG] = "DEBUG_UI_LOG"};
 
 // PERFORMANCE: O(1) message type name lookup
@@ -212,36 +192,6 @@ static void handleBuildTimeDisplay(const LVGLMessage_t *msg) {
 }
 
 // PERFORMANCE: Complex message handlers
-static void handleOtaProgress(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.ota_progress;
-    if (data.in_progress) {
-        // Switch to OTA screen if not already there
-        if (lv_scr_act() != ui_screenOTA) {
-            _ui_screen_change(&ui_screenOTA, LV_SCR_LOAD_ANIM_NONE, 0, 0,
-                              ui_screenOTA_screen_init);
-        }
-
-        // Update progress bar
-        if (ui_barOTAUpdateProgress) {
-            lv_bar_set_value(ui_barOTAUpdateProgress, data.progress, LV_ANIM_OFF);
-        }
-
-        // Update status label
-        if (ui_lblOTAUpdateProgress) {
-            lv_label_set_text(ui_lblOTAUpdateProgress, data.message);
-        }
-
-        ESP_LOGI(TAG, "OTA Progress: %d%% - %s", data.progress, data.message);
-    } else {
-        // OTA finished - update final status
-        if (ui_lblOTAUpdateProgress) {
-            lv_label_set_text(ui_lblOTAUpdateProgress, data.message);
-        }
-        if (ui_barOTAUpdateProgress) {
-            lv_bar_set_value(ui_barOTAUpdateProgress, data.success ? 100 : 0, LV_ANIM_OFF);
-        }
-    }
-}
 
 static void handleSingleDevice(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "Single device update requested: %s", msg->data.single_device.device_name);
@@ -264,527 +214,7 @@ static void handleRequestData(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "Data request triggered from UI");
 }
 
-static void handleShowOtaScreen(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "OTA: Showing OTA screen (simplified during refactoring)");
 
-    // Enhanced OTA UI system removed during refactoring
-    // Will be replaced with SimpleOTA UI
-
-    // Create a full-screen enhanced OTA overlay instead of using basic ui_screenOTA
-    static lv_obj_t *otaEnhancedScreen = nullptr;
-    static lv_obj_t *otaProgressBar = nullptr;
-    static lv_obj_t *otaProgressLabel = nullptr;
-    static lv_obj_t *otaLogArea = nullptr;
-    static lv_obj_t *otaRetryButton = nullptr;
-    static lv_obj_t *otaRebootButton = nullptr;
-    static lv_obj_t *otaStatusLabel = nullptr;
-    static bool otaScreenCreating = false;
-
-    // Prevent multiple simultaneous creations
-    if (otaScreenCreating) {
-        ESP_LOGW(TAG, "OTA: Screen creation already in progress, skipping");
-        return;
-    }
-
-    otaScreenCreating = true;
-
-    // Safer cleanup - only delete if it exists and is valid, and give LVGL time to process
-    if (otaEnhancedScreen && lv_obj_is_valid(otaEnhancedScreen)) {
-        ESP_LOGI(TAG, "OTA: Cleaning up existing enhanced screen");
-
-        // Remove all event callbacks first to prevent crashes
-        lv_obj_remove_event_cb(otaEnhancedScreen, nullptr);
-
-        // Clear all child event callbacks
-        uint32_t child_count = lv_obj_get_child_count(otaEnhancedScreen);
-        for (uint32_t i = 0; i < child_count; i++) {
-            lv_obj_t *child = lv_obj_get_child(otaEnhancedScreen, i);
-            if (child && lv_obj_is_valid(child)) {
-                lv_obj_remove_event_cb(child, nullptr);
-
-                // Clear grandchildren event callbacks too
-                uint32_t grandchild_count = lv_obj_get_child_count(child);
-                for (uint32_t j = 0; j < grandchild_count; j++) {
-                    lv_obj_t *grandchild = lv_obj_get_child(child, j);
-                    if (grandchild && lv_obj_is_valid(grandchild)) {
-                        lv_obj_remove_event_cb(grandchild, nullptr);
-                    }
-                }
-            }
-        }
-
-        // Give LVGL time to process the event callback removals
-        vTaskDelay(pdMS_TO_TICKS(10));
-
-        // Now safely delete the screen
-        lv_obj_del(otaEnhancedScreen);
-        otaEnhancedScreen = nullptr;
-
-        // Give LVGL time to process the deletion
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    // Reset all static pointers
-    otaProgressBar = nullptr;
-    otaProgressLabel = nullptr;
-    otaLogArea = nullptr;
-    otaRetryButton = nullptr;
-    otaRebootButton = nullptr;
-    otaStatusLabel = nullptr;
-
-    // Create full-screen OTA interface
-    otaEnhancedScreen = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(otaEnhancedScreen, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_pos(otaEnhancedScreen, 0, 0);
-    lv_obj_set_style_bg_color(otaEnhancedScreen, lv_color_hex(0x001122), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(otaEnhancedScreen, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_remove_flag(otaEnhancedScreen, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Title
-    lv_obj_t *titleLabel = lv_label_create(otaEnhancedScreen);
-    lv_label_set_text(titleLabel, "OTA FIRMWARE UPDATE");
-    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_26, LV_PART_MAIN);
-    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00CCFF), LV_PART_MAIN);
-    lv_obj_set_align(titleLabel, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(titleLabel, 20);
-
-    // Progress container
-    lv_obj_t *progressContainer = lv_obj_create(otaEnhancedScreen);
-    lv_obj_set_size(progressContainer, 600, 80);
-    lv_obj_set_align(progressContainer, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(progressContainer, 80);
-    lv_obj_set_style_bg_color(progressContainer, lv_color_hex(0x002244), LV_PART_MAIN);
-    lv_obj_set_style_border_color(progressContainer, lv_color_hex(0x0066AA), LV_PART_MAIN);
-    lv_obj_set_style_border_width(progressContainer, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(progressContainer, 10, LV_PART_MAIN);
-    lv_obj_remove_flag(progressContainer, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Progress bar
-    otaProgressBar = lv_bar_create(progressContainer);
-    lv_obj_set_size(otaProgressBar, 550, 20);
-    lv_obj_set_align(otaProgressBar, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(otaProgressBar, 15);
-    lv_bar_set_value(otaProgressBar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(otaProgressBar, lv_color_hex(0x333333), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(otaProgressBar, lv_color_hex(0x00AA00), LV_PART_INDICATOR);
-
-    // Progress label
-    otaProgressLabel = lv_label_create(progressContainer);
-    lv_label_set_text(otaProgressLabel, "0% - Starting OTA update...");
-    lv_obj_set_align(otaProgressLabel, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_y(otaProgressLabel, -10);
-    lv_obj_set_style_text_color(otaProgressLabel, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(otaProgressLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-
-    // Status label (for errors, success, etc.)
-    otaStatusLabel = lv_label_create(otaEnhancedScreen);
-    lv_label_set_text(otaStatusLabel, "OTA MODE ACTIVE");
-    lv_obj_set_align(otaStatusLabel, LV_ALIGN_TOP_MID);
-    lv_obj_set_y(otaStatusLabel, 180);
-    lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0x00FF88), LV_PART_MAIN);
-    lv_obj_set_style_text_font(otaStatusLabel, &lv_font_montserrat_16, LV_PART_MAIN);
-
-    // Log area
-    lv_obj_t *logContainer = lv_obj_create(otaEnhancedScreen);
-    lv_obj_set_size(logContainer, 700, 200);
-    lv_obj_set_align(logContainer, LV_ALIGN_CENTER);
-    lv_obj_set_y(logContainer, 40);
-    lv_obj_set_style_bg_color(logContainer, lv_color_hex(0x000011), LV_PART_MAIN);
-    lv_obj_set_style_border_color(logContainer, lv_color_hex(0x333333), LV_PART_MAIN);
-    lv_obj_set_style_border_width(logContainer, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(logContainer, 5, LV_PART_MAIN);
-
-    lv_obj_t *logTitle = lv_label_create(logContainer);
-    lv_label_set_text(logTitle, "OTA LOG");
-    lv_obj_set_align(logTitle, LV_ALIGN_TOP_LEFT);
-    lv_obj_set_pos(logTitle, 10, 5);
-    lv_obj_set_style_text_color(logTitle, lv_color_hex(0x888888), LV_PART_MAIN);
-    lv_obj_set_style_text_font(logTitle, &lv_font_montserrat_12, LV_PART_MAIN);
-
-    otaLogArea = lv_textarea_create(logContainer);
-    lv_obj_set_size(otaLogArea, 680, 165);
-    lv_obj_set_align(otaLogArea, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_y(otaLogArea, -5);
-    lv_textarea_set_text(otaLogArea, "OTA system initialized\nWaiting for firmware update...\n");
-    lv_textarea_set_cursor_click_pos(otaLogArea, false);
-    lv_obj_set_style_bg_color(otaLogArea, lv_color_hex(0x111111), LV_PART_MAIN);
-    lv_obj_set_style_text_color(otaLogArea, lv_color_hex(0x00FF00), LV_PART_MAIN);
-    lv_obj_set_style_text_font(otaLogArea, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_add_flag(otaLogArea, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Button container (always visible for user control)
-    lv_obj_t *buttonContainer = lv_obj_create(otaEnhancedScreen);
-    lv_obj_set_size(buttonContainer, 400, 60);
-    lv_obj_set_align(buttonContainer, LV_ALIGN_BOTTOM_MID);
-    lv_obj_set_y(buttonContainer, -20);
-    lv_obj_set_style_bg_opa(buttonContainer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(buttonContainer, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_flex_flow(buttonContainer, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(buttonContainer, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    // Always visible - user can exit OTA mode at any time
-
-    // Exit OTA Mode button (always visible)
-    lv_obj_t *exitOtaButton = lv_btn_create(buttonContainer);
-    lv_obj_set_size(exitOtaButton, 120, 45);
-    lv_obj_set_style_bg_color(exitOtaButton, lv_color_hex(0xFF6600), LV_PART_MAIN);
-
-    lv_obj_t *exitLabel = lv_label_create(exitOtaButton);
-    lv_label_set_text(exitLabel, "EXIT OTA");
-    lv_obj_center(exitLabel);
-    lv_obj_set_style_text_color(exitLabel, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(exitLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-
-    // Add exit OTA click handler
-    lv_obj_add_event_cb(exitOtaButton, [](lv_event_t *e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "OTA: Exit OTA button clicked - returning to normal mode");
-            // Clear OTA request and reboot normally
-            Boot::BootManager::clearBootRequest();
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            esp_restart();
-        }
-    }, LV_EVENT_CLICKED, NULL);
-
-    // Retry button (initially hidden, shown on failure)
-    otaRetryButton = lv_btn_create(buttonContainer);
-    lv_obj_set_size(otaRetryButton, 120, 45);
-    lv_obj_set_style_bg_color(otaRetryButton, lv_color_hex(0x3366FF), LV_PART_MAIN);
-    lv_obj_add_flag(otaRetryButton, LV_OBJ_FLAG_HIDDEN); // Hidden initially
-
-    lv_obj_t *retryLabel = lv_label_create(otaRetryButton);
-    lv_label_set_text(retryLabel, "RETRY");
-    lv_obj_center(retryLabel);
-    lv_obj_set_style_text_color(retryLabel, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(retryLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-
-    // Add retry click handler
-    lv_obj_add_event_cb(otaRetryButton, [](lv_event_t *e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "OTA: Retry button clicked - restarting OTA process");
-            // Request OTA restart
-            Boot::BootManager::requestOTAMode();
-        }
-    }, LV_EVENT_CLICKED, NULL);
-
-    // Reboot button (initially hidden, shown on failure)
-    otaRebootButton = lv_btn_create(buttonContainer);
-    lv_obj_set_size(otaRebootButton, 120, 45);
-    lv_obj_set_style_bg_color(otaRebootButton, lv_color_hex(0xFF3333), LV_PART_MAIN);
-    lv_obj_add_flag(otaRebootButton, LV_OBJ_FLAG_HIDDEN); // Hidden initially
-
-    lv_obj_t *rebootLabel = lv_label_create(otaRebootButton);
-    lv_label_set_text(rebootLabel, "REBOOT");
-    lv_obj_center(rebootLabel);
-    lv_obj_set_style_text_color(rebootLabel, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(rebootLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-
-    // Add reboot click handler
-    lv_obj_add_event_cb(otaRebootButton, [](lv_event_t *e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "OTA: Reboot button clicked - exiting OTA mode");
-            // Clear OTA request and reboot normally
-            Boot::BootManager::clearBootRequest();
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            esp_restart();
-        }
-    }, LV_EVENT_CLICKED, NULL);
-
-    // Store references for later updates
-    static lv_obj_t **storedRefs[] = {
-        &otaEnhancedScreen, &otaProgressBar, &otaProgressLabel,
-        &otaLogArea, &otaRetryButton, &otaRebootButton, &otaStatusLabel
-    };
-
-    ESP_LOGI(TAG, "OTA: Enhanced screen created successfully with log and controls");
-
-    // Force immediate UI refresh
-    lv_refr_now(lv_disp_get_default());
-
-}
-
-static void handleUpdateOtaScreenProgress(const LVGLMessage_t *msg) {
-    // Enhanced OTA UI system removed during refactoring
-    // Will be replaced with SimpleOTA UI updates
-    const auto &data = msg->data.ota_screen_progress;
-    ESP_LOGI(TAG, "OTA: Updating enhanced progress to %d%% - %s", data.progress, data.message);
-
-    // Find our enhanced OTA objects (they're static in the show function)
-    static lv_obj_t *otaProgressBar = nullptr;
-    static lv_obj_t *otaProgressLabel = nullptr;
-    static lv_obj_t *otaLogArea = nullptr;
-    static lv_obj_t *otaStatusLabel = nullptr;
-    static lv_obj_t *otaRetryButton = nullptr;
-    static lv_obj_t *otaRebootButton = nullptr;
-
-    // Find elements by traversing the screen (this is a workaround since we can't easily share static vars between functions)
-    lv_obj_t *currentScreen = lv_scr_act();
-    if (currentScreen) {
-        // Look for our enhanced OTA screen elements
-        uint32_t child_count = lv_obj_get_child_count(currentScreen);
-        for (uint32_t i = 0; i < child_count; i++) {
-            lv_obj_t *child = lv_obj_get_child(currentScreen, i);
-            if (child && lv_obj_get_width(child) == LV_HOR_RES && lv_obj_get_height(child) == LV_VER_RES) {
-                // This might be our enhanced OTA screen
-                uint32_t grandchild_count = lv_obj_get_child_count(child);
-                for (uint32_t j = 0; j < grandchild_count; j++) {
-                    lv_obj_t *grandchild = lv_obj_get_child(child, j);
-                    if (grandchild) {
-                        // Look for progress bar
-                        if (lv_obj_check_type(grandchild, &lv_obj_class)) {
-                            uint32_t ggc_count = lv_obj_get_child_count(grandchild);
-                            for (uint32_t k = 0; k < ggc_count; k++) {
-                                lv_obj_t *ggchild = lv_obj_get_child(grandchild, k);
-                                if (ggchild && lv_obj_check_type(ggchild, &lv_bar_class)) {
-                                    otaProgressBar = ggchild;
-                                }
-                                if (ggchild && lv_obj_check_type(ggchild, &lv_label_class)) {
-                                    otaProgressLabel = ggchild;
-                                }
-                            }
-                        }
-                        // Look for textarea (log area)
-                        if (lv_obj_check_type(grandchild, &lv_obj_class)) {
-                            uint32_t ggc_count = lv_obj_get_child_count(grandchild);
-                            for (uint32_t k = 0; k < ggc_count; k++) {
-                                lv_obj_t *ggchild = lv_obj_get_child(grandchild, k);
-                                if (ggchild && lv_obj_check_type(ggchild, &lv_textarea_class)) {
-                                    otaLogArea = ggchild;
-                                }
-                            }
-                        }
-                        // Look for status label and buttons
-                        if (lv_obj_check_type(grandchild, &lv_label_class)) {
-                            otaStatusLabel = grandchild;
-                        }
-                    }
-                }
-                break;
-            }
-        }
-    }
-
-    // Update progress bar
-    if (otaProgressBar && lv_obj_is_valid(otaProgressBar)) {
-        lv_bar_set_value(otaProgressBar, data.progress, LV_ANIM_ON);
-    }
-
-    // Update progress label
-    if (otaProgressLabel && lv_obj_is_valid(otaProgressLabel)) {
-        char progressText[128];
-        snprintf(progressText, sizeof(progressText), "%d%% - %s", data.progress, data.message);
-        lv_label_set_text(otaProgressLabel, progressText);
-    }
-
-    // Add to log
-    if (otaLogArea && lv_obj_is_valid(otaLogArea)) {
-        char logEntry[150];
-        snprintf(logEntry, sizeof(logEntry), "[%d%%] %s\n", data.progress, data.message);
-        lv_textarea_add_text(otaLogArea, logEntry);
-
-        // Auto-scroll to bottom
-        lv_textarea_set_cursor_pos(otaLogArea, LV_TEXTAREA_CURSOR_LAST);
-    }
-
-    // Update status and show retry/reboot buttons if failed
-    if (otaStatusLabel && lv_obj_is_valid(otaStatusLabel)) {
-        if (data.progress >= 100) {
-            lv_label_set_text(otaStatusLabel, "UPDATE COMPLETE");
-            lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0x00FF00), LV_PART_MAIN);
-        } else if (strstr(data.message, "fail") || strstr(data.message, "error") || strstr(data.message, "timeout")) {
-            lv_label_set_text(otaStatusLabel, "UPDATE FAILED");
-            lv_obj_set_style_text_color(otaStatusLabel, lv_color_hex(0xFF0000), LV_PART_MAIN);
-
-            // Show retry/reboot buttons - find them in the button container
-            lv_obj_t *currentScreen = lv_scr_act();
-            if (currentScreen) {
-                uint32_t child_count = lv_obj_get_child_count(currentScreen);
-                for (uint32_t i = 0; i < child_count; i++) {
-                    lv_obj_t *child = lv_obj_get_child(currentScreen, i);
-                    if (child && lv_obj_get_width(child) == LV_HOR_RES) {
-                        uint32_t gc_count = lv_obj_get_child_count(child);
-                        for (uint32_t j = 0; j < gc_count; j++) {
-                            lv_obj_t *grandchild = lv_obj_get_child(child, j);
-                            if (grandchild && lv_obj_get_width(grandchild) == 400) {
-                                // This is the button container - show retry and reboot buttons
-                                uint32_t btn_count = lv_obj_get_child_count(grandchild);
-                                for (uint32_t k = 0; k < btn_count; k++) {
-                                    lv_obj_t *btn = lv_obj_get_child(grandchild, k);
-                                    if (btn && lv_obj_has_flag(btn, LV_OBJ_FLAG_HIDDEN)) {
-                                        lv_obj_remove_flag(btn, LV_OBJ_FLAG_HIDDEN);
-                                    }
-                                }
-                                ESP_LOGI(TAG, "OTA: Showing retry/reboot buttons due to failure");
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Force immediate UI refresh for OTA critical operations
-    lv_refr_now(lv_disp_get_default());
-}
-
-static void handleHideOtaScreen(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "OTA: Hiding OTA screen and restoring previous screen");
-
-    // Clean up enhanced OTA screen if it exists
-    lv_obj_t *currentScreen = lv_scr_act();
-    if (currentScreen) {
-        uint32_t child_count = lv_obj_get_child_count(currentScreen);
-        for (uint32_t i = 0; i < child_count; i++) {
-            lv_obj_t *child = lv_obj_get_child(currentScreen, i);
-            if (child && lv_obj_get_width(child) == LV_HOR_RES && lv_obj_get_height(child) == LV_VER_RES) {
-                // This is likely our enhanced OTA screen - clean it up safely
-                ESP_LOGI(TAG, "OTA: Cleaning up enhanced OTA screen");
-
-                // Remove all event callbacks first
-                lv_obj_remove_event_cb(child, nullptr);
-
-                // Clear all child event callbacks
-                uint32_t gc_count = lv_obj_get_child_count(child);
-                for (uint32_t j = 0; j < gc_count; j++) {
-                    lv_obj_t *grandchild = lv_obj_get_child(child, j);
-                    if (grandchild && lv_obj_is_valid(grandchild)) {
-                        lv_obj_remove_event_cb(grandchild, nullptr);
-
-                        // Clear grandchildren event callbacks too
-                        uint32_t ggc_count = lv_obj_get_child_count(grandchild);
-                        for (uint32_t k = 0; k < ggc_count; k++) {
-                            lv_obj_t *ggchild = lv_obj_get_child(grandchild, k);
-                            if (ggchild && lv_obj_is_valid(ggchild)) {
-                                lv_obj_remove_event_cb(ggchild, nullptr);
-                            }
-                        }
-                    }
-                }
-
-                // Give LVGL time to process the event callback removals
-                vTaskDelay(pdMS_TO_TICKS(10));
-
-                // Now safely delete the screen
-                lv_obj_del(child);
-
-                // Give LVGL time to process the deletion
-                vTaskDelay(pdMS_TO_TICKS(10));
-                break;
-            }
-        }
-    }
-
-    // Get the previous screen that was saved
-    static lv_obj_t *previousScreen = nullptr;
-
-    // If we have a previous screen, return to it
-    if (previousScreen && previousScreen != ui_screenOTA) {
-        ESP_LOGI(TAG, "OTA: Returning to previous screen");
-        lv_scr_load_anim(previousScreen, LV_SCR_LOAD_ANIM_FADE_OUT, 300, 0, false);
-    }
-
-    // Reset OTA screen visual state
-    if (ui_Label2) {
-        lv_label_set_text(ui_Label2, "UPDATING");
-        lv_obj_set_style_text_color(ui_Label2, lv_color_white(), LV_PART_MAIN);
-    }
-
-    previousScreen = nullptr;  // Clear saved screen
-}
-
-static void handleShowOtaStatusIndicator(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.ota_status_indicator;
-    ESP_LOGI(TAG, "OTA Status: Showing indicator - %d%% - %s%s",
-             data.progress, data.status, data.is_error ? " (ERROR)" : "");
-
-    // Create/update OTA status indicator overlay
-    static lv_obj_t *otaStatusOverlay = nullptr;
-    static lv_obj_t *otaStatusBar = nullptr;
-    static lv_obj_t *otaStatusLabel = nullptr;
-    static lv_obj_t *otaStatusIcon = nullptr;
-
-    if (!otaStatusOverlay || !lv_obj_is_valid(otaStatusOverlay)) {
-        // Create the OTA status overlay
-        lv_obj_t *currentScreen = lv_scr_act();
-        if (currentScreen) {
-            otaStatusOverlay = lv_obj_create(currentScreen);
-            lv_obj_set_size(otaStatusOverlay, 300, 60);
-            lv_obj_set_align(otaStatusOverlay, LV_ALIGN_TOP_MID);
-            lv_obj_set_y(otaStatusOverlay, 10);
-
-            // Style the overlay
-            lv_obj_set_style_bg_color(otaStatusOverlay,
-                                      data.is_error ? lv_color_hex(0x330000) : lv_color_hex(0x003300),
-                                      LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(otaStatusOverlay, 240, LV_PART_MAIN);
-            lv_obj_set_style_border_color(otaStatusOverlay,
-                                          data.is_error ? lv_color_hex(0xFF0000) : lv_color_hex(0x00FF00),
-                                          LV_PART_MAIN);
-            lv_obj_set_style_border_width(otaStatusOverlay, 2, LV_PART_MAIN);
-            lv_obj_set_style_radius(otaStatusOverlay, 10, LV_PART_MAIN);
-
-            // Create progress bar
-            otaStatusBar = lv_bar_create(otaStatusOverlay);
-            lv_obj_set_size(otaStatusBar, 250, 15);
-            lv_obj_set_align(otaStatusBar, LV_ALIGN_TOP_MID);
-            lv_obj_set_y(otaStatusBar, 5);
-
-            // Create status label
-            otaStatusLabel = lv_label_create(otaStatusOverlay);
-            lv_obj_set_align(otaStatusLabel, LV_ALIGN_BOTTOM_MID);
-            lv_obj_set_y(otaStatusLabel, -5);
-            lv_obj_set_style_text_color(otaStatusLabel, lv_color_white(), LV_PART_MAIN);
-            lv_obj_set_style_text_font(otaStatusLabel, &lv_font_montserrat_12, LV_PART_MAIN);
-
-            // Create status icon (optional)
-            otaStatusIcon = lv_label_create(otaStatusOverlay);
-            lv_obj_set_align(otaStatusIcon, LV_ALIGN_TOP_LEFT);
-            lv_obj_set_pos(otaStatusIcon, 5, 5);
-            lv_obj_set_style_text_color(otaStatusIcon,
-                                        data.is_error ? lv_color_hex(0xFF0000) : lv_color_hex(0x00FF00),
-                                        LV_PART_MAIN);
-            lv_label_set_text(otaStatusIcon, data.is_error ? "✗" : "⟳");
-        }
-    }
-
-    // Update the indicator
-    if (otaStatusBar && lv_obj_is_valid(otaStatusBar)) {
-        lv_bar_set_value(otaStatusBar, data.progress, data.pulsing ? LV_ANIM_ON : LV_ANIM_OFF);
-    }
-
-    if (otaStatusLabel && lv_obj_is_valid(otaStatusLabel)) {
-        lv_label_set_text(otaStatusLabel, data.status);
-    }
-
-    // Handle pulsing animation for status
-    if (data.pulsing && otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
-        lv_anim_t anim;
-        lv_anim_init(&anim);
-        lv_anim_set_var(&anim, otaStatusOverlay);
-        lv_anim_set_values(&anim, 240, 150);
-        lv_anim_set_time(&anim, 1000);
-        lv_anim_set_repeat_count(&anim, LV_ANIM_REPEAT_INFINITE);
-        lv_anim_set_playback_time(&anim, 500);
-        lv_anim_set_exec_cb(&anim, (lv_anim_exec_xcb_t)lv_obj_set_style_bg_opa);
-        lv_anim_start(&anim);
-    }
-}
-
-static void handleUpdateOtaStatusIndicator(const LVGLMessage_t *msg) {
-    // Same implementation as show - they can share the logic
-    handleShowOtaStatusIndicator(msg);
-}
-
-static void handleHideOtaStatusIndicator(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "OTA Status: Hiding status indicator");
-
-    // Clean up the OTA status overlay
-    static lv_obj_t *otaStatusOverlay = nullptr;
-    if (otaStatusOverlay && lv_obj_is_valid(otaStatusOverlay)) {
-        lv_obj_del(otaStatusOverlay);
-        otaStatusOverlay = nullptr;
-    }
-}
 
 static void handleDebugUILog(const LVGLMessage_t *msg) {
     const auto &data = msg->data.debug_ui_log;
@@ -953,38 +383,7 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
                 requestSDFormat();
             } }, LV_EVENT_CLICKED, NULL);
 
-        // ENTER OTA MODE button
-        lv_obj_t *ota_mode_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(ota_mode_btn, 200, 32);  // Slightly smaller for 4 buttons
-        lv_obj_set_style_bg_color(ota_mode_btn, lv_color_hex(0x3366FF), LV_PART_MAIN);
 
-        lv_obj_t *ota_label = lv_label_create(ota_mode_btn);
-        lv_label_set_text(ota_label, "ENTER OTA MODE");
-        lv_obj_center(ota_label);
-        lv_obj_set_style_text_color(ota_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(ota_label, &lv_font_montserrat_12, LV_PART_MAIN);
-
-        lv_obj_add_event_cb(ota_mode_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "ENTER OTA MODE button clicked - requesting restart into OTA mode");
-
-                // Hide settings overlay first
-                hideStateOverview();
-
-                // Show brief message and trigger restart into OTA mode
-                UI::Dialog::UniversalDialog::showInfo(
-                    "OTA MODE",
-                    "Restarting into OTA mode...\n\n"
-                    "System will restart and enter\n"
-                    "firmware update mode.",
-                    []() {
-                        // User acknowledged - request OTA mode restart
-                        ESP_LOGI(TAG, "User confirmed OTA mode - requesting restart");
-                        Boot::BootManager::requestOTAMode();
-                    },
-                    UI::Dialog::DialogSize::MEDIUM
-                );
-            } }, LV_EVENT_CLICKED, NULL);
 
         // Restart button
         lv_obj_t *restart_btn = lv_btn_create(actions_container);
@@ -1091,8 +490,7 @@ static void handleUpdateStateOverview(const LVGLMessage_t *msg) {
                  "  IP Address: %s\n\n"
                  "Services:\n"
                  "  Serial: Active\n"
-                 "  OTA: Available\n"
-                 "  Network: OTA Mode Only\n\n"
+                 "  Network: Not Available\n\n"
                  "Protocol:\n"
                  "  Message Bus: Active\n"
                  "  Audio Streaming: OK",
@@ -1118,7 +516,6 @@ static void handleUpdateStateOverview(const LVGLMessage_t *msg) {
                  "  Volume 2: %d%%%s\n\n"
                  "System Actions:\n"
                  "  FORMAT SD: Erase all data\n"
-                 "  OTA MODE: Update firmware\n"
                  "  RESTART: Reboot device\n"
                  "  REFRESH: Update info",
                  data.current_tab,
@@ -1322,17 +719,10 @@ static void initializeMessageHandlers() {
         {MSG_UPDATE_MASTER_DEVICE, handleMasterDevice},
 
         // Complex message handlers
-        {MSG_UPDATE_OTA_PROGRESS, handleOtaProgress},
         {MSG_UPDATE_SINGLE_DEVICE, handleSingleDevice},
         {MSG_UPDATE_BALANCE_DEVICES, handleBalanceDevices},
         {MSG_SCREEN_CHANGE, handleScreenChange},
         {MSG_REQUEST_DATA, handleRequestData},
-        {MSG_SHOW_OTA_SCREEN, handleShowOtaScreen},
-        {MSG_UPDATE_OTA_SCREEN_PROGRESS, handleUpdateOtaScreenProgress},
-        {MSG_HIDE_OTA_SCREEN, handleHideOtaScreen},
-        {MSG_SHOW_OTA_STATUS_INDICATOR, handleShowOtaStatusIndicator},
-        {MSG_UPDATE_OTA_STATUS_INDICATOR, handleUpdateOtaStatusIndicator},
-        {MSG_HIDE_OTA_STATUS_INDICATOR, handleHideOtaStatusIndicator},
         {MSG_SHOW_STATE_OVERVIEW, handleShowStateOverview},
         {MSG_UPDATE_STATE_OVERVIEW, handleUpdateStateOverview},
         {MSG_HIDE_STATE_OVERVIEW, handleHideStateOverview},
@@ -1526,26 +916,7 @@ bool updateNetworkInfo(const char *ssid, const char *ip) {
     return sendMessage(&message);
 }
 
-bool updateOTAProgress(uint8_t progress, bool in_progress, bool success,
-                       const char *msg) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_OTA_PROGRESS;
-    message.data.ota_progress.progress = progress;
-    message.data.ota_progress.in_progress = in_progress;
-    message.data.ota_progress.success = success;
 
-    // Safely copy message string
-    if (msg) {
-        strncpy(message.data.ota_progress.message, msg,
-                sizeof(message.data.ota_progress.message) - 1);
-        message.data.ota_progress
-            .message[sizeof(message.data.ota_progress.message) - 1] = '\0';
-    } else {
-        message.data.ota_progress.message[0] = '\0';
-    }
-
-    return sendMessage(&message);
-}
 
 bool updateFpsDisplay(float fps) {
     LVGLMessage_t message;
@@ -1570,80 +941,7 @@ bool changeScreen(void *screen, int anim_type, int time, int delay) {
     return sendMessage(&message);
 }
 
-// Helper functions for the custom OTA screen
-bool showOtaScreen(void) {
-    LVGLMessage_t message;
-    message.type = MSG_SHOW_OTA_SCREEN;
-    return sendMessage(&message);
-}
 
-bool updateOtaScreenProgress(uint8_t progress, const char *msg) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_OTA_SCREEN_PROGRESS;
-    message.data.ota_screen_progress.progress = progress;
-    // Safely copy message string
-    if (msg) {
-        strncpy(message.data.ota_screen_progress.message, msg,
-                sizeof(message.data.ota_screen_progress.message) - 1);
-        message.data.ota_screen_progress
-            .message[sizeof(message.data.ota_screen_progress.message) - 1] = '\0';
-    } else {
-        message.data.ota_screen_progress.message[0] = '\0';
-    }
-    return sendMessage(&message);
-}
-
-bool hideOtaScreen(void) {
-    LVGLMessage_t message;
-    message.type = MSG_HIDE_OTA_SCREEN;
-    return sendMessage(&message);
-}
-
-void updateOtaScreenDirectly(uint8_t progress, const char *msg) {
-    ESP_LOGI(TAG, "OTA: Direct update - %d%% - %s", progress, msg ? msg : "");
-
-    // BULLETPROOF: Direct UI updates for critical OTA operations
-    // This bypasses the message queue for immediate updates during critical phases
-
-    // Ensure we're on the correct screen
-    if (lv_scr_act() != ui_screenOTA) {
-        ESP_LOGW(TAG, "OTA: Direct update but not on OTA screen - switching immediately");
-        lv_scr_load(ui_screenOTA);
-        if (ui_screenOTA && !lv_obj_is_valid(ui_screenOTA)) {
-            ui_screenOTA_screen_init();
-        }
-    }
-
-    // Update progress bar immediately without animation for critical operations
-    if (ui_barOTAUpdateProgress && lv_obj_is_valid(ui_barOTAUpdateProgress)) {
-        lv_bar_set_value(ui_barOTAUpdateProgress, progress, LV_ANIM_OFF);
-    }
-
-    // Update status message
-    if (ui_lblOTAUpdateProgress && lv_obj_is_valid(ui_lblOTAUpdateProgress) && msg) {
-        lv_label_set_text(ui_lblOTAUpdateProgress, msg);
-    }
-
-    // Visual feedback for different progress states
-    if (ui_Label2 && lv_obj_is_valid(ui_Label2)) {
-        if (progress >= 100) {
-            lv_label_set_text(ui_Label2, "COMPLETE");
-            lv_obj_set_style_text_color(ui_Label2, lv_color_hex(0x00FF00), LV_PART_MAIN);
-        } else if (progress > 90) {
-            lv_label_set_text(ui_Label2, "FINISHING");
-            lv_obj_set_style_text_color(ui_Label2, lv_color_hex(0xFFFF00), LV_PART_MAIN);
-        } else {
-            lv_label_set_text(ui_Label2, "UPDATING");
-            lv_obj_set_style_text_color(ui_Label2, lv_color_white(), LV_PART_MAIN);
-        }
-    }
-
-    // CRITICAL: Force immediate refresh to minimize timing conflicts during OTA
-    // This ensures updates are visible even if interrupts are disabled
-    lv_refr_now(lv_disp_get_default());
-
-    ESP_LOGD(TAG, "OTA: Direct update completed");
-}
 
 // Tab-specific volume update functions
 bool updateMasterVolume(int volume) {
@@ -1781,8 +1079,6 @@ bool updateStateOverview(void) {
             sizeof(message.data.state_overview.ip_address) - 1);
     message.data.state_overview.ip_address[sizeof(message.data.state_overview.ip_address) - 1] = '\0';
 
-    // Network services available only during OTA mode
-
     // Collect audio state
     Application::Audio::AudioManager &audioManager = Application::Audio::AudioManager::getInstance();
     const auto &audioState = audioManager.getState();
@@ -1907,53 +1203,7 @@ bool completeSDFormat(bool success, const char *msg) {
     return sendMessage(&message);
 }
 
-// BULLETPROOF: Helper functions for OTA status indicators
-bool showOTAStatusIndicator(uint8_t progress, const char *status, bool is_error, bool pulsing) {
-    LVGLMessage_t message;
-    message.type = MSG_SHOW_OTA_STATUS_INDICATOR;
-    message.data.ota_status_indicator.show = true;
-    message.data.ota_status_indicator.progress = progress;
-    message.data.ota_status_indicator.is_error = is_error;
-    message.data.ota_status_indicator.pulsing = pulsing;
 
-    // Safely copy status string
-    if (status) {
-        strncpy(message.data.ota_status_indicator.status, status,
-                sizeof(message.data.ota_status_indicator.status) - 1);
-        message.data.ota_status_indicator.status[sizeof(message.data.ota_status_indicator.status) - 1] = '\0';
-    } else {
-        strcpy(message.data.ota_status_indicator.status, "OTA");
-    }
-
-    return sendMessage(&message);
-}
-
-bool updateOTAStatusIndicator(uint8_t progress, const char *status, bool is_error, bool pulsing) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_OTA_STATUS_INDICATOR;
-    message.data.ota_status_indicator.show = true;
-    message.data.ota_status_indicator.progress = progress;
-    message.data.ota_status_indicator.is_error = is_error;
-    message.data.ota_status_indicator.pulsing = pulsing;
-
-    // Safely copy status string
-    if (status) {
-        strncpy(message.data.ota_status_indicator.status, status,
-                sizeof(message.data.ota_status_indicator.status) - 1);
-        message.data.ota_status_indicator.status[sizeof(message.data.ota_status_indicator.status) - 1] = '\0';
-    } else {
-        strcpy(message.data.ota_status_indicator.status, "OTA");
-    }
-
-    return sendMessage(&message);
-}
-
-bool hideOTAStatusIndicator(void) {
-    LVGLMessage_t message;
-    message.type = MSG_HIDE_OTA_STATUS_INDICATOR;
-    message.data.ota_status_indicator.show = false;
-    return sendMessage(&message);
-}
 
 // Helper function for debug UI logging
 bool sendDebugUILog(const char *message) {

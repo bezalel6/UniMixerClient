@@ -48,7 +48,7 @@ class MessageCore {
     // =============================================================================
 
     /**
-     * Register a transport (Serial for normal mode, network transports for OTA mode)
+     * Register a transport (Serial for normal mode)
      */
     void registerTransport(const String& name, TransportInterface transport);
 
