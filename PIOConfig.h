@@ -164,8 +164,8 @@
 #endif
 
 // >>> AUTO-GENERATED BUILD INFO BEGIN
-#define FIRMWARE_BUILD_NUMBER "788d14c"
-#define GIT_BRANCH "cursor/add-ota-mode-user-interface-5490"
-#define BUILD_TIMESTAMP_NUM "20250705_033214"
+#define FIRMWARE_BUILD_NUMBER "f4a80dd"
+#define GIT_BRANCH "remove-ota-functionality"
+#define BUILD_TIMESTAMP_NUM "20250710_234319"
 // <<< AUTO-GENERATED BUILD INFO END
 #endif
