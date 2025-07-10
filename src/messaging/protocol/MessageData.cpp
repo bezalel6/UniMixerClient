@@ -127,7 +127,7 @@ InternalMessage MessageFactory::createSystemStatusMessage(const String& status) 
     strncpy(data.status, status.c_str(), sizeof(data.status) - 1);
     data.status[sizeof(data.status) - 1] = '\0';
 
-    return InternalMessage(MessageProtocol::InternalMessageType::SYSTEM_STATUS, &data, sizeof(data));
+    return InternalMessage(MessageProtocol::InternalMessageType::MEMORY_STATUS, &data, sizeof(data));
 }
 
 InternalMessage MessageFactory::createWifiStatusMessage(const String& status, bool connected) {
@@ -195,7 +195,7 @@ InternalMessage MessageFactory::createCoreToCoreSyncMessage(uint8_t fromCore, ui
     data.fromCore = fromCore;
     data.toCore = toCore;
 
-    return InternalMessage(MessageProtocol::InternalMessageType::CORE_SYNC, &data, sizeof(data));
+    return InternalMessage(MessageProtocol::InternalMessageType::TASK_SYNC, &data, sizeof(data));
 }
 
 InternalMessage MessageFactory::createDebugUILogMessage(const String& logMessage) {
@@ -207,7 +207,7 @@ InternalMessage MessageFactory::createDebugUILogMessage(const String& logMessage
     strncpy(data.logMessage, logMessage.c_str(), sizeof(data.logMessage) - 1);
     data.logMessage[sizeof(data.logMessage) - 1] = '\0';
 
-    return InternalMessage(MessageProtocol::InternalMessageType::DEBUG_LOG, &data, sizeof(data));
+    return InternalMessage(MessageProtocol::InternalMessageType::DEBUG_UI_LOG, &data, sizeof(data));
 }
 
 // =============================================================================
@@ -325,7 +325,7 @@ ParseResult<AudioStatusData> MessageParser::parseAudioStatusData(const ExternalM
 
     if (message.messageType != MessageProtocol::ExternalMessageType::STATUS_UPDATE &&
         message.messageType != MessageProtocol::ExternalMessageType::STATUS_MESSAGE) {
-        return ParseResult<AudioStatusData>("Invalid message type for audio status");
+        return ParseResult<AudioStatusData>::createError("Invalid message type for audio status");
     }
 
     try {
@@ -369,26 +369,26 @@ ParseResult<AudioStatusData> MessageParser::parseAudioStatusData(const ExternalM
     } catch (const std::exception& e) {
         String errorMsg = "Error parsing audio status data: " + String(e.what());
         ESP_LOGE(TAG, "%s", errorMsg.c_str());
-        return ParseResult<AudioStatusData>(errorMsg);
+        return ParseResult<AudioStatusData>::createError(errorMsg);
     }
 
-    return ParseResult<AudioStatusData>(data);
+    return ParseResult<AudioStatusData>::createSuccess(data);
 }
 
 ParseResult<AssetResponseData> MessageParser::parseAssetResponseData(const ExternalMessage& message) {
     const char* TAG = "MessageParser";
 
     if (message.messageType != MessageProtocol::ExternalMessageType::ASSET_RESPONSE) {
-        return ParseResult<AssetResponseData>("Invalid message type for asset response");
+        return ParseResult<AssetResponseData>::createError("Invalid message type for asset response");
     }
 
     try {
         AssetResponseData data(message);
-        return ParseResult<AssetResponseData>(data);
+        return ParseResult<AssetResponseData>::createSuccess(data);
     } catch (const std::exception& e) {
         String errorMsg = "Error parsing asset response data: " + String(e.what());
         ESP_LOGE(TAG, "%s", errorMsg.c_str());
-        return ParseResult<AssetResponseData>(errorMsg);
+        return ParseResult<AssetResponseData>::createError(errorMsg);
     }
 }
 

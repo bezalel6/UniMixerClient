@@ -119,33 +119,6 @@ void MessageAPI::subscribeToAllInternal(
     });
 }
 
-// === EXTERNAL MESSAGE SUBSCRIPTION ===
-
-void MessageAPI::subscribeToExternal(
-    MessageProtocol::ExternalMessageType messageType,
-    std::function<void(const ExternalMessage&)> callback
-) {
-    if (!ensureInitialized()) {
-        return;
-    }
-
-    messageCore->subscribeToExternal(messageType, [callback](const ExternalMessage& msg) {
-        callback(msg);
-    });
-}
-
-void MessageAPI::subscribeToAllExternal(
-    std::function<void(const ExternalMessage&)> callback
-) {
-    if (!ensureInitialized()) {
-        return;
-    }
-
-    messageCore->subscribeToAllExternal([callback](const ExternalMessage& msg) {
-        callback(msg);
-    });
-}
-
 // === INTERNAL MESSAGE PUBLISHING ===
 
 bool MessageAPI::publishInternal(const InternalMessage& message) {

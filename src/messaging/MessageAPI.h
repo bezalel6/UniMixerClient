@@ -38,16 +38,6 @@ public:
         std::function<void(const InternalMessage&)> callback
     );
 
-    // === EXTERNAL MESSAGE SUBSCRIPTION ===
-    static void subscribeToExternal(
-        MessageProtocol::ExternalMessageType messageType,
-        std::function<void(const ExternalMessage&)> callback
-    );
-
-    static void subscribeToAllExternal(
-        std::function<void(const ExternalMessage&)> callback
-    );
-
     // === INTERNAL MESSAGE PUBLISHING ===
     static bool publishInternal(const InternalMessage& message);
     static bool publishWifiStatus(const String& status, bool connected);

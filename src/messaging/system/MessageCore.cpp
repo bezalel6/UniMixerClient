@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERROR#include "MessageCore.h"
+#include "MessageCore.h"
 #include "../protocol/MessageConfig.h"
 #include "../MessageAPI.h"
 #include <esp_log.h>
@@ -31,8 +31,6 @@ bool MessageCore::init() {
     // Clear any existing state
     internalSubscriptions.clear();
     internalWildcardSubscribers.clear();
-    externalSubscriptions.clear();
-    externalWildcardSubscribers.clear();
     transports.clear();
 
     // Initialize MessageType registry for string<->enum conversion
@@ -69,8 +67,6 @@ void MessageCore::deinit() {
     // Clear all state
     internalSubscriptions.clear();
     internalWildcardSubscribers.clear();
-    externalSubscriptions.clear();
-    externalWildcardSubscribers.clear();
     transports.clear();
 
     initialized = false;
@@ -158,18 +154,15 @@ void MessageCore::handleExternalMessage(const ExternalMessage& external) {
 
     logExternalMessage("IN", external);
 
-    // Check if we should ignore self-originated messages
-    // if (external.isSelfOriginated()) {
-    //     ESP_LOGW(TAG, "Ignoring self-originated external message: %d",
-    //              LOG_EXTERNAL_MSG_TYPE(external.messageType));
-    //     return;
-    // }
+    // Convert external message to internal message(s) for routing
+    std::vector<InternalMessage> internalMessages = MessageConverter::externalToInternal(external);
 
-    // Route to external subscribers first
-    routeExternalMessage(external);
+    for (const auto& internal : internalMessages) {
+        routeInternalMessage(internal);
+    }
 
-    // Process external message (validation + conversion + routing)
-    convertAndRouteExternal(external);
+    ESP_LOGW(TAG, "Processed external message %d -> %d internal messages",
+             LOG_EXTERNAL_MSG_TYPE(external.messageType), internalMessages.size());
 }
 
 bool MessageCore::publishExternal(const ExternalMessage& message) {
@@ -234,34 +227,6 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
 
 
     return success;
-}
-
-void MessageCore::subscribeToExternal(MessageProtocol::ExternalMessageType messageType, ExternalMessageCallback callback) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe to external - not initialized");
-        return;
-    }
-
-    ESP_LOGW(TAG, "Subscribing to external messageType: %d", LOG_EXTERNAL_MSG_TYPE(messageType));
-    externalSubscriptions[messageType].push_back(callback);
-}
-
-void MessageCore::subscribeToAllExternal(ExternalMessageCallback callback) {
-    if (!initialized) {
-        ESP_LOGW(TAG, "Cannot subscribe to all external - not initialized");
-        return;
-    }
-
-    ESP_LOGW(TAG, "Subscribing to all external message types (wildcard)");
-    externalWildcardSubscribers.push_back(callback);
-}
-
-void MessageCore::unsubscribeFromExternal(MessageProtocol::ExternalMessageType messageType) {
-    auto it = externalSubscriptions.find(messageType);
-    if (it != externalSubscriptions.end()) {
-        ESP_LOGW(TAG, "Unsubscribing from external messageType: %d", LOG_EXTERNAL_MSG_TYPE(messageType));
-        externalSubscriptions.erase(it);
-    }
 }
 
 // =============================================================================
@@ -357,12 +322,12 @@ bool MessageCore::sendAudioCommand(MessageProtocol::ExternalMessageType commandT
 }
 
 bool MessageCore::publishUIUpdate(const String& component, const String& data) {
-    InternalMessage msg = MessageConverter::createUIUpdateMessage(component, data);
+    InternalMessage msg = MessageFactory::createUIUpdateMessage(component, data);
     return publishInternal(msg);
 }
 
 bool MessageCore::publishAudioVolumeUpdate(const String& processName, int volume) {
-    InternalMessage msg = MessageConverter::createAudioVolumeMessage(processName, volume);
+    InternalMessage msg = MessageFactory::createAudioVolumeMessage(processName, volume);
     return publishInternal(msg);
 }
 
@@ -372,12 +337,6 @@ bool MessageCore::publishAudioVolumeUpdate(const String& processName, int volume
 
 size_t MessageCore::getSubscriptionCount() const {
     size_t count = 0;
-
-    // Count external subscriptions
-    for (const auto& [messageType, callbacks] : externalSubscriptions) {
-        count += callbacks.size();
-    }
-    count += externalWildcardSubscribers.size();
 
     // Count internal subscriptions
     for (const auto& [messageType, callbacks] : internalSubscriptions) {
@@ -418,7 +377,7 @@ String MessageCore::getStatusInfo() const {
     info += "- Initialized: " + String(initialized ? "Yes" : "No") + "\n";
     info += "- Total subscriptions: " + String(getSubscriptionCount()) + "\n";
 
-    // EXTERNAL MESSAGE STATS (Transport layer only - no subscriptions)
+    // EXTERNAL MESSAGE STATS (Transport layer only - converted to internal)
     info += "- External received: " + String(externalMessagesReceived) + "\n";
     info += "- External published: " + String(externalMessagesPublished) + "\n";
     info += "- Invalid messages: " + String(invalidMessagesReceived) + "\n";
@@ -445,45 +404,6 @@ void MessageCore::updateActivity() {
 // =============================================================================
 // INTERNAL HELPERS - DUAL ARCHITECTURE
 // =============================================================================
-
-void MessageCore::convertAndRouteExternal(const ExternalMessage& external) {
-    // Convert external message to internal message(s) for routing
-    std::vector<InternalMessage> internalMessages = MessageConverter::externalToInternal(external);
-
-    for (const auto& internal : internalMessages) {
-        routeInternalMessage(internal);
-    }
-
-    ESP_LOGW(TAG, "Processed external message %d -> %d internal messages",
-             LOG_EXTERNAL_MSG_TYPE(external.messageType), internalMessages.size());
-}
-
-void MessageCore::routeExternalMessage(const ExternalMessage& external) {
-    // Route to appropriate external subscribers
-    auto it = externalSubscriptions.find(external.messageType);
-    if (it != externalSubscriptions.end()) {
-        for (auto& callback : it->second) {
-            try {
-                callback(external);
-            } catch (...) {
-                ESP_LOGE(TAG, "External callback exception for messageType: %d",
-                         LOG_EXTERNAL_MSG_TYPE(external.messageType));
-            }
-        }
-    }
-
-    // Notify wildcard subscribers
-    for (auto& callback : externalWildcardSubscribers) {
-        try {
-            callback(external);
-        } catch (...) {
-            ESP_LOGE(TAG, "External wildcard callback exception");
-        }
-    }
-
-    ESP_LOGV(TAG, "Routed external message: %d",
-             LOG_EXTERNAL_MSG_TYPE(external.messageType));
-}
 
 void MessageCore::routeInternalMessage(const InternalMessage& internal) {
     // Route to appropriate subscribers
