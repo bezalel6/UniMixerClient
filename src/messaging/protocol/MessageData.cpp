@@ -110,7 +110,7 @@ ParseResult<MessageProtocol::ExternalMessageType> MessageParser::parseExternalMe
         return ParseResult<MessageProtocol::ExternalMessageType>::createError(errorMsg);
     }
 
-    if (!doc.containsKey(MessageProtocol::JsonFields::MESSAGE_TYPE)) {
+    if (!doc[MessageProtocol::JsonFields::MESSAGE_TYPE].is<int>()) {
         return ParseResult<MessageProtocol::ExternalMessageType>::createError("Missing messageType field");
     }
 
@@ -142,7 +142,7 @@ ParseResult<ExternalMessage> MessageParser::parseExternalMessage(const String& j
     }
 
     // Parse message type
-    if (!doc.containsKey(MESSAGE_TYPE)) {
+    if (!doc[MESSAGE_TYPE].is<int>()) {
         return ParseResult<ExternalMessage>::createError("Missing messageType field");
     }
 
@@ -210,8 +210,8 @@ ParseResult<AudioStatusData> MessageParser::parseAudioStatusData(const ExternalM
 
     try {
         // Extract sessions
-        if (message.parsedData.containsKey(SESSIONS)) {
-            JsonArray sessionsArray = message.parsedData[SESSIONS].as<JsonArray>();
+        if (message.parsedData[SESSIONS].is<JsonArray>()) {
+            JsonArrayConst sessionsArray = message.parsedData[SESSIONS].as<JsonArrayConst>();
             for (JsonVariant sessionVariant : sessionsArray) {
                 JsonObject sessionObj = sessionVariant.as<JsonObject>();
 
@@ -228,8 +228,8 @@ ParseResult<AudioStatusData> MessageParser::parseAudioStatusData(const ExternalM
         }
 
         // Extract default device
-        if (message.parsedData.containsKey(DEFAULT_DEVICE)) {
-            JsonObject defaultObj = message.parsedData[DEFAULT_DEVICE].as<JsonObject>();
+        if (message.parsedData[DEFAULT_DEVICE].is<JsonObject>()) {
+            JsonObjectConst defaultObj = message.parsedData[DEFAULT_DEVICE].as<JsonObjectConst>();
 
             data.defaultDevice.friendlyName = defaultObj[FRIENDLY_NAME].as<String>();
             data.defaultDevice.volume = defaultObj[VOLUME].as<float>();
@@ -280,7 +280,7 @@ ParseResult<String> MessageSerializer::serializeExternalMessage(const ExternalMe
     const char* TAG = "MessageSerializer";
 
     try {
-        DynamicJsonDocument doc(2048);
+        JsonDocument doc;
 
         // Core fields
         doc[MessageProtocol::JsonFields::MESSAGE_TYPE] = static_cast<int>(message.messageType);
@@ -324,7 +324,7 @@ ParseResult<String> MessageSerializer::serializeInternalMessage(const InternalMe
     const char* TAG = "MessageSerializer";
 
     try {
-        DynamicJsonDocument doc(512);
+        JsonDocument doc;
 
         doc["messageType"] = static_cast<int>(message.messageType);
         doc["timestamp"] = message.timestamp;
@@ -349,7 +349,7 @@ ParseResult<String> MessageSerializer::createStatusResponse(const AudioStatusDat
     using namespace MessageProtocol::JsonFields;
 
     try {
-        DynamicJsonDocument doc(4096);
+        JsonDocument doc;
 
         doc[MESSAGE_TYPE] = static_cast<int>(MessageProtocol::ExternalMessageType::STATUS_MESSAGE);
         doc[DEVICE_ID] = Config::getDeviceId();
@@ -369,9 +369,9 @@ ParseResult<String> MessageSerializer::createStatusResponse(const AudioStatusDat
         }
 
         // Serialize sessions
-        JsonArray sessionsArray = doc.createNestedArray(SESSIONS);
+        JsonArray sessionsArray = doc[SESSIONS].to<JsonArray>();
         for (const auto& session : data.sessions) {
-            JsonObject sessionObj = sessionsArray.createNestedObject();
+            JsonObject sessionObj = sessionsArray.add<JsonObject>();
             sessionObj[PROCESS_ID] = session.processId;
             sessionObj[PROCESS_NAME] = session.processName;
             sessionObj[DISPLAY_NAME] = session.displayName;
@@ -382,7 +382,7 @@ ParseResult<String> MessageSerializer::createStatusResponse(const AudioStatusDat
 
         // Serialize default device
         if (data.hasDefaultDevice) {
-            JsonObject defaultObj = doc.createNestedObject(DEFAULT_DEVICE);
+            JsonObject defaultObj = doc[DEFAULT_DEVICE].to<JsonObject>();
             defaultObj[FRIENDLY_NAME] = data.defaultDevice.friendlyName;
             defaultObj[VOLUME] = data.defaultDevice.volume;
             defaultObj[IS_MUTED] = data.defaultDevice.isMuted;
@@ -406,7 +406,7 @@ ParseResult<String> MessageSerializer::createAssetRequest(const String& processN
     const char* TAG = "MessageSerializer";
 
     try {
-        DynamicJsonDocument doc(512);
+        JsonDocument doc;
 
         String devId = deviceId.isEmpty() ? Config::getDeviceId() : deviceId;
 

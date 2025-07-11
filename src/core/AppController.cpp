@@ -67,7 +67,7 @@ bool init(void) {
         }
     });
 
-    INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::init());
+    INIT_STEP_CRITICAL("Initializing Message System", Messaging::MessageAPI::initialize());
 
     // Network-Free Architecture
     INIT_STEP("Configuring Network-Free Architecture", {
@@ -88,7 +88,7 @@ bool init(void) {
         ESP_LOGI(TAG, "Initializing Core 1 Interrupt Messaging Engine");
 
         // Initialize MessageCore first
-        if (!Messaging::MessageAPI::init()) {
+        if (!Messaging::MessageAPI::initialize()) {
             ESP_LOGE(TAG, "Failed to initialize MessageCore");
             return false;
         }
