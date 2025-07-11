@@ -22,16 +22,6 @@ void setup() {
   // Initialize Core 1-only logging filter FIRST to prevent interference
   // This must be done before any ESP_LOG calls to ensure proper filtering
 
-
-  // NOTE: UART/Serial initialization is now handled by InterruptMessagingEngine
-  // to avoid driver conflicts
-
-  // Initialize Boot Manager to determine mode
-  if (!Boot::BootManager::init()) {
-    log_e("Failed to initialize Boot Manager");
-    ESP.restart();
-  }
-
   // Initialize application
   CoreLoggingFilter::init();
   // Comment out to actually filter out core0
