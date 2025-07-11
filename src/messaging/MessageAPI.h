@@ -34,6 +34,10 @@ public:
         std::function<void(const InternalMessage&)> callback
     );
 
+    static void unsubscribeFromInternal(
+        MessageProtocol::InternalMessageType messageType
+    );
+
     static void subscribeToAllInternal(
         std::function<void(const InternalMessage&)> callback
     );

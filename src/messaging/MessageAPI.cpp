@@ -107,6 +107,16 @@ void MessageAPI::subscribeToInternal(
     });
 }
 
+void MessageAPI::unsubscribeFromInternal(
+    MessageProtocol::InternalMessageType messageType
+) {
+    if (!ensureInitialized()) {
+        return;
+    }
+
+    messageCore->unsubscribeFromInternal(messageType);
+}
+
 void MessageAPI::subscribeToAllInternal(
     std::function<void(const InternalMessage&)> callback
 ) {

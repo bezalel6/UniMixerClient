@@ -177,11 +177,14 @@ bool MessageCore::publishExternal(const ExternalMessage& message) {
 
     bool success = true;
 
-    // Prepare JSON payload
+
+    // Just seralize th
+
+    // // Prepare JSON payload
     JsonDocument doc;
     JsonObject obj = doc.to<JsonObject>();
 
-    // Core fields
+    // // Core fields
     obj["messageType"] = SERIALIZE_EXTERNAL_MSG_TYPE(message.messageType);
     obj["requestId"] = message.requestId;
     obj["deviceId"] = message.deviceId;

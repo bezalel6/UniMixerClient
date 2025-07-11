@@ -53,21 +53,21 @@ AssetResponseData::AssetResponseData(const ExternalMessage& external) {
     timestamp = external.timestamp;
 
     // Extract asset-specific fields from parsed data
-    processName = external.get<String>("processName", "");
-    success = external.get<bool>("success", false);
-    errorMessage = external.get<String>("errorMessage", "");
-    assetDataBase64 = external.get<String>("assetData", "");
+    processName = external.getString("processName", "");
+    success = external.getBool("success", false);
+    errorMessage = external.getString("errorMessage", "");
+    assetDataBase64 = external.getString("assetData", "");
 
     if (external.hasField("metadata")) {
-        auto metadata = external.parsedData["metadata"];
-        if (!metadata.isNull()) {
-            width = metadata["width"].as<int>();
-            height = metadata["height"].as<int>();
-            format = metadata["format"].as<String>();
+        // In ArduinoJson v7, use direct access
+        if (external.isObject("metadata")) {
+            // Direct access to the fields
+            width = external.parsedData["metadata"]["width"].as<int>();
+            height = external.parsedData["metadata"]["height"].as<int>();
+            format = external.parsedData["metadata"]["format"].as<String>();
         }
     }
 }
-
 // =============================================================================
 // MESSAGE FACTORY IMPLEMENTATIONS - EXTERNAL MESSAGES ONLY
 // =============================================================================
@@ -110,11 +110,12 @@ ParseResult<MessageProtocol::ExternalMessageType> MessageParser::parseExternalMe
         return ParseResult<MessageProtocol::ExternalMessageType>::createError(errorMsg);
     }
 
-    if (!doc[MessageProtocol::JsonFields::MESSAGE_TYPE].is<int>()) {
+    JsonObject obj = doc.as<JsonObject>();
+    if (!obj[MessageProtocol::JsonFields::MESSAGE_TYPE].is<int>()) {
         return ParseResult<MessageProtocol::ExternalMessageType>::createError("Missing messageType field");
     }
 
-    int typeValue = doc[MessageProtocol::JsonFields::MESSAGE_TYPE].as<int>();
+    int typeValue = obj[MessageProtocol::JsonFields::MESSAGE_TYPE];
     auto messageType = static_cast<MessageProtocol::ExternalMessageType>(typeValue);
 
     if (!MessageProtocol::isValidExternalMessageType(messageType)) {
@@ -141,12 +142,14 @@ ParseResult<ExternalMessage> MessageParser::parseExternalMessage(const String& j
         return ParseResult<ExternalMessage>::createError(errorMsg);
     }
 
+    JsonObject obj = doc.as<JsonObject>();
+
     // Parse message type
-    if (!doc[MESSAGE_TYPE].is<int>()) {
+    if (!obj[MESSAGE_TYPE].is<int>()) {
         return ParseResult<ExternalMessage>::createError("Missing messageType field");
     }
 
-    int typeValue = doc[MESSAGE_TYPE].as<int>();
+    int typeValue = obj[MESSAGE_TYPE];
     auto messageType = static_cast<MessageProtocol::ExternalMessageType>(typeValue);
 
     if (!MessageProtocol::isValidExternalMessageType(messageType)) {
@@ -154,10 +157,10 @@ ParseResult<ExternalMessage> MessageParser::parseExternalMessage(const String& j
     }
 
     // Parse other fields
-    String requestId = doc[REQUEST_ID].as<String>();
-    String deviceId = doc[DEVICE_ID].as<String>();
-    String originatingDeviceId = doc[ORIGINATING_DEVICE_ID].as<String>();
-    unsigned long timestamp = doc[TIMESTAMP].as<unsigned long>();
+    String requestId = obj[REQUEST_ID].as<String>();
+    String deviceId = obj[DEVICE_ID].as<String>();
+    String originatingDeviceId = obj[ORIGINATING_DEVICE_ID].as<String>();
+    unsigned long timestamp = obj[TIMESTAMP];
 
     if (timestamp == 0) {
         timestamp = millis();
@@ -170,7 +173,7 @@ ParseResult<ExternalMessage> MessageParser::parseExternalMessage(const String& j
     message.validated = true;
 
     // Copy parsed data
-    message.parsedData.set(doc.as<JsonObject>());
+    message.parsedData.set(obj);
 
     ESP_LOGD(TAG, "Successfully parsed external message: type=%d, deviceId=%s",
              static_cast<int>(messageType), deviceId.c_str());
@@ -211,31 +214,33 @@ ParseResult<AudioStatusData> MessageParser::parseAudioStatusData(const ExternalM
     try {
         // Extract sessions
         if (message.parsedData[SESSIONS].is<JsonArray>()) {
-            JsonArrayConst sessionsArray = message.parsedData[SESSIONS].as<JsonArrayConst>();
-            for (JsonVariant sessionVariant : sessionsArray) {
-                JsonObject sessionObj = sessionVariant.as<JsonObject>();
+            // Workaround for ArduinoJson v7 false positive: use size-based iteration
+            auto sessionsArray = message.parsedData[SESSIONS];
+            for (size_t i = 0; i < sessionsArray.size(); i++) {
+                auto sessionVariant = sessionsArray[i];
+                if (sessionVariant.is<JsonObject>()) {
+                    // Direct field access without storing JsonObject reference
+                    SessionStatusData session;
+                    session.processId = sessionVariant[PROCESS_ID];
+                    session.processName = sessionVariant[PROCESS_NAME].as<String>();
+                    session.displayName = sessionVariant[DISPLAY_NAME].as<String>();
+                    session.volume = sessionVariant[VOLUME];
+                    session.isMuted = sessionVariant[IS_MUTED];
+                    session.state = sessionVariant[STATE].as<String>();
 
-                SessionStatusData session;
-                session.processId = sessionObj[PROCESS_ID].as<int>();
-                session.processName = sessionObj[PROCESS_NAME].as<String>();
-                session.displayName = sessionObj[DISPLAY_NAME].as<String>();
-                session.volume = sessionObj[VOLUME].as<float>();
-                session.isMuted = sessionObj[IS_MUTED].as<bool>();
-                session.state = sessionObj[STATE].as<String>();
-
-                data.sessions.push_back(session);
+                    data.sessions.push_back(session);
+                }
             }
         }
 
         // Extract default device
         if (message.parsedData[DEFAULT_DEVICE].is<JsonObject>()) {
-            JsonObjectConst defaultObj = message.parsedData[DEFAULT_DEVICE].as<JsonObjectConst>();
-
-            data.defaultDevice.friendlyName = defaultObj[FRIENDLY_NAME].as<String>();
-            data.defaultDevice.volume = defaultObj[VOLUME].as<float>();
-            data.defaultDevice.isMuted = defaultObj[IS_MUTED].as<bool>();
-            data.defaultDevice.dataFlow = defaultObj[DATA_FLOW].as<String>();
-            data.defaultDevice.deviceRole = defaultObj[DEVICE_ROLE].as<String>();
+            // Use direct field access instead of storing JsonObject reference
+            data.defaultDevice.friendlyName = message.parsedData[DEFAULT_DEVICE][FRIENDLY_NAME].as<String>();
+            data.defaultDevice.volume = message.parsedData[DEFAULT_DEVICE][VOLUME];
+            data.defaultDevice.isMuted = message.parsedData[DEFAULT_DEVICE][IS_MUTED];
+            data.defaultDevice.dataFlow = message.parsedData[DEFAULT_DEVICE][DATA_FLOW].as<String>();
+            data.defaultDevice.deviceRole = message.parsedData[DEFAULT_DEVICE][DEVICE_ROLE].as<String>();
             data.hasDefaultDevice = true;
         }
 
@@ -244,7 +249,7 @@ ParseResult<AudioStatusData> MessageParser::parseAudioStatusData(const ExternalM
         data.reason = message.parsedData[REASON].as<String>();
         data.originatingDeviceId = message.parsedData[ORIGINATING_DEVICE_ID].as<String>();
         data.originatingRequestId = message.parsedData[ORIGINATING_REQUEST_ID].as<String>();
-        data.activeSessionCount = message.parsedData[ACTIVE_SESSION_COUNT].as<int>();
+        data.activeSessionCount = message.parsedData[ACTIVE_SESSION_COUNT];
 
     } catch (const std::exception& e) {
         String errorMsg = "Error parsing audio status data: " + String(e.what());
@@ -274,51 +279,10 @@ ParseResult<AssetResponseData> MessageParser::parseAssetResponseData(const Exter
 
 // =============================================================================
 // MESSAGE SERIALIZER IMPLEMENTATIONS
-// =============================================================================
+// ===========================================================================
+//
 
-ParseResult<String> MessageSerializer::serializeExternalMessage(const ExternalMessage& message) {
-    const char* TAG = "MessageSerializer";
 
-    try {
-        JsonDocument doc;
-
-        // Core fields
-        doc[MessageProtocol::JsonFields::MESSAGE_TYPE] = static_cast<int>(message.messageType);
-        doc[MessageProtocol::JsonFields::REQUEST_ID] = message.requestId;
-        doc[MessageProtocol::JsonFields::DEVICE_ID] = message.deviceId;
-        doc[MessageProtocol::JsonFields::TIMESTAMP] = message.timestamp;
-
-        if (!message.originatingDeviceId.isEmpty()) {
-            doc[MessageProtocol::JsonFields::ORIGINATING_DEVICE_ID] = message.originatingDeviceId;
-        }
-
-        // Add additional fields from parsedData
-        if (!message.parsedData.isNull()) {
-            for (JsonPair kv : message.parsedData.as<JsonObject>()) {
-                const char* key = kv.key().c_str();
-
-                // Skip core fields to avoid duplication
-                if (strcmp(key, MessageProtocol::JsonFields::MESSAGE_TYPE) != 0 &&
-                    strcmp(key, MessageProtocol::JsonFields::REQUEST_ID) != 0 &&
-                    strcmp(key, MessageProtocol::JsonFields::DEVICE_ID) != 0 &&
-                    strcmp(key, MessageProtocol::JsonFields::TIMESTAMP) != 0 &&
-                    strcmp(key, MessageProtocol::JsonFields::ORIGINATING_DEVICE_ID) != 0) {
-                    doc[key] = kv.value();
-                }
-            }
-        }
-
-        String jsonString;
-        serializeJson(doc, jsonString);
-
-        return ParseResult<String>::createSuccess(jsonString);
-
-    } catch (const std::exception& e) {
-        String errorMsg = "Error serializing external message: " + String(e.what());
-        ESP_LOGE(TAG, "%s", errorMsg.c_str());
-        return ParseResult<String>::createError(errorMsg);
-    }
-}
 
 ParseResult<String> MessageSerializer::serializeInternalMessage(const InternalMessage& message) {
     const char* TAG = "MessageSerializer";

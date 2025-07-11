@@ -75,24 +75,52 @@ struct ExternalMessage {
     // Type-specific parsed data (transport provides this)
     JsonDocument parsedData;
 
-    ExternalMessage() : parsedData(1024) {
+    ExternalMessage() : parsedData() {
         messageType = MessageProtocol::ExternalMessageType::INVALID;
         timestamp = millis();
     }
 
     ExternalMessage(MessageProtocol::ExternalMessageType type, const String& reqId = "", const String& devId = "")
-        : messageType(type), requestId(reqId), deviceId(devId), parsedData(1024) {
+        : messageType(type), requestId(reqId), deviceId(devId), parsedData() {
         timestamp = millis();
     }
 
-    // Direct access to parsed data with type safety
-    template <typename T>
-    T get(const String& field, const T& defaultValue = T{}) const {
+        // Direct access to parsed data with type safety - basic types only
+    String getString(const String& field, const String& defaultValue = "") const {
         auto value = parsedData[field];
         if (value.isNull()) {
             return defaultValue;
         }
-        return value.as<T>();
+        return value.as<String>();
+    }
+
+    bool getBool(const String& field, bool defaultValue = false) const {
+        auto value = parsedData[field];
+        if (value.isNull()) {
+            return defaultValue;
+        }
+        return value.as<bool>();
+    }
+
+    int getInt(const String& field, int defaultValue = 0) const {
+        auto value = parsedData[field];
+        if (value.isNull()) {
+            return defaultValue;
+        }
+        return value.as<int>();
+    }
+
+    float getFloat(const String& field, float defaultValue = 0.0f) const {
+        auto value = parsedData[field];
+        if (value.isNull()) {
+            return defaultValue;
+        }
+        return value.as<float>();
+    }
+
+    // Check if field exists and is an object
+    bool isObject(const String& field) const {
+        return parsedData[field].is<JsonObject>();
     }
 
     // Check if field exists
@@ -334,7 +362,7 @@ struct InternalMessage {
 
 /**
  * ENHANCED SAFE MESSAGE FACTORY SYSTEM - Compilation Fixed
- * 
+ *
  * Simplified approach that avoids C++ local class restrictions:
  * - No static members in local structs
  * - Simplified data structures
@@ -346,19 +374,19 @@ struct InternalMessage {
 template<size_t BufferSize>
 bool enhancedStringCopy(char (&dest)[BufferSize], const String& src, const char* fieldName = "field") {
     if (src.length() >= BufferSize) {
-        ESP_LOGW("MessageFactory", "String truncated in %s: %u chars to %zu bytes", 
+        ESP_LOGW("MessageFactory", "String truncated in %s: %u chars to %zu bytes",
                  fieldName, src.length(), BufferSize - 1);
         // Still copy what we can, but truncated
         strncpy(dest, src.c_str(), BufferSize - 1);
         dest[BufferSize - 1] = '\0';
         return false;
     }
-    
+
     if (src.isEmpty()) {
         dest[0] = '\0';
         return true;
     }
-    
+
     // Use optimized copy for ESP32
     memcpy(dest, src.c_str(), src.length());
     dest[src.length()] = '\0';
@@ -512,7 +540,7 @@ public:
     static constexpr bool wouldStringFit(const char* str) {
         return strlen(str) < MaxSize;
     }
-    
+
     // SIZE CONSTANTS for validation
     static constexpr size_t SYSTEM_STATUS_MAX_SIZE = 64;
     static constexpr size_t AUDIO_DEVICE_NAME_MAX_SIZE = 64;
@@ -524,36 +552,36 @@ public:
     static constexpr size_t NETWORK_IP_MAX_SIZE = 16;
     static constexpr size_t UI_COMPONENT_MAX_SIZE = 32;
     static constexpr size_t UI_DATA_MAX_SIZE = 128;
-    
+
     // VALIDATION METHODS
     static bool validateSystemStatus(const String& status) {
         return status.length() < SYSTEM_STATUS_MAX_SIZE;
     }
-    
+
     static bool validateAudioDeviceName(const String& deviceName) {
         return deviceName.length() < AUDIO_DEVICE_NAME_MAX_SIZE;
     }
-    
+
     static bool validateDebugLog(const String& logMessage) {
         return logMessage.length() < DEBUG_LOG_MAX_SIZE;
     }
-    
+
     static bool validateWifiStatus(const String& status) {
         return status.length() < WIFI_STATUS_MAX_SIZE;
     }
-    
+
     static bool validateNetworkSSID(const String& ssid) {
         return ssid.length() < NETWORK_SSID_MAX_SIZE;
     }
-    
+
     static bool validateNetworkIP(const String& ip) {
         return ip.length() < NETWORK_IP_MAX_SIZE;
     }
-    
+
     static bool validateUIComponent(const String& component) {
         return component.length() < UI_COMPONENT_MAX_SIZE;
     }
-    
+
     static bool validateUIData(const String& data) {
         return data.length() < UI_DATA_MAX_SIZE;
     }
@@ -626,11 +654,6 @@ ParseResult<AssetResponseData> parseAssetResponseData(const ExternalMessage& mes
 // =============================================================================
 
 namespace MessageSerializer {
-
-/**
- * Serialize ExternalMessage to JSON string with error handling
- */
-ParseResult<String> serializeExternalMessage(const ExternalMessage& message);
 
 /**
  * Serialize InternalMessage to JSON string (for debugging/logging)
