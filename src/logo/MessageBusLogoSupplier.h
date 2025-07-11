@@ -63,6 +63,10 @@ class MessageBusLogoSupplier : public LogoSupplier {
     unsigned long responsesReceived = 0;
     unsigned long requestsTimedOut = 0;
     unsigned long requestsFailed = 0;
+    
+    // Deferred logo save queue (to prevent stack overflow on messaging task)
+    std::vector<AssetResponse> deferredSaveQueue;
+    SemaphoreHandle_t deferredSaveMutex = nullptr;
 
     // Internal methods
     void onAssetResponse(const Messaging::Message& msg);
@@ -74,6 +78,10 @@ class MessageBusLogoSupplier : public LogoSupplier {
     void processQueuedRequests();
     void processNextQueuedRequest();
     bool saveAssetToStorage(const AssetResponse& response);
+    
+    // Deferred logo save methods
+    void deferLogoSave(const AssetResponse& response);
+    void processDeferredSaves();
 };
 
 }  // namespace LogoAssets

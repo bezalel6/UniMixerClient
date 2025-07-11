@@ -2,6 +2,7 @@
 #include "../messaging/Message.h"
 #include "../hardware/DeviceManager.h"
 #include "../logo/LogoManager.h"
+#include "../logo/LogoStorage.h"
 #include "ManagerMacros.h"
 #include <esp_log.h>
 #include <mbedtls/base64.h>
@@ -36,6 +37,13 @@ bool MessageBusLogoSupplier::init() {
     requestMutex = xSemaphoreCreateMutex();
     if (!requestMutex) {
         ESP_LOGE(TAG, "Failed to create request mutex");
+        return false;
+    }
+    
+    // Create mutex for deferred save operations
+    deferredSaveMutex = xSemaphoreCreateMutex();
+    if (!deferredSaveMutex) {
+        ESP_LOGE(TAG, "Failed to create deferred save mutex");
         return false;
     }
 
@@ -83,8 +91,9 @@ void MessageBusLogoSupplier::deinit() {
         xSemaphoreGive(requestMutex);
     }
 
-    // Clean up mutex
+    // Clean up mutexes
     CLEANUP_SEMAPHORE(requestMutex, TAG, "request");
+    CLEANUP_SEMAPHORE(deferredSaveMutex, TAG, "deferred save");
 
     initialized = false;
     ESP_LOGI(TAG, "MessageBusLogoSupplier deinitialized");
@@ -159,6 +168,9 @@ void MessageBusLogoSupplier::update() {
 
     // Process queued requests if no active requests
     processQueuedRequests();
+    
+    // Process deferred logo saves (prevents stack overflow on messaging task)
+    processDeferredSaves();
 }
 
 String MessageBusLogoSupplier::getStatus() const {
@@ -231,7 +243,9 @@ void MessageBusLogoSupplier::onAssetResponse(const Messaging::Message& msg) {
     // Save asset data if successful and data is present
     bool shouldSave = response.success && response.hasAssetData && response.assetData && response.assetDataSize > 0;
     if (shouldSave) {
-        saveAssetToStorage(response);
+        // CRITICAL: Defer logo saving to prevent stack overflow on messaging task
+        ESP_LOGI(TAG, "Deferring logo save for: %s (%zu bytes)", response.processName.c_str(), response.assetDataSize);
+        deferLogoSave(response);
     }
     LOG_WARN_IF(!shouldSave && response.success, TAG, "Asset response successful but no data to save for: %s", response.processName.c_str());
 
@@ -388,7 +402,8 @@ bool MessageBusLogoSupplier::saveAssetToStorage(const AssetResponse& response) {
     String logoPath = Logo::LogoManager::getInstance().saveLogo(
         response.processName.c_str(),
         response.assetData,
-        response.assetDataSize);
+        response.assetDataSize,
+        Logo::LogoStorage::FileType::BINARY);
 
     if (!logoPath.isEmpty()) {
         ESP_LOGI(TAG, "Successfully saved LVGL logo for: %s at path: %s", response.processName.c_str(), logoPath.c_str());
@@ -396,6 +411,68 @@ bool MessageBusLogoSupplier::saveAssetToStorage(const AssetResponse& response) {
     } else {
         ESP_LOGE(TAG, "Failed to save LVGL logo for: %s", response.processName.c_str());
         return false;
+    }
+}
+
+void MessageBusLogoSupplier::deferLogoSave(const AssetResponse& response) {
+    if (!deferredSaveMutex) {
+        ESP_LOGE(TAG, "Deferred save mutex not initialized");
+        return;
+    }
+    
+    if (xSemaphoreTake(deferredSaveMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        // Make a copy of the response for deferred processing
+        AssetResponse deferredResponse = response;
+        
+        // Deep copy the asset data to prevent memory issues
+        if (response.assetData && response.assetDataSize > 0) {
+            deferredResponse.assetData = (uint8_t*)malloc(response.assetDataSize);
+            if (deferredResponse.assetData) {
+                memcpy(deferredResponse.assetData, response.assetData, response.assetDataSize);
+                deferredSaveQueue.push_back(deferredResponse);
+                ESP_LOGI(TAG, "Deferred logo save queued for: %s (%zu bytes, queue size: %zu)", 
+                         response.processName.c_str(), response.assetDataSize, deferredSaveQueue.size());
+            } else {
+                ESP_LOGE(TAG, "Failed to allocate memory for deferred logo save: %s", response.processName.c_str());
+            }
+        }
+        
+        xSemaphoreGive(deferredSaveMutex);
+    } else {
+        ESP_LOGE(TAG, "Failed to acquire deferred save mutex");
+    }
+}
+
+void MessageBusLogoSupplier::processDeferredSaves() {
+    if (!deferredSaveMutex || deferredSaveQueue.empty()) {
+        return;
+    }
+    
+    if (xSemaphoreTake(deferredSaveMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        // Process one deferred save per update cycle to prevent blocking
+        if (!deferredSaveQueue.empty()) {
+            AssetResponse response = deferredSaveQueue.front();
+            deferredSaveQueue.erase(deferredSaveQueue.begin());
+            
+            ESP_LOGI(TAG, "Processing deferred logo save for: %s (%zu bytes)", 
+                     response.processName.c_str(), response.assetDataSize);
+            
+            // Save the logo (this runs on Core 0 main loop, not messaging task)
+            bool success = saveAssetToStorage(response);
+            
+            // Clean up the allocated memory
+            if (response.assetData) {
+                free(response.assetData);
+            }
+            
+            if (success) {
+                ESP_LOGI(TAG, "Deferred logo save completed for: %s", response.processName.c_str());
+            } else {
+                ESP_LOGE(TAG, "Deferred logo save failed for: %s", response.processName.c_str());
+            }
+        }
+        
+        xSemaphoreGive(deferredSaveMutex);
     }
 }
 
