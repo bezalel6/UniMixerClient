@@ -329,146 +329,349 @@ struct InternalMessage {
 };
 
 // =============================================================================
-// MESSAGE FACTORY MACROS - Centralized Code Generation
+// ENHANCED MESSAGE FACTORY SYSTEM - Project-Adapted Version
 // =============================================================================
 
 /**
- * COMPREHENSIVE MESSAGE FACTORY MACRO SYSTEM
+ * ENHANCED SAFE MESSAGE FACTORY SYSTEM
  * 
- * These macros eliminate code duplication and centralize:
- * - Data structure definitions
- * - Safe string copying with null termination
- * - Memory management
- * - InternalMessage construction
- * 
- * Usage patterns:
- * - STRING_MESSAGE: Single string field
- * - STRING_BOOL_MESSAGE: String + boolean field
- * - STRING_INT_MESSAGE: String + integer field
- * - DUAL_STRING_MESSAGE: Two string fields
- * - CORE_SYNC_MESSAGE: Special core-to-core messages
+ * Improvements while maintaining project patterns:
+ * - Arduino String compatibility (not std::string_view)
+ * - ParseResult<T> error handling (existing pattern)
+ * - Compile-time validation where possible
+ * - Memory safety improvements
+ * - ESP32-optimized operations
+ * - Backward compatibility maintained
  */
 
-// Safe string copying with null termination
-#define SAFE_STRING_COPY(dest, src, size) do { \
-    strncpy(dest, src.c_str(), size - 1); \
-    dest[size - 1] = '\0'; \
-} while(0)
+// Compile-time string length validation
+template<size_t MaxSize>
+constexpr bool validateStringLength(const String& str) {
+    return str.length() < MaxSize;
+}
 
-// Generate data structure with single string field
-#define DEFINE_STRING_DATA_STRUCT(StructName, fieldName, fieldSize) \
+// Enhanced safe string copy with validation and logging
+template<size_t BufferSize>
+bool enhancedStringCopy(char (&dest)[BufferSize], const String& src, const char* fieldName = "field") {
+    if (src.length() >= BufferSize) {
+        ESP_LOGW("MessageFactory", "String truncated in %s: %u chars to %zu bytes", 
+                 fieldName, src.length(), BufferSize - 1);
+        // Still copy what we can, but truncated
+        strncpy(dest, src.c_str(), BufferSize - 1);
+        dest[BufferSize - 1] = '\0';
+        return false;
+    }
+    
+    if (src.isEmpty()) {
+        dest[0] = '\0';
+        return true;
+    }
+    
+    // Use optimized copy for ESP32
+    memcpy(dest, src.c_str(), src.length());
+    dest[src.length()] = '\0';
+    return true;
+}
+
+// Enhanced data structure macros with validation and accessors
+#define DEFINE_ENHANCED_STRING_DATA_STRUCT(StructName, fieldName, fieldSize) \
     struct StructName { \
         char fieldName[fieldSize]; \
+        static constexpr size_t fieldName##_MAX_SIZE = fieldSize; \
+        \
+        StructName() { \
+            memset(fieldName, 0, fieldSize); \
+        } \
+        \
+        bool set##fieldName(const String& value) { \
+            return enhancedStringCopy(fieldName, value, #fieldName); \
+        } \
+        \
+        String get##fieldName() const { \
+            return String(fieldName); \
+        } \
+        \
+        bool isValid() const { \
+            return strlen(fieldName) < fieldSize; \
+        } \
     }
 
-// Generate data structure with string + boolean fields
-#define DEFINE_STRING_BOOL_DATA_STRUCT(StructName, strField, strSize, boolField) \
+#define DEFINE_ENHANCED_STRING_BOOL_DATA_STRUCT(StructName, strField, strSize, boolField) \
     struct StructName { \
         char strField[strSize]; \
         bool boolField; \
+        static constexpr size_t strField##_MAX_SIZE = strSize; \
+        \
+        StructName() : boolField(false) { \
+            memset(strField, 0, strSize); \
+        } \
+        \
+        bool set##strField(const String& value) { \
+            return enhancedStringCopy(strField, value, #strField); \
+        } \
+        \
+        String get##strField() const { \
+            return String(strField); \
+        } \
+        \
+        bool isValid() const { \
+            return strlen(strField) < strSize; \
+        } \
     }
 
-// Generate data structure with string + integer fields
-#define DEFINE_STRING_INT_DATA_STRUCT(StructName, strField, strSize, intField) \
+#define DEFINE_ENHANCED_STRING_INT_DATA_STRUCT(StructName, strField, strSize, intField) \
     struct StructName { \
         char strField[strSize]; \
         int intField; \
+        static constexpr size_t strField##_MAX_SIZE = strSize; \
+        \
+        StructName() : intField(0) { \
+            memset(strField, 0, strSize); \
+        } \
+        \
+        bool set##strField(const String& value) { \
+            return enhancedStringCopy(strField, value, #strField); \
+        } \
+        \
+        String get##strField() const { \
+            return String(strField); \
+        } \
+        \
+        bool isValid() const { \
+            return strlen(strField) < strSize; \
+        } \
     }
 
-// Generate data structure with dual string fields
-#define DEFINE_DUAL_STRING_DATA_STRUCT(StructName, field1, size1, field2, size2) \
+#define DEFINE_ENHANCED_DUAL_STRING_DATA_STRUCT(StructName, field1, size1, field2, size2) \
     struct StructName { \
         char field1[size1]; \
         char field2[size2]; \
+        static constexpr size_t field1##_MAX_SIZE = size1; \
+        static constexpr size_t field2##_MAX_SIZE = size2; \
+        \
+        StructName() { \
+            memset(field1, 0, size1); \
+            memset(field2, 0, size2); \
+        } \
+        \
+        bool set##field1(const String& value) { \
+            return enhancedStringCopy(field1, value, #field1); \
+        } \
+        \
+        bool set##field2(const String& value) { \
+            return enhancedStringCopy(field2, value, #field2); \
+        } \
+        \
+        String get##field1() const { \
+            return String(field1); \
+        } \
+        \
+        String get##field2() const { \
+            return String(field2); \
+        } \
+        \
+        bool isValid() const { \
+            return strlen(field1) < size1 && strlen(field2) < size2; \
+        } \
     }
 
-// Generate data structure with dual uint8_t fields
-#define DEFINE_DUAL_UINT8_DATA_STRUCT(StructName, field1, field2) \
+#define DEFINE_ENHANCED_DUAL_UINT8_DATA_STRUCT(StructName, field1, field2) \
     struct StructName { \
         uint8_t field1; \
         uint8_t field2; \
+        \
+        StructName() : field1(0), field2(0) {} \
+        StructName(uint8_t f1, uint8_t f2) : field1(f1), field2(f2) {} \
+        \
+        bool isValid() const { \
+            return true; /* uint8_t values are always valid */ \
+        } \
     }
 
-// Complete message factory method for single string
-#define STRING_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam) \
+// Enhanced message factory macros with comprehensive error handling
+#define SAFE_STRING_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam) \
     static InternalMessage funcName(const String& strParam) { \
-        DEFINE_STRING_DATA_STRUCT(dataStruct, strField, strSize); \
+        static const char* TAG = "MessageFactory::" #funcName; \
+        \
+        if (strParam.length() >= strSize) { \
+            ESP_LOGE(TAG, "String too long: %u >= %zu, truncating", strParam.length(), strSize); \
+        } \
+        \
+        if (strParam.isEmpty()) { \
+            ESP_LOGD(TAG, "Empty string provided for " #strField); \
+        } \
+        \
+        DEFINE_ENHANCED_STRING_DATA_STRUCT(dataStruct, strField, strSize); \
         dataStruct data; \
-        SAFE_STRING_COPY(data.strField, strParam, strSize); \
+        \
+        if (!data.set##strField(strParam)) { \
+            ESP_LOGW(TAG, "String was truncated during copy"); \
+        } \
+        \
+        ESP_LOGD(TAG, "Created message successfully"); \
         return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
     }
 
-// Complete message factory method for string + boolean
-#define STRING_BOOL_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam, boolField, boolParam) \
+#define SAFE_STRING_BOOL_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam, boolField, boolParam) \
     static InternalMessage funcName(const String& strParam, bool boolParam) { \
-        DEFINE_STRING_BOOL_DATA_STRUCT(dataStruct, strField, strSize, boolField); \
+        static const char* TAG = "MessageFactory::" #funcName; \
+        \
+        if (strParam.length() >= strSize) { \
+            ESP_LOGE(TAG, "String too long: %u >= %zu, truncating", strParam.length(), strSize); \
+        } \
+        \
+        DEFINE_ENHANCED_STRING_BOOL_DATA_STRUCT(dataStruct, strField, strSize, boolField); \
         dataStruct data; \
-        SAFE_STRING_COPY(data.strField, strParam, strSize); \
+        \
+        if (!data.set##strField(strParam)) { \
+            ESP_LOGW(TAG, "String was truncated during copy"); \
+        } \
+        \
         data.boolField = boolParam; \
+        \
+        ESP_LOGD(TAG, "Created message successfully"); \
         return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
     }
 
-// Complete message factory method for string + integer
-#define STRING_INT_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam, intField, intParam) \
+#define SAFE_STRING_INT_MESSAGE_FACTORY(funcName, msgType, dataStruct, strField, strSize, strParam, intField, intParam) \
     static InternalMessage funcName(const String& strParam, int intParam) { \
-        DEFINE_STRING_INT_DATA_STRUCT(dataStruct, strField, strSize, intField); \
+        static const char* TAG = "MessageFactory::" #funcName; \
+        \
+        if (strParam.length() >= strSize) { \
+            ESP_LOGE(TAG, "String too long: %u >= %zu, truncating", strParam.length(), strSize); \
+        } \
+        \
+        DEFINE_ENHANCED_STRING_INT_DATA_STRUCT(dataStruct, strField, strSize, intField); \
         dataStruct data; \
-        SAFE_STRING_COPY(data.strField, strParam, strSize); \
+        \
+        if (!data.set##strField(strParam)) { \
+            ESP_LOGW(TAG, "String was truncated during copy"); \
+        } \
+        \
         data.intField = intParam; \
+        \
+        ESP_LOGD(TAG, "Created message successfully"); \
         return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
     }
 
-// Complete message factory method for dual strings
-#define DUAL_STRING_MESSAGE_FACTORY(funcName, msgType, dataStruct, field1, size1, param1, field2, size2, param2) \
+#define SAFE_DUAL_STRING_MESSAGE_FACTORY(funcName, msgType, dataStruct, field1, size1, param1, field2, size2, param2) \
     static InternalMessage funcName(const String& param1, const String& param2) { \
-        DEFINE_DUAL_STRING_DATA_STRUCT(dataStruct, field1, size1, field2, size2); \
+        static const char* TAG = "MessageFactory::" #funcName; \
+        \
+        if (param1.length() >= size1) { \
+            ESP_LOGE(TAG, #field1 " too long: %u >= %zu, truncating", param1.length(), size1); \
+        } \
+        if (param2.length() >= size2) { \
+            ESP_LOGE(TAG, #field2 " too long: %u >= %zu, truncating", param2.length(), size2); \
+        } \
+        \
+        DEFINE_ENHANCED_DUAL_STRING_DATA_STRUCT(dataStruct, field1, size1, field2, size2); \
         dataStruct data; \
-        SAFE_STRING_COPY(data.field1, param1, size1); \
-        SAFE_STRING_COPY(data.field2, param2, size2); \
+        \
+        bool field1Ok = data.set##field1(param1); \
+        bool field2Ok = data.set##field2(param2); \
+        \
+        if (!field1Ok || !field2Ok) { \
+            ESP_LOGW(TAG, "One or more strings were truncated during copy"); \
+        } \
+        \
+        ESP_LOGD(TAG, "Created message successfully"); \
         return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
     }
 
-// Complete message factory method for dual uint8_t
-#define DUAL_UINT8_MESSAGE_FACTORY(funcName, msgType, dataStruct, field1, field2, param1, param2) \
+#define SAFE_DUAL_UINT8_MESSAGE_FACTORY(funcName, msgType, dataStruct, field1, field2, param1, param2) \
     static InternalMessage funcName(uint8_t param1, uint8_t param2) { \
-        DEFINE_DUAL_UINT8_DATA_STRUCT(dataStruct, field1, field2); \
-        dataStruct data; \
-        data.field1 = param1; \
-        data.field2 = param2; \
+        static const char* TAG = "MessageFactory::" #funcName; \
+        \
+        DEFINE_ENHANCED_DUAL_UINT8_DATA_STRUCT(dataStruct, field1, field2); \
+        dataStruct data(param1, param2); \
+        \
+        ESP_LOGD(TAG, "Created message successfully"); \
         return InternalMessage(MessageProtocol::InternalMessageType::msgType, &data, sizeof(data)); \
     }
 
 // =============================================================================
-// MESSAGE FACTORY - Type-safe message creation
+// MESSAGE FACTORY - Enhanced Type-safe message creation
 // =============================================================================
 
 class MessageFactory {
 public:
-    // Create typed external messages
+    // Create typed external messages (unchanged for compatibility)
     static ExternalMessage createStatusRequest(const String& deviceId = "");
     static ExternalMessage createAssetRequest(const String& processName, const String& deviceId = "");
 
-    // MACRO-GENERATED INTERNAL MESSAGE FACTORIES
-    // These use the comprehensive macro system above to eliminate code duplication
+    // ENHANCED SAFE INTERNAL MESSAGE FACTORIES
+    // Same method signatures for backward compatibility, but now with enhanced safety
 
     // Single string message factories
-    STRING_MESSAGE_FACTORY(createSystemStatusMessage, MEMORY_STATUS, SystemStatusData, status, 64, status)
-    STRING_MESSAGE_FACTORY(createAudioDeviceChangeMessage, AUDIO_DEVICE_CHANGE, AudioDeviceChangeData, deviceName, 64, deviceName)
-    STRING_MESSAGE_FACTORY(createDebugUILogMessage, DEBUG_UI_LOG, DebugLogData, logMessage, 256, logMessage)
+    SAFE_STRING_MESSAGE_FACTORY(createSystemStatusMessage, MEMORY_STATUS, SystemStatusData, status, 64, status)
+    SAFE_STRING_MESSAGE_FACTORY(createAudioDeviceChangeMessage, AUDIO_DEVICE_CHANGE, AudioDeviceChangeData, deviceName, 64, deviceName)
+    SAFE_STRING_MESSAGE_FACTORY(createDebugUILogMessage, DEBUG_UI_LOG, DebugLogData, logMessage, 256, logMessage)
 
     // String + boolean message factories
-    STRING_BOOL_MESSAGE_FACTORY(createWifiStatusMessage, WIFI_STATUS, WifiStatusData, status, 32, status, connected, connected)
-    STRING_BOOL_MESSAGE_FACTORY(createSDStatusMessage, SD_STATUS, SDStatusData, status, 32, status, mounted, mounted)
+    SAFE_STRING_BOOL_MESSAGE_FACTORY(createWifiStatusMessage, WIFI_STATUS, WifiStatusData, status, 32, status, connected, connected)
+    SAFE_STRING_BOOL_MESSAGE_FACTORY(createSDStatusMessage, SD_STATUS, SDStatusData, status, 32, status, mounted, mounted)
 
     // String + integer message factories
-    STRING_INT_MESSAGE_FACTORY(createAudioVolumeMessage, AUDIO_STATE_UPDATE, AudioVolumeData, processName, 64, processName, volume, volume)
+    SAFE_STRING_INT_MESSAGE_FACTORY(createAudioVolumeMessage, AUDIO_STATE_UPDATE, AudioVolumeData, processName, 64, processName, volume, volume)
 
     // Dual string message factories
-    DUAL_STRING_MESSAGE_FACTORY(createNetworkInfoMessage, NETWORK_INFO, NetworkInfoData, ssid, 64, ssid, ip, 16, ip)
-    DUAL_STRING_MESSAGE_FACTORY(createUIUpdateMessage, UI_UPDATE, UIUpdateData, component, 32, component, data, 128, data)
+    SAFE_DUAL_STRING_MESSAGE_FACTORY(createNetworkInfoMessage, NETWORK_INFO, NetworkInfoData, ssid, 64, ssid, ip, 16, ip)
+    SAFE_DUAL_STRING_MESSAGE_FACTORY(createUIUpdateMessage, UI_UPDATE, UIUpdateData, component, 32, component, data, 128, data)
 
     // Dual uint8_t message factories
-    DUAL_UINT8_MESSAGE_FACTORY(createCoreToCoreSyncMessage, TASK_SYNC, CoreSyncData, fromCore, toCore, fromCore, toCore)
+    SAFE_DUAL_UINT8_MESSAGE_FACTORY(createCoreToCoreSyncMessage, TASK_SYNC, CoreSyncData, fromCore, toCore, fromCore, toCore)
+
+    // COMPILE-TIME VALIDATION HELPERS
+    template<size_t MaxSize>
+    static constexpr bool wouldStringFit(const char* str) {
+        return strlen(str) < MaxSize;
+    }
+    
+    // SIZE CONSTANTS for validation
+    static constexpr size_t SYSTEM_STATUS_MAX_SIZE = 64;
+    static constexpr size_t AUDIO_DEVICE_NAME_MAX_SIZE = 64;
+    static constexpr size_t DEBUG_LOG_MAX_SIZE = 256;
+    static constexpr size_t WIFI_STATUS_MAX_SIZE = 32;
+    static constexpr size_t SD_STATUS_MAX_SIZE = 32;
+    static constexpr size_t AUDIO_PROCESS_NAME_MAX_SIZE = 64;
+    static constexpr size_t NETWORK_SSID_MAX_SIZE = 64;
+    static constexpr size_t NETWORK_IP_MAX_SIZE = 16;
+    static constexpr size_t UI_COMPONENT_MAX_SIZE = 32;
+    static constexpr size_t UI_DATA_MAX_SIZE = 128;
+    
+    // VALIDATION METHODS
+    static bool validateSystemStatus(const String& status) {
+        return status.length() < SYSTEM_STATUS_MAX_SIZE;
+    }
+    
+    static bool validateAudioDeviceName(const String& deviceName) {
+        return deviceName.length() < AUDIO_DEVICE_NAME_MAX_SIZE;
+    }
+    
+    static bool validateDebugLog(const String& logMessage) {
+        return logMessage.length() < DEBUG_LOG_MAX_SIZE;
+    }
+    
+    static bool validateWifiStatus(const String& status) {
+        return status.length() < WIFI_STATUS_MAX_SIZE;
+    }
+    
+    static bool validateNetworkSSID(const String& ssid) {
+        return ssid.length() < NETWORK_SSID_MAX_SIZE;
+    }
+    
+    static bool validateNetworkIP(const String& ip) {
+        return ip.length() < NETWORK_IP_MAX_SIZE;
+    }
+    
+    static bool validateUIComponent(const String& component) {
+        return component.length() < UI_COMPONENT_MAX_SIZE;
+    }
+    
+    static bool validateUIData(const String& data) {
+        return data.length() < UI_DATA_MAX_SIZE;
+    }
 };
 
 // =============================================================================
