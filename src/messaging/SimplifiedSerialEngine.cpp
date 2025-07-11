@@ -3,6 +3,6 @@
 namespace Messaging {
 
 // Static member definition
-SerialEngine* SerialEngine::instance = nullptr;
+SerialEngine *SerialEngine::instance = nullptr;
 
-}  // namespace Messaging
+} // namespace Messaging

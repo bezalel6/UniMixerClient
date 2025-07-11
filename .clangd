@@ -35,8 +35,6 @@ CompileFlags:
     - -DLV_LVGL_H_INCLUDE_SIMPLE
 
     # Architecture and toolchain matching PlatformIO
-    - -target
-    - xtensa-esp32s3-elf
     - -fno-jump-tables
     - -ffunction-sections
     - -fdata-sections
@@ -65,6 +63,10 @@ CompileFlags:
     - -std=gnu++20
     - -include
     - PIOConfig.h
+
+    # Force clangd to continue parsing even with errors
+    - -ferror-limit=0
+    - -fparse-all-comments
 
     # PlatformIO and Arduino ESP32 include paths
     - -I~/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src
@@ -184,6 +186,8 @@ CompileFlags:
 Index:
   Background: Build
   StandardLibrary: No
+  # Allow indexing even with errors
+  AllowBrokenHeaderUnits: true
 
 Diagnostics:
   Suppress:
@@ -202,6 +206,10 @@ Diagnostics:
       - modernize-use-trailing-return-type
       - bugprone-easily-swappable-parameters
       - modernize-use-auto
+  # Continue analyzing even when there are errors
+  ContinueAfterError: true
+  # Allow incomplete translation units
+  IncompleteTranslationUnit: true
 
 InlayHints:
   Enabled: true

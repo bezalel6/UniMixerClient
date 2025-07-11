@@ -49,7 +49,7 @@ private:
 
 public:
   static SerialEngine &getInstance() {
-    if (!instance) {
+    if (instance == nullptr) {
       instance = new SerialEngine();
     }
     return *instance;
@@ -172,9 +172,6 @@ private:
     }
   }
 };
-
-// Define static instance
-SerialEngine *SerialEngine::instance = nullptr;
 
 // Global instance accessor for compatibility
 inline SerialEngine &getSerialEngine() { return SerialEngine::getInstance(); }
