@@ -5,9 +5,9 @@
 #include "UiEventHandlers.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
-#include "../messaging/MessageAPI.h"
-#include "../messaging/transport/SerialEngine.h"
-#include "../messaging/protocol/MessageData.h"
+#include "../messaging/Message.h"
+#include "../messaging/MessagingInit.h"
+#include "../messaging/SimplifiedSerialEngine.h"
 #include "AppController.h"
 #include "../application/audio/AudioUI.h"
 #include "../logo/LogoSupplier.h"
@@ -1036,31 +1036,33 @@ void reportCore1MessagingStats(uint32_t messagesReceived, uint32_t messagesSent,
  * 3. Adjust Core 0 task priorities based on Core 1 messaging load
  */
 void updateMessagingEngineIntegration(void) {
-    // Get statistics from InterruptMessagingEngine
-    uint32_t messagesReceived, messagesSent, bufferOverruns, core1Routed;
-    Messaging::Core1::InterruptMessagingEngine::getStats(messagesReceived, messagesSent, bufferOverruns, core1Routed);
+    // Get messaging status
+    String messagingStatus = Messaging::getMessagingStatus();
+
+    // Extract some basic stats (this is simpler than parsing)
+    const auto& stats = Messaging::SerialEngine::getInstance().getStats();
 
     // Update TaskManager statistics
-    reportCore1MessagingStats(messagesReceived, messagesSent, bufferOverruns);
+    reportCore1MessagingStats(stats.messagesReceived, stats.messagesSent, stats.framingErrors);
 
     // Dynamic priority adjustment based on messaging load
-    if (bufferOverruns > 0) {
-        ESP_LOGW(TAG, "[MESSAGING-INTEGRATION] Buffer overruns detected (%u), optimizing priorities", bufferOverruns);
+    if (stats.framingErrors > 0) {
+        ESP_LOGW(TAG, "[MESSAGING-INTEGRATION] Framing errors detected (%u), optimizing priorities", stats.framingErrors);
         // Give Core 1 more breathing room by slightly reducing Core 0 task frequency
         if (audioTaskHandle) {
             // Temporarily reduce audio task priority to reduce Core 0 load
             vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL - 1);
         }
-    } else if (messagesReceived > 50) {
-        ESP_LOGI(TAG, "[MESSAGING-INTEGRATION] High message throughput (%u/period), maintaining high performance", messagesReceived);
+    } else if (stats.messagesReceived > 50) {
+        ESP_LOGI(TAG, "[MESSAGING-INTEGRATION] High message throughput (%u/period), maintaining high performance", stats.messagesReceived);
         // Ensure optimal performance for high message loads
         if (audioTaskHandle) {
             vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL);
         }
     }
 
-    ESP_LOGD(TAG, "[MESSAGING-INTEGRATION] Core 1 routed %u messages, total RX: %u, TX: %u",
-             core1Routed, messagesReceived, messagesSent);
+    ESP_LOGD(TAG, "[MESSAGING-INTEGRATION] Total RX: %u, TX: %u",
+             stats.messagesReceived, stats.messagesSent);
 }
 
 // =============================================================================

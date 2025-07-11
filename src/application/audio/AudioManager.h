@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AudioData.h"
-#include "../../messaging/protocol/MessageData.h"
+
 #include <functional>
 #include <vector>
 #include <map>
@@ -114,7 +114,7 @@ class AudioManager {
     void refreshDevicePointersIfNeeded(const String& deviceName);
 
     // Logo checking helpers (moved from MessageCore)
-    void checkAndRequestLogosForAudioProcesses(const Messaging::AudioStatusData& statusData);
+
     void checkSingleProcessLogo(const char* processName);
 
     // Logo request debouncing

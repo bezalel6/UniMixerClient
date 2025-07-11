@@ -322,6 +322,26 @@ class InternalMessageTypeRegistry {
 }  // namespace MessageProtocol
 
 // =============================================================================
+// STL HASH SPECIALIZATIONS FOR ENUM TYPES
+// =============================================================================
+
+namespace std {
+template <>
+struct hash<MessageProtocol::ExternalMessageType> {
+    size_t operator()(const MessageProtocol::ExternalMessageType& e) const noexcept {
+        return hash<int16_t>{}(static_cast<int16_t>(e));
+    }
+};
+
+template <>
+struct hash<MessageProtocol::InternalMessageType> {
+    size_t operator()(const MessageProtocol::InternalMessageType& e) const noexcept {
+        return hash<uint16_t>{}(static_cast<uint16_t>(e));
+    }
+};
+}  // namespace std
+
+// =============================================================================
 // EXTERNAL JSON FIELD NAME CONSTANTS (camelCase only)
 // =============================================================================
 

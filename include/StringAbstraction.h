@@ -4,6 +4,26 @@
 #include <WString.h>
 
 // =============================================================================
+// STL HASH SPECIALIZATION FOR ARDUINO STRING (MUST BE EARLY)
+// =============================================================================
+
+// Provide hash specialization for Arduino String to work with std::unordered_map
+// This must be defined before any STL container that uses String as a key
+namespace std {
+template <>
+struct hash<String> {
+    size_t operator()(const String& s) const noexcept {
+        // Use simple djb2 hash algorithm
+        size_t hash = 5381;
+        for (size_t i = 0; i < s.length(); ++i) {
+            hash = ((hash << 5) + hash) + s.charAt(i);
+        }
+        return hash;
+    }
+};
+}  // namespace std
+
+// =============================================================================
 // STRING ABSTRACTION LAYER - Universal String Interface
 // =============================================================================
 
@@ -352,6 +372,8 @@ using string_view = StringAbstraction::string_view;
 #define STRING_EMPTY StringAbstraction::make_empty_string()
 #define STRING_FROM_LITERAL(lit) StringAbstraction::make_string(lit)
 #define STRING_FROM_CSTR(cstr) StringAbstraction::make_string(cstr)
+//Create a string from an std::string, for edge cases where using them is obligatory no matter the STRING_CURRENT_IMPL
+#define STRING_FROM_STD_STR(std_str) StringAbstraction::make_string(std_str.c_str())
 #define STRING_FROM_INT(val) StringAbstraction::int_to_string(val)
 #define STRING_FROM_FLOAT(val, prec) StringAbstraction::float_to_string(val, prec)
 #define STRING_FROM_BOOL(val) StringAbstraction::bool_to_string(val)

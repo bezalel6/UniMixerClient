@@ -2,9 +2,7 @@
 #define LOGO_SUPPLIER_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <functional>
-#include "MessageProtocol.h"
 
 namespace Application {
 namespace LogoAssets {
@@ -15,7 +13,6 @@ namespace LogoAssets {
 
 // Asset request structure (matches server-side expectations)
 typedef struct {
-    MessageProtocol::ExternalMessageType messageType = MessageProtocol::ExternalMessageType::GET_ASSETS;
     String requestId;
     String deviceId;
     String processName;
@@ -24,7 +21,6 @@ typedef struct {
 
 // Asset response structure (simplified for LVGL binary system)
 typedef struct {
-    MessageProtocol::ExternalMessageType messageType = MessageProtocol::ExternalMessageType::ASSET_RESPONSE;
     String requestId;
     String deviceId;
     String processName;

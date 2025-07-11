@@ -2,7 +2,7 @@
 #define MESSAGE_BUS_LOGO_SUPPLIER_H
 
 #include "LogoSupplier.h"
-#include "../messaging/MessageAPI.h"
+#include "../messaging/Message.h"
 #include <map>
 
 namespace Application {
@@ -65,11 +65,10 @@ class MessageBusLogoSupplier : public LogoSupplier {
     unsigned long requestsFailed = 0;
 
     // Internal methods
-    void onAssetResponse(const Messaging::AssetResponseData& assetData);
+    void onAssetResponse(const Messaging::Message& msg);
     bool sendAssetRequest(const AssetRequest& request);
     void timeoutExpiredRequests();
-    AssetResponse parseAssetResponse(const String& jsonPayload);
-    String createAssetRequestJson(const AssetRequest& request);
+
     void completeRequest(const String& requestId, const AssetResponse& response);
     void failRequest(const String& requestId, const char* errorMessage);
     void processQueuedRequests();

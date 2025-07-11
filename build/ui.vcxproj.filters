@@ -31,6 +31,9 @@
     <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\images\ui_img_2039083_png.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="E:\SharedCo\UniMixerClient\src\ui\UIPerformanceOptimizations.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="E:\SharedCo\UniMixerClient\src\ui\CMakeLists.txt" />

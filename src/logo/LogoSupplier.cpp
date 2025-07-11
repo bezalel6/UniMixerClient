@@ -1,7 +1,5 @@
 #include "LogoSupplier.h"
 #include "../hardware/DeviceManager.h"
-#include "../messaging/protocol/MessageConfig.h"
-#include <MessageProtocol.h>
 #include <esp_log.h>
 #include <algorithm>
 
@@ -16,10 +14,8 @@ namespace LogoAssets {
 
 AssetRequest LogoSupplier::createAssetRequest(const char* processName) {
     AssetRequest request;
-    // Use enum type directly (no string conversion needed)
-    request.messageType = Messaging::Config::EXT_MSG_GET_ASSETS;
-    request.requestId = Messaging::Config::generateRequestId();
-    request.deviceId = Messaging::Config::getDeviceId();
+    request.requestId = "req-" + String(millis());  // Simple request ID
+    request.deviceId = "ESP32";  // Simple device ID
     request.processName = String(processName ? processName : "");
     request.timestamp = Hardware::Device::getMillis();
     return request;
@@ -28,10 +24,8 @@ AssetRequest LogoSupplier::createAssetRequest(const char* processName) {
 AssetResponse LogoSupplier::createAssetResponse(bool success, const char* processName,
                                                 const char* requestId, const char* errorMessage) {
     AssetResponse response;
-    // Use enum type directly (no string conversion needed)
-    response.messageType = Messaging::Config::EXT_MSG_ASSET_RESPONSE;
     response.requestId = String(requestId ? requestId : "");
-    response.deviceId = Messaging::Config::getDeviceId();
+    response.deviceId = "ESP32";  // Simple device ID
     response.processName = String(processName ? processName : "");
     response.success = success;
     response.errorMessage = String(errorMessage ? errorMessage : "");
