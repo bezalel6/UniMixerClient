@@ -1,4 +1,7 @@
 #include "SimplifiedSerialEngine.h"
+#include <esp_log.h>
+
+static const char* TAG = "SerialEngine";
 
 namespace Messaging {
 

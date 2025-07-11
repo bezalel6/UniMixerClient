@@ -3,10 +3,10 @@
 #include "Message.h"
 #include <Arduino.h>
 #include <BinaryProtocol.h>
-#include <driver/uart.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
+#include <esp_log.h>
 
 namespace Messaging {
 
@@ -18,11 +18,9 @@ class SerialEngine {
 private:
   static SerialEngine *instance;
 
-  // UART configuration
-  static const int UART_NUM = UART_NUM_0;
-  static const int UART_BAUD_RATE = 3000000; // 3Mbps
+  // Serial configuration
+  static const int SERIAL_BAUD_RATE = 115200;
   static const size_t RX_BUFFER_SIZE = 4096;
-  static const size_t TX_BUFFER_SIZE = 2048;
 
   // Task configuration
   TaskHandle_t rxTaskHandle = nullptr;
@@ -33,10 +31,6 @@ public:
   BinaryProtocol::BinaryProtocolFramer framer;
 
 private:
-  // Receive buffer
-  char rxBuffer[RX_BUFFER_SIZE];
-  size_t rxBufferPos = 0;
-
   // Statistics
   struct Stats {
     uint32_t messagesReceived = 0;
@@ -50,47 +44,87 @@ private:
 public:
   static SerialEngine &getInstance() {
     if (instance == nullptr) {
+      ESP_LOGI("SerialEngine", "Creating new SerialEngine instance");
       instance = new SerialEngine();
+      ESP_LOGI("SerialEngine", "SerialEngine instance created at %p", instance);
     }
     return *instance;
   }
 
   // Initialize and start the serial engine
   bool init() {
-    // Configure UART
-    uart_config_t uart_config = {
-        .baud_rate = UART_BAUD_RATE,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_APB,
-    };
+    ESP_LOGI("SerialEngine", "Initializing SimplifiedSerialEngine");
+    
+    // Check if Serial is already initialized
+    if (!Serial) {
+      // Initialize Arduino Serial
+      Serial.begin(SERIAL_BAUD_RATE);
+      
+      // Wait for Serial to be ready
+      unsigned long startTime = millis();
+      const unsigned long SERIAL_TIMEOUT_MS = 2000;  // Reduced timeout
+      
+      while (!Serial && (millis() - startTime) < SERIAL_TIMEOUT_MS) {
+        delay(10);
+      }
+      
+      if (!Serial) {
+        ESP_LOGE("SerialEngine", "Failed to initialize Serial port");
+        return false;
+      }
+      
+      // Give Serial time to stabilize
+      delay(100);
+    } else {
+      ESP_LOGI("SerialEngine", "Serial already initialized");
+    }
+    
+    // Clear any existing data
+    while (Serial.available()) {
+      Serial.read();
+    }
 
-    ESP_ERROR_CHECK(uart_param_config(UART_NUM, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(UART_NUM, UART_PIN_NO_CHANGE,
-                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
-                                 UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM, RX_BUFFER_SIZE,
-                                        TX_BUFFER_SIZE, 0, NULL, 0));
-
-    // Start receive task
-    xTaskCreatePinnedToCore(rxTaskWrapper, "SerialRx", 4096, this,
-                            5, // Priority
-                            &rxTaskHandle,
-                            1 // Core 1
+    // Mark as running but delay task creation
+    running = true;
+    ESP_LOGI("SerialEngine", "Serial engine initialized (task creation delayed)");
+    
+    // Delay task creation to avoid initialization conflicts
+    // The task will be created on first use or can be started manually
+    return true;
+  }
+  
+  // Start the receive task (call this after system is fully initialized)
+  bool startReceiveTask() {
+    if (rxTaskHandle != nullptr) {
+      ESP_LOGW("SerialEngine", "Receive task already started");
+      return true;
+    }
+    
+    ESP_LOGI("SerialEngine", "Starting receive task on Core 1");
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        rxTaskWrapper, 
+        "SerialRx", 
+        4096,  // Stack size
+        this,
+        5,     // Priority
+        &rxTaskHandle,
+        1      // Core 1
     );
 
-    running = true;
-    ESP_LOGI("Serial", "Serial engine initialized");
+    if (result != pdPASS) {
+      ESP_LOGE("SerialEngine", "Failed to create receive task: %d", result);
+      return false;
+    }
+    
+    ESP_LOGI("SerialEngine", "Receive task started successfully");
     return true;
   }
 
   // Send a message
   void send(const Message &msg) {
     if (!running) {
-      ESP_LOGW("Serial", "Serial engine not running");
+      ESP_LOGW("SerialEngine", "Serial engine not running");
       return;
     }
 
@@ -104,17 +138,19 @@ public:
     if (!running)
       return;
 
-    // Use the correct BinaryProtocol::BinaryProtocolFramer API
-    uint8_t frameBuffer[TX_BUFFER_SIZE];
-    size_t frameLength = 0;
-
-    bool success = framer.encodeMessage(data, frameBuffer, sizeof(frameBuffer),
-                                        frameLength);
-
-    if (success && frameLength > 0) {
-      uart_write_bytes(UART_NUM, frameBuffer, frameLength);
+    // Use the binary framer to encode the message
+    std::vector<uint8_t> binaryFrame = framer.encodeMessage(data);
+    
+    if (!binaryFrame.empty()) {
+      // Send the binary frame via Arduino Serial
+      size_t written = Serial.write(binaryFrame.data(), binaryFrame.size());
+      Serial.flush();
+      
+      if (written != binaryFrame.size()) {
+        ESP_LOGW("SerialEngine", "Failed to write complete frame");
+      }
     } else {
-      ESP_LOGW("Serial", "Failed to frame message");
+      ESP_LOGW("SerialEngine", "Failed to frame message");
     }
   }
 
@@ -128,7 +164,6 @@ public:
       vTaskDelete(rxTaskHandle);
       rxTaskHandle = nullptr;
     }
-    uart_driver_delete(UART_NUM);
   }
 
 private:
@@ -142,18 +177,27 @@ private:
     uint8_t data[256];
 
     while (running) {
-      int len = uart_read_bytes(UART_NUM, data, sizeof(data),
-                                10 / portTICK_PERIOD_MS);
-
-      if (len > 0) {
-        processIncomingData(data, len);
+      // Check if data is available
+      if (Serial.available()) {
+        int len = 0;
+        // Read available data
+        while (Serial.available() && len < sizeof(data)) {
+          data[len++] = Serial.read();
+        }
+        
+        if (len > 0) {
+          processIncomingData(data, len);
+        }
       }
+      
+      // Small delay to prevent tight loop
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
   }
 
   // Process incoming data
   void processIncomingData(const uint8_t *data, size_t length) {
-    // Use the correct BinaryProtocol::BinaryProtocolFramer API
+    // Use the binary protocol framer to decode messages
     std::vector<String> messages = framer.processIncomingBytes(data, length);
 
     for (const String &jsonStr : messages) {
@@ -165,7 +209,7 @@ private:
           MessageRouter::getInstance().route(msg);
         } else {
           stats.parseErrors++;
-          ESP_LOGW("Serial", "Failed to parse message: %.100s",
+          ESP_LOGW("SerialEngine", "Failed to parse message: %.100s",
                    jsonStr.c_str());
         }
       }
