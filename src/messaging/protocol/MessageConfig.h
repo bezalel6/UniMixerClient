@@ -34,23 +34,8 @@ extern const MessageProtocol::InternalMessageType INT_MSG_AUDIO_UI_REFRESH;
 extern const MessageProtocol::InternalMessageType INT_MSG_SD_STATUS;
 extern const MessageProtocol::InternalMessageType INT_MSG_ASSET_RESPONSE;
 
-// =============================================================================
-// LEGACY STRING-BASED MESSAGE TYPE CONFIGURATION (Deprecated)
-// =============================================================================
-
-// @deprecated Use EXT_MSG_* constants instead
-extern const char* MESSAGE_TYPE_GET_STATUS;
-extern const char* MESSAGE_TYPE_STATUS_UPDATE;
-extern const char* MESSAGE_TYPE_SET_VOLUME;
-extern const char* MESSAGE_TYPE_MUTE_PROCESS;
-extern const char* MESSAGE_TYPE_UNMUTE_PROCESS;
-extern const char* MESSAGE_TYPE_SET_MASTER_VOLUME;
-extern const char* MESSAGE_TYPE_MUTE_MASTER;
-extern const char* MESSAGE_TYPE_UNMUTE_MASTER;
-
-// @deprecated Use EXT_MSG_* constants instead
-extern const char* MESSAGE_TYPE_GET_ASSETS;
-extern const char* MESSAGE_TYPE_ASSET_RESPONSE;
+// Legacy string-based message types have been removed.
+// Use the new enum-based constants (EXT_MSG_* and INT_MSG_*) instead.
 
 // =============================================================================
 // REASON CODES

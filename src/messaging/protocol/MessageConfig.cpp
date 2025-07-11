@@ -33,23 +33,8 @@ const MessageProtocol::InternalMessageType INT_MSG_AUDIO_UI_REFRESH = MessagePro
 const MessageProtocol::InternalMessageType INT_MSG_SD_STATUS = MessageProtocol::InternalMessageType::SD_STATUS;
 const MessageProtocol::InternalMessageType INT_MSG_ASSET_RESPONSE = MessageProtocol::InternalMessageType::ASSET_RESPONSE;
 
-// =============================================================================
-// LEGACY STRING-BASED MESSAGE TYPE CONFIGURATION (Deprecated)
-// =============================================================================
-
-// @deprecated Use EXT_MSG_* constants instead
-const char* MESSAGE_TYPE_GET_STATUS = "GetStatus";
-const char* MESSAGE_TYPE_STATUS_UPDATE = "StatusMessage";
-const char* MESSAGE_TYPE_SET_VOLUME = "SetProcessVolume";
-const char* MESSAGE_TYPE_MUTE_PROCESS = "MuteProcess";
-const char* MESSAGE_TYPE_UNMUTE_PROCESS = "UnmuteProcess";
-const char* MESSAGE_TYPE_SET_MASTER_VOLUME = "SetMasterVolume";
-const char* MESSAGE_TYPE_MUTE_MASTER = "MuteMaster";
-const char* MESSAGE_TYPE_UNMUTE_MASTER = "UnmuteMaster";
-
-// @deprecated Use EXT_MSG_* constants instead
-const char* MESSAGE_TYPE_GET_ASSETS = "GetAssets";
-const char* MESSAGE_TYPE_ASSET_RESPONSE = "AssetResponse";
+// Legacy string-based message types have been removed.
+// Use the new enum-based constants (EXT_MSG_* and INT_MSG_*) instead.
 
 // =============================================================================
 // REASON CODES
