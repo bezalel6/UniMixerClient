@@ -19,7 +19,6 @@
 #include <functional>
 #include <ui/ui.h>
 
-
 static const char *TAG = "TaskManager";
 
 // =============================================================================
@@ -223,7 +222,7 @@ bool createEssentialTasks(bool networkFreeMode) {
 
   // Audio task gets maximum resources in network-free mode
   UBaseType_t audioPriority = AUDIO_TASK_PRIORITY_NORMAL + 1; // Boost priority
-  size_t audioStackSize = AUDIO_TASK_STACK_SIZE + 2048;       // Extra stack
+  size_t audioStackSize = AUDIO_TASK_STACK_SIZE; // Use full 16KB stack
 
   TASK_CREATE_PINNED(audioTask, "Audio_Task", audioStackSize, audioPriority,
                      audioTaskHandle, AUDIO_TASK_CORE);
@@ -642,6 +641,10 @@ void audioTask(void *parameter) {
            "management",
            xPortGetCoreID());
 
+  // Log initial stack usage for debugging
+  ESP_LOGI(TAG, "[AUDIO_TASK] Initial stack high water mark: %d bytes",
+           uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
+
   TickType_t lastWakeTime = xTaskGetTickCount();
   static unsigned long lastFpsUpdate = 0;
 
@@ -662,6 +665,10 @@ void audioTask(void *parameter) {
       vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(5000)); // 5 second intervals
       continue;
     }
+
+    // STACK OVERFLOW FIX: Process volume change requests from LVGL task
+    // This runs in Audio task context with more stack space for JSON
+    // serialization
 
     // Update FPS display less frequently for monitoring
     unsigned long currentTime = millis();

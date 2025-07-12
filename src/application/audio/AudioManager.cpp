@@ -332,6 +332,56 @@ void AudioManager::setVolumeForCurrentDevice(int volume) {
   }
 }
 
+void AudioManager::setVolumeLocalOnly(int volume) {
+  REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+
+  // Clamp volume
+  volume = constrain(volume, 0, 100);
+
+  ESP_LOGI(TAG, "Setting volume locally only (no messaging): %d (Core %d)",
+           volume, xPortGetCoreID());
+
+  if (state.isInMasterTab()) {
+    // Update default device volume locally
+    if (state.currentStatus.hasDefaultDevice) {
+      state.currentStatus.defaultDevice.volume = volume;
+      ESP_LOGI(TAG, "Updated default device volume locally to %d", volume);
+    } else {
+      ESP_LOGW(TAG, "No default device available for local volume control");
+      return;
+    }
+  } else if (state.isInSingleTab()) {
+    AudioLevel *currentDevice = state.getCurrentSelectedDevice();
+    if (currentDevice) {
+      currentDevice->volume = volume;
+      currentDevice->lastUpdate = Hardware::Device::getMillis();
+      currentDevice->stale = false;
+      ESP_LOGI(TAG, "Updated session device %s volume locally to %d",
+               currentDevice->processName.c_str(), volume);
+    } else {
+      ESP_LOGW(TAG, "No device selected for local volume control");
+      return;
+    }
+  } else if (state.isInBalanceTab()) {
+    // Update both balance devices locally
+    if (state.selectedDevice1) {
+      state.selectedDevice1->volume = volume;
+      state.selectedDevice1->lastUpdate = Hardware::Device::getMillis();
+    }
+    if (state.selectedDevice2) {
+      state.selectedDevice2->volume = volume;
+      state.selectedDevice2->lastUpdate = Hardware::Device::getMillis();
+    }
+    ESP_LOGI(TAG, "Updated balance devices volume locally to %d", volume);
+  }
+
+  // Update timestamp and notify UI (but don't publish to Core 1)
+  updateTimestamp();
+  notifyStateChange(AudioStateChangeEvent::volumeChanged("local", volume));
+
+  ESP_LOGI(TAG, "Local volume update complete - no Core 1 messaging triggered");
+}
+
 void AudioManager::setDeviceVolume(const String &deviceName, int volume) {
   REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
 

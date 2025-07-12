@@ -91,7 +91,6 @@
       (target)[(targetSize) - 1] = '\0';                                       \
     }                                                                          \
   } while (0)
-
 #define SAFE_JSON_EXTRACT_INT(doc, field, target, defaultValue)                \
   (target) = (doc)[field].isNull() ? (defaultValue) : (doc)[field].as<int>()
 

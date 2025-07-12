@@ -194,11 +194,12 @@ void volumeArcChangedHandler(lv_event_t *e) {
 
   UI_LOG("UIEventHandlers", "Volume arc released - processing volume: %d",
          volume);
-
-  // No debouncing needed since we only send on release
-  // Signal Audio task to handle the volume change
-  requestedVolumeValue = volume;
-  volumeChangeRequested = true;
+  auto &audioManager = Application::Audio::AudioManager::getInstance();
+  String processName; // can be left empty for default device
+  if (audioManager.getCurrentTab() != TabState::MASTER) {
+    processName = audioManager.getCurrentDevice();
+  }
+  Messaging::Message::createVolumeChange(processName, volume, "").send();
 }
 
 // Tab switch event handler
@@ -237,29 +238,6 @@ void openSettings(lv_event_t *e) {
 
   // Show state overview overlay
   Application::LVGLMessageHandler::showStateOverview();
-}
-
-// New function to be called by Audio task to process volume changes
-void processVolumeChangeRequest() {
-  if (volumeChangeRequested) {
-    int volume = requestedVolumeValue;
-    volumeChangeRequested = false;
-
-    ESP_LOGI(TAG, "Audio task processing volume change: %d (Core %d)", volume,
-             xPortGetCoreID());
-
-    // Update the device volume locally for immediate UI feedback
-    Application::Audio::AudioManager::getInstance().setVolumeLocalOnly(volume);
-
-    // Update UI immediately for visual feedback (Core 0 safe)
-    Application::Audio::AudioUI::getInstance().updateVolumeDisplay();
-
-    // Send volume change message via streamlined SerialEngine
-    auto volumeMsg = Messaging::Message::createVolumeChange("", volume, "");
-    volumeMsg.send(); // Use the new streamlined send method
-
-    ESP_LOGI(TAG, "Volume change message sent via streamlined SerialEngine");
-  }
 }
 
 // Cleanup function - simplified since messaging queue is handled by
