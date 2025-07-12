@@ -185,7 +185,7 @@ public:
     // Start consolidated RXTX Task
     BaseType_t rxtxResult = xTaskCreatePinnedToCore(
         rxtxTaskWrapper, "SerialRxTx",
-        12288, // 12KB for RX/TX processing (increased from 8KB)
+        16384, // 16KB for RX/TX processing (increased from 12KB)
         this,
         5, // Priority
         &rxtxTaskHandle,

@@ -558,6 +558,43 @@ SDFileResult readFile(const char *path, char *buffer, size_t maxLength) {
   return result;
 }
 
+SDFileResult readBinaryFile(const char *path, uint8_t *buffer,
+                            size_t maxLength) {
+  if (!sdOperationMutex ||
+      xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+    return createFileResult(false, 0, "Failed to acquire SD mutex");
+  }
+
+  SDFileResult result;
+
+  if (!isMounted() || !path || !buffer || maxLength == 0) {
+    result = createFileResult(false, 0, "Invalid parameters");
+    xSemaphoreGive(sdOperationMutex);
+    return result;
+  }
+
+  ESP_LOGI(TAG, "Reading binary file: %s", path);
+
+  File file = ::SD.open(path, FILE_READ);
+  if (!file) {
+    result = createFileResult(false, 0, "Failed to open binary file");
+    xSemaphoreGive(sdOperationMutex);
+    return result;
+  }
+
+  size_t bytesToRead = min((size_t)file.size(), maxLength);
+  size_t bytesRead = file.readBytes((char *)buffer, bytesToRead);
+
+  file.close();
+  cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
+
+  ESP_LOGI(TAG, "Binary file read successfully: %zu bytes", bytesRead);
+  result = createFileResult(true, bytesRead, nullptr);
+
+  xSemaphoreGive(sdOperationMutex);
+  return result;
+}
+
 SDFileResult writeFile(const char *path, const char *data, bool append) {
   if (!sdOperationMutex ||
       xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
@@ -594,6 +631,50 @@ SDFileResult writeFile(const char *path, const char *data, bool append) {
   } else {
     ESP_LOGW(TAG, "Incomplete write: %zu/%zu bytes", bytesWritten, dataLength);
     result = createFileResult(false, bytesWritten, "Incomplete write");
+  }
+
+  xSemaphoreGive(sdOperationMutex);
+  return result;
+}
+
+SDFileResult writeBinaryFile(const char *path, const uint8_t *data,
+                             size_t dataSize, bool append) {
+  if (!sdOperationMutex ||
+      xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+    return createFileResult(false, 0, "Failed to acquire SD mutex");
+  }
+
+  SDFileResult result;
+
+  if (!isMounted() || !path || !data || dataSize == 0) {
+    result = createFileResult(false, 0, "Invalid parameters");
+    xSemaphoreGive(sdOperationMutex);
+    return result;
+  }
+
+  ESP_LOGI(TAG, "Writing binary file: %s (%zu bytes, append: %s)", path,
+           dataSize, append ? "true" : "false");
+
+  File file = ::SD.open(path, append ? FILE_APPEND : FILE_WRITE);
+  if (!file) {
+    result =
+        createFileResult(false, 0, "Failed to open file for binary writing");
+    xSemaphoreGive(sdOperationMutex);
+    return result;
+  }
+
+  size_t bytesWritten = file.write(data, dataSize);
+
+  file.close();
+  cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
+
+  if (bytesWritten == dataSize) {
+    ESP_LOGI(TAG, "Binary file written successfully: %zu bytes", bytesWritten);
+    result = createFileResult(true, bytesWritten, nullptr);
+  } else {
+    ESP_LOGW(TAG, "Incomplete binary write: %zu/%zu bytes", bytesWritten,
+             dataSize);
+    result = createFileResult(false, bytesWritten, "Incomplete binary write");
   }
 
   xSemaphoreGive(sdOperationMutex);

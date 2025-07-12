@@ -64,7 +64,7 @@ struct Message {
     char processName[64];
     bool success;
     char errorMessage[128];
-    char assetDataBase64[2048]; // Base64 encoded asset
+    char assetDataBase64[4096]; // Base64 encoded asset
     int width;
     int height;
     char format[16];

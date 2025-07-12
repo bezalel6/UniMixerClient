@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../../logo/LogoStorage.h"
 #include "../ui/LVGLMessageHandler.h"
 #include "AudioManager.h"
 #include <lvgl.h>

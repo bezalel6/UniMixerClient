@@ -137,6 +137,8 @@ bool listDirectory(
 // File operations
 SDFileResult readFile(const char *path, char *buffer, size_t maxLength);
 SDFileResult writeFile(const char *path, const char *data, bool append = false);
+SDFileResult writeBinaryFile(const char *path, const uint8_t *data,
+                             size_t dataSize, bool append = false);
 SDFileResult deleteFile(const char *path);
 bool fileExists(const char *path);
 size_t getFileSize(const char *path);
