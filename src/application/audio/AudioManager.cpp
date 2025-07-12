@@ -1,7 +1,6 @@
 #include "AudioManager.h"
 #include "../../hardware/DeviceManager.h"
-#include "../../logo/LogoManager.h"
-#include "../../logo/BrutalLogoManager.h"
+#include "../../logo/SimpleLogoManager.h"
 #include "../../messaging/Message.h"
 #include "ManagerMacros.h"
 #include "ui/ui.h"

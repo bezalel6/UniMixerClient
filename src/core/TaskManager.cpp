@@ -4,7 +4,7 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
-#include "../logo/BrutalLogoManager.h"
+#include "../logo/SimpleLogoManager.h"
 #include "../messaging/Message.h"
 #include "../messaging/MessagingInit.h"
 #include "../messaging/SimplifiedSerialEngine.h"
@@ -782,7 +782,7 @@ void audioTask(void *parameter) {
     }
 
     // Update brutal logo manager for timeout handling
-    BrutalLogoManager::getInstance().update();
+    SimpleLogoManager::getInstance().update();
 
     // OPTIMIZED: Determine sleep interval based on system state and performance
     uint32_t sleepInterval;

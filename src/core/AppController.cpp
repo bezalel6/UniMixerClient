@@ -5,7 +5,7 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
-#include "../logo/BrutalLogoManager.h"
+#include "../logo/SimpleLogoManager.h"
 #include "../messaging/Message.h"
 #include "../messaging/MessagingInit.h"
 #include "BuildInfo.h"
@@ -51,7 +51,7 @@ bool init(void) {
                      "will be unavailable",
                      Hardware::SD::init());
 
-  INIT_STEP_CRITICAL("Initializing Brutal Logo Manager", BrutalLogoManager::getInstance().init());
+      INIT_STEP_CRITICAL("Initializing Simple Logo Manager", SimpleLogoManager::getInstance().init());
 
   INIT_STEP_CRITICAL("Initializing Display Manager", Display::init());
 
@@ -163,7 +163,7 @@ void deinit(void) {
   Application::Audio::AudioManager::getInstance().deinit();
 
   // Deinitialize Brutal Logo Manager
-  BrutalLogoManager::getInstance().deinit();
+  SimpleLogoManager::getInstance().deinit();
 
   // Shutdown messaging system
   Messaging::shutdownMessaging();
