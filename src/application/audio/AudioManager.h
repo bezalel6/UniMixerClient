@@ -127,8 +127,8 @@ private:
   void refreshDevicePointersIfNeeded(const String &deviceName);
 
   // Logo checking helpers (moved from MessageCore)
-
   void checkSingleProcessLogo(const char *processName);
+  void requestLogosForNewProcesses();
 
   // Logo request debouncing
   std::map<String, unsigned long> lastLogoCheckTime;

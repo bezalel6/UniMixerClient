@@ -63,6 +63,24 @@ bool AudioManager::init() {
           ESP_LOGD(TAG, "Added session: %s (ID: %d), volume: %d, muted: %s",
                    level.processName.c_str(), session.processId, level.volume,
                    level.isMuted ? "yes" : "no");
+
+          // Auto-request logo for this process if we don't have it
+          if (!level.processName.isEmpty() && 
+              !BrutalLogoManager::getInstance().hasLogo(level.processName)) {
+            ESP_LOGD(TAG, "Auto-requesting logo for session: %s", level.processName.c_str());
+            BrutalLogoManager::getInstance().requestLogo(
+                level.processName,
+                [processName = level.processName](bool success, uint8_t* data, size_t size, const String& error) {
+                  if (success) {
+                    ESP_LOGI("AudioManager", "Auto-received logo for session: %s (%zu bytes)", 
+                             processName.c_str(), size);
+                    if (data) free(data);
+                  } else {
+                    ESP_LOGD("AudioManager", "Auto-request failed for session: %s - %s", 
+                             processName.c_str(), error.c_str());
+                  }
+                });
+          }
         }
 
         // Set default device info
@@ -175,6 +193,9 @@ void AudioManager::onAudioStatusReceived(const AudioStatus &newStatus) {
 
   // Update timestamp
   updateTimestamp();
+
+  // Automatically request logos for new processes
+  requestLogosForNewProcesses();
 
   // Notify listeners
   notifyStateChange(AudioStateChangeEvent::devicesUpdated());
@@ -945,6 +966,59 @@ void AudioManager::refreshDevicePointers(const String &primaryDeviceName,
                 device2Name.c_str());
   } else {
     state.selectedDevice2 = nullptr;
+  }
+}
+
+void AudioManager::requestLogosForNewProcesses() {
+  REQUIRE_INIT_VOID("AudioManager", initialized, TAG);
+
+  unsigned long currentTime = millis();
+  
+  // Check all current audio devices for missing logos
+  for (const auto &devicePair : state.currentStatus.audioDevices) {
+    const AudioLevel &device = devicePair.second;
+    const String &processName = device.processName;
+    
+    // Skip empty process names
+    if (processName.isEmpty()) {
+      continue;
+    }
+    
+    // Check debouncing - don't spam requests for the same process
+    auto it = lastLogoCheckTime.find(processName);
+    if (it != lastLogoCheckTime.end() && 
+        (currentTime - it->second) < LOGO_CHECK_DEBOUNCE_MS) {
+      continue; // Too soon since last check
+    }
+    
+    // Check if logo already exists
+    if (BrutalLogoManager::getInstance().hasLogo(processName)) {
+      continue; // Already have logo
+    }
+    
+    // Request logo for this process
+    ESP_LOGI(TAG, "Auto-requesting logo for new process: %s", processName.c_str());
+    
+    bool requested = BrutalLogoManager::getInstance().requestLogo(
+        processName,
+        [processName](bool success, uint8_t* data, size_t size, const String& error) {
+          if (success) {
+            ESP_LOGI("AudioManager", "Auto-received logo for process: %s (%zu bytes)", 
+                     processName.c_str(), size);
+            // Logo data is automatically saved by the brutal system
+            // Free the data pointer since we don't need it here
+            if (data) free(data);
+          } else {
+            ESP_LOGW("AudioManager", "Auto-request failed for process: %s - %s", 
+                     processName.c_str(), error.c_str());
+          }
+        });
+    
+    // Update debouncing timestamp regardless of success
+    lastLogoCheckTime[processName] = currentTime;
+    
+    LOG_DEBUG_IF(requested, TAG, "Auto logo request submitted for: %s", processName.c_str());
+    LOG_WARN_IF(!requested, TAG, "Auto logo request failed for: %s", processName.c_str());
   }
 }
 
