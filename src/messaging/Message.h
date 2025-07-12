@@ -79,13 +79,14 @@ struct Message {
   Message(Type t) : type(t), timestamp(0) {
     switch (t) {
     case AUDIO_STATUS:
+    case 2:
       initializeAudioData();
       break;
     case ASSET_REQUEST:
     case ASSET_RESPONSE:
       initializeAssetData();
       break;
-    case VOLUME_CHANGE:
+    // case VOLUME_CHANGE:
     case SET_VOLUME:
       initializeVolumeData();
       break;

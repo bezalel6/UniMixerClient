@@ -23,9 +23,11 @@ void setup() {
   // This must be done before any ESP_LOG calls to ensure proper filtering
 
   // Initialize application
-  CoreLoggingFilter::init();
+  // CoreLoggingFilter::init();
+
   // Comment out to actually filter out core0
   // CoreLoggingFilter::disableFilter();
+
   log_i("=== STARTING UNIMIXER CLIENT ===");
   log_i("Starting full UniMixer Client application");
 

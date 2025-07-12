@@ -9,7 +9,7 @@
 #define ui_imgset_ (NULL)
 #endif
 #ifndef CORE_DEBUG_LEVEL
-#define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_TRACE
+#define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_DEBUG
 #endif
 
 #ifndef BOARD_HAS_PSRAM
@@ -164,8 +164,8 @@
 #endif
 
 // >>> AUTO-GENERATED BUILD INFO BEGIN
-#define FIRMWARE_BUILD_NUMBER "39f93bb"
+#define FIRMWARE_BUILD_NUMBER "bf5264a"
 #define GIT_BRANCH "cursor/diagnose-messaging-system-upgrade-status-8de0"
-#define BUILD_TIMESTAMP_NUM "20250712_010423"
+#define BUILD_TIMESTAMP_NUM "20250712_045611"
 // <<< AUTO-GENERATED BUILD INFO END
 #endif
