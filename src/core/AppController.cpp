@@ -5,8 +5,7 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
-#include "../logo/LogoManager.h"
-#include "../logo/MessageBusLogoSupplier.h"
+#include "../logo/BrutalLogoManager.h"
 #include "../messaging/Message.h"
 #include "../messaging/MessagingInit.h"
 #include "BuildInfo.h"
@@ -52,10 +51,7 @@ bool init(void) {
                      "will be unavailable",
                      Hardware::SD::init());
 
-  INIT_STEP_OPTIONAL(
-      "Initializing Logo Manager", "Logo Manager initialized successfully",
-      "Logo Manager initialization failed - logo functionality will be limited",
-      Logo::LogoManager::getInstance().init());
+  INIT_STEP_CRITICAL("Initializing Brutal Logo Manager", BrutalLogoManager::getInstance().init());
 
   INIT_STEP_CRITICAL("Initializing Display Manager", Display::init());
 
@@ -111,20 +107,7 @@ bool init(void) {
            "WDT Reset: Message handlers will be registered by components...");
   esp_task_wdt_reset();
 
-  // MessageBusLogoSupplier initialization
-  INIT_STEP("Initializing MessageBusLogoSupplier", {
-    Application::LogoAssets::MessageBusLogoSupplier &messageBusSupplier =
-        Application::LogoAssets::MessageBusLogoSupplier::getInstance();
-    messageBusSupplier.setRequestTimeout(30000);
-    messageBusSupplier.setMaxConcurrentRequests(1);
-
-    if (messageBusSupplier.init()) {
-      ESP_LOGI(TAG, "MessageBusLogoSupplier initialized successfully");
-    } else {
-      ESP_LOGW(TAG, "MessageBusLogoSupplier initialization failed - automatic "
-                    "logo requests will be disabled");
-    }
-  });
+  // Brutal logo system is already initialized above - no complex setup needed
 
   // Audio system initialization
   INIT_STEP_CRITICAL("Initializing Audio System",
@@ -179,11 +162,8 @@ void deinit(void) {
   Application::Audio::AudioUI::getInstance().deinit();
   Application::Audio::AudioManager::getInstance().deinit();
 
-  // Deinitialize MessageBusLogoSupplier
-  Application::LogoAssets::MessageBusLogoSupplier::getInstance().deinit();
-
-  // Deinitialize Logo Manager
-  Logo::LogoManager::getInstance().deinit();
+  // Deinitialize Brutal Logo Manager
+  BrutalLogoManager::getInstance().deinit();
 
   // Shutdown messaging system
   Messaging::shutdownMessaging();
