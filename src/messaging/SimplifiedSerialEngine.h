@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Message.h"
+#include "UiEventHandlers.h"
 #include <Arduino.h>
 #include <BinaryProtocol.h>
 #include <esp_log.h>
@@ -50,9 +51,23 @@ static uint8_t testPayload[] = {
     0x69, 0x67, 0x69, 0x6E, 0x61, 0x74, 0x69, 0x6E, 0x67, 0x44, 0x65, 0x76,
     0x69, 0x63, 0x65, 0x49, 0x64, 0x22, 0x3A, 0x6E, 0x75, 0x6C, 0x6C, 0x7D,
     0x5D, 0x7F};
+
+// Core 1 Message Queue System - now part of SerialEngine
+struct Core1Message {
+  enum Type { VOLUME_CHANGE, STATUS_REQUEST, MUTE_TOGGLE } type;
+
+  struct VolumeChangeData {
+    char deviceName[64]; // Empty string = current device
+    int volume;
+  } volumeData;
+
+  uint32_t timestamp;
+};
+
 /**
  * SIMPLE SERIAL ENGINE
  * No transport abstraction. Just send and receive messages.
+ * Includes Core 1 message queue system for inter-core communication.
  */
 class SerialEngine {
 private:
@@ -63,11 +78,15 @@ private:
   static const size_t RX_BUFFER_SIZE = 4096;
 
   // Task configuration
-  TaskHandle_t rxTaskHandle = nullptr;
+  TaskHandle_t rxtxTaskHandle = nullptr;
   bool running = false;
 
   // Frame buffer for encoding - shared across all send operations
   uint8_t frameBuffer[4096];
+
+  // Core 1 Message Queue System
+  QueueHandle_t core1MessageQueue = nullptr;
+  static const int CORE1_QUEUE_SIZE = 10;
 
 public:
   // Binary protocol for framing
@@ -143,35 +162,116 @@ public:
     return true;
   }
 
-  // Start the receive task (call this after system is fully initialized)
+  // Start the consolidated RXTX task (call this after system is fully
+  // initialized)
   bool startReceiveTask() {
-    if (rxTaskHandle != nullptr) {
-      ESP_LOGW("SerialEngine", "Receive task already started");
+    if (rxtxTaskHandle != nullptr) {
+      ESP_LOGW("SerialEngine", "RXTX task already started");
       return true;
     }
 
-    ESP_LOGI("SerialEngine", "Starting receive task on Core 1");
+    ESP_LOGI("SerialEngine", "Starting consolidated RXTX task on Core 1");
 
-    BaseType_t result =
-        xTaskCreatePinnedToCore(rxTaskWrapper, "SerialRx",
-                                8192 * 2, // Stack size - increased from 4KB to
-                                          // 8KB for ArduinoJson operations
-                                this,
-                                5, // Priority
-                                &rxTaskHandle,
-                                1 // Core 1
-        );
+    // Start consolidated RXTX Task
+    BaseType_t rxtxResult = xTaskCreatePinnedToCore(
+        rxtxTaskWrapper, "SerialRxTx",
+        12288, // 12KB for RX/TX processing (increased from 8KB)
+        this,
+        5, // Priority
+        &rxtxTaskHandle,
+        1 // Core 1
+    );
 
-    if (result != pdPASS) {
-      ESP_LOGE("SerialEngine", "Failed to create receive task: %d", result);
+    if (rxtxResult != pdPASS) {
+      ESP_LOGE("SerialEngine", "Failed to create RXTX task: %d", rxtxResult);
       return false;
     }
 
-    ESP_LOGI("SerialEngine", "Receive task started successfully");
+    ESP_LOGI("SerialEngine", "RXTX task started successfully on Core 1");
     return true;
   }
 
-  // Send a message
+  // Core 1 Message Queue Management
+  bool initCore1MessageQueue() {
+    if (core1MessageQueue == nullptr) {
+      core1MessageQueue = xQueueCreate(CORE1_QUEUE_SIZE, sizeof(Core1Message));
+      if (core1MessageQueue == nullptr) {
+        ESP_LOGE("SerialEngine", "Failed to create Core 1 message queue");
+        return false;
+      }
+      ESP_LOGI("SerialEngine", "Core 1 message queue initialized");
+    }
+    return true;
+  }
+
+  bool enqueueVolumeChangeForCore1(int volume, const char *deviceName = "") {
+    if (!initCore1MessageQueue()) {
+      return false;
+    }
+
+    Core1Message msg;
+    msg.type = Core1Message::VOLUME_CHANGE;
+    msg.timestamp = millis();
+    msg.volumeData.volume = volume;
+    strncpy(msg.volumeData.deviceName, deviceName,
+            sizeof(msg.volumeData.deviceName) - 1);
+    msg.volumeData.deviceName[sizeof(msg.volumeData.deviceName) - 1] = '\0';
+
+    BaseType_t result = xQueueSend(core1MessageQueue, &msg, 0); // Non-blocking
+    if (result == pdTRUE) {
+      ESP_LOGI("SerialEngine",
+               "Enqueued volume change for Core 1: device='%s', volume=%d",
+               deviceName, volume);
+      return true;
+    } else {
+      ESP_LOGW("SerialEngine", "Failed to enqueue volume change - queue full");
+      return false;
+    }
+  }
+
+  bool processCore1MessageQueue() {
+    if (core1MessageQueue == nullptr) {
+      return false;
+    }
+
+    bool processedMessages = false;
+    Core1Message msg;
+
+    while (xQueueReceive(core1MessageQueue, &msg, 0) == pdTRUE) {
+      processedMessages = true;
+      ESP_LOGI("SerialEngine", "Core 1 processing message type %d (Core %d)",
+               msg.type, xPortGetCoreID());
+
+      switch (msg.type) {
+      case Core1Message::VOLUME_CHANGE: {
+        // Create and send volume change message via proper messaging system
+        auto volumeMsg = Messaging::Message::createVolumeChange(
+            msg.volumeData.deviceName, msg.volumeData.volume, "");
+        Messaging::sendMessage(volumeMsg);
+
+        ESP_LOGI("SerialEngine",
+                 "Core 1 sent volume change: device='%s', volume=%d",
+                 msg.volumeData.deviceName, msg.volumeData.volume);
+        break;
+      }
+      default:
+        ESP_LOGW("SerialEngine", "Unknown Core 1 message type: %d", msg.type);
+        break;
+      }
+    }
+
+    return processedMessages;
+  }
+
+  void cleanupCore1MessageQueue() {
+    if (core1MessageQueue) {
+      vQueueDelete(core1MessageQueue);
+      core1MessageQueue = nullptr;
+      ESP_LOGI("SerialEngine", "Core 1 message queue cleaned up");
+    }
+  }
+
+  // Send a message (now delegated to TX task for proper Core 1 processing)
   void send(const Message &msg) {
     if (!running) {
       ESP_LOGW("SerialEngine", "Serial engine not running");
@@ -180,24 +280,20 @@ public:
 
     // DEBUG: Check which core is calling send()
     int coreId = xPortGetCoreID();
-    ESP_LOGI("SerialEngine", "=== SENDING MESSAGE FROM CORE %d ===", coreId);
-
-    if (coreId == 1) {
-      ESP_LOGW("SerialEngine", "WARNING: Send called from Core 1 (receive "
-                               "task) - potential stack issue!");
-    }
+    ESP_LOGI("SerialEngine",
+             "=== DELEGATING MESSAGE FROM CORE %d TO TX TASK ===", coreId);
 
     ESP_LOGI("SerialEngine", "Type: %s", msg.type.c_str());
     ESP_LOGI("SerialEngine", "Device ID: %.50s", msg.deviceId.c_str());
     ESP_LOGI("SerialEngine", "Request ID: %.50s", msg.requestId.c_str());
     ESP_LOGI("SerialEngine", "Timestamp: %u", msg.timestamp);
-    ESP_LOGI("SerialEngine", "Converting to JSON...");
 
+    // Convert to JSON here (Core 0 context) and delegate the actual sending to
+    // TX task
     String json = msg.toJson();
 
     ESP_LOGI("SerialEngine", "JSON Length: %d", json.length());
-    ESP_LOGI("SerialEngine", "JSON: %.200s", json.c_str());
-    ESP_LOGI("SerialEngine", "========================");
+    ESP_LOGI("SerialEngine", "Delegating to TX task for transmission");
 
     sendRaw(json);
     stats.messagesSent++;
@@ -253,26 +349,39 @@ public:
   // Stop the engine
   void stop() {
     running = false;
-    if (rxTaskHandle) {
-      vTaskDelete(rxTaskHandle);
-      rxTaskHandle = nullptr;
+
+    if (rxtxTaskHandle) {
+      vTaskDelete(rxtxTaskHandle);
+      rxtxTaskHandle = nullptr;
     }
+
+    // Cleanup Core 1 message queue
+    cleanupCore1MessageQueue();
+
+    ESP_LOGI("SerialEngine", "RXTX task stopped");
   }
 
 private:
   // Task wrapper
-  static void rxTaskWrapper(void *param) {
-    static_cast<SerialEngine *>(param)->rxTask();
+  static void rxtxTaskWrapper(void *param) {
+    static_cast<SerialEngine *>(param)->rxtxTask();
   }
 
-  // Receive task
-  void rxTask() {
+  // Consolidated RXTX task - handles both receiving and transmitting
+  void rxtxTask() {
     uint8_t data[256];
 
     ESP_LOGI("SerialEngine",
-             "=== RX TASK STARTED ON CORE %d ===", xPortGetCoreID());
+             "=== RXTX TASK STARTED ON CORE %d ===", xPortGetCoreID());
 
+    // Monitor stack usage for debugging
+    UBaseType_t initialStackSize = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI("SerialEngine", "Initial stack high water mark: %d bytes",
+             initialStackSize * sizeof(StackType_t));
+
+    uint32_t stackCheckCounter = 0;
     while (running) {
+      // Handle incoming messages (RX)
       if (Serial.available()) {
         int len = 0;
         while (Serial.available() && len < sizeof(data)) {
@@ -342,18 +451,33 @@ private:
         }
       }
 
-      // Small delay to prevent tight loop
-      vTaskDelay(pdMS_TO_TICKS(10));
+      // Handle outgoing messages (TX)
+      // Check for Core 1 messages with a reasonable timeout
+      bool hasMessages = processCore1MessageQueue();
+
+      if (!hasMessages) {
+        // No messages processed, short delay to prevent tight loop
+        vTaskDelay(pdMS_TO_TICKS(10)); // 10ms sleep when no work
+      }
+      // If messages were processed, immediately check for more (no delay)
+
+      // Periodic stack monitoring (every 1000 iterations)
+      if (++stackCheckCounter >= 1000) {
+        stackCheckCounter = 0;
+        UBaseType_t currentStackSize = uxTaskGetStackHighWaterMark(NULL);
+        ESP_LOGI("SerialEngine", "Stack high water mark: %d bytes (was %d)",
+                 currentStackSize * sizeof(StackType_t),
+                 initialStackSize * sizeof(StackType_t));
+      }
     }
 
-    ESP_LOGI("SerialEngine", "=== RX TASK ENDED ===");
-    ESP_LOGI("SerialEngine", "Final stack high water mark: %d bytes",
+    ESP_LOGI("SerialEngine", "=== RXTX TASK ENDED ===");
+    ESP_LOGI("SerialEngine", "RXTX Task final stack high water mark: %d bytes",
              uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
   }
 
-  // Process incoming data
+  // Process incoming data - optimized to reduce stack usage
   void processIncomingData(const uint8_t *data, size_t length) {
-    ESP_LOGI("SerialEngine", "=== PROCESSING INCOMING DATA ===");
     ESP_LOGI("SerialEngine", "Processing %zu bytes through binary framer",
              length);
 
@@ -365,39 +489,29 @@ private:
 
     for (const String &jsonStr : messages) {
       if (!jsonStr.isEmpty()) {
-        ESP_LOGI("SerialEngine", "=== RECEIVED RAW JSON ===");
-        ESP_LOGI("SerialEngine", "JSON: %s", jsonStr.c_str());
-
         // LIGHTWEIGHT parsing to avoid stack overflow - just check if it's
         // valid JSON
         bool isValidJson = jsonStr.startsWith("{") && jsonStr.endsWith("}") &&
                            jsonStr.length() > 10;
 
-        ESP_LOGI("SerialEngine", "=== JSON VALIDATION DEBUG ===");
-        ESP_LOGI("SerialEngine", "JSON length: %d", jsonStr.length());
-        ESP_LOGI("SerialEngine", "Starts with {: %s",
-                 jsonStr.startsWith("{") ? "true" : "false");
-        ESP_LOGI("SerialEngine", "Ends with }: %s",
-                 jsonStr.endsWith("}") ? "true" : "false");
-        ESP_LOGI("SerialEngine", "First 50 chars: %.50s", jsonStr.c_str());
-        ESP_LOGI("SerialEngine", "Last 50 chars: %s",
-                 jsonStr.substring(jsonStr.length() - 50).c_str());
+        ESP_LOGI("SerialEngine", "Received JSON message, length: %d, valid: %s",
+                 jsonStr.length(), isValidJson ? "true" : "false");
 
         if (isValidJson) {
           stats.messagesReceived++;
+
+          // Parse and route the message - avoid creating additional string
+          // copies
           auto parsed = Messaging::Message::fromJson(jsonStr);
-          ESP_LOGI("SerialEngine", "=== PARSED MESSAGE DEBUG ===");
-          ESP_LOGI("SerialEngine", "Message type: %s", parsed.type.c_str());
-          ESP_LOGI("SerialEngine", "Device ID: %s", parsed.deviceId.c_str());
-          ESP_LOGI("SerialEngine", "Full message: %s",
-                   parsed.toString().c_str());
+          ESP_LOGI("SerialEngine", "Parsed message type: %s, device: %.20s",
+                   parsed.type.c_str(), parsed.deviceId.c_str());
 
           // Route valid messages to handlers
           Messaging::MessageRouter::getInstance().route(parsed);
         } else {
           stats.parseErrors++;
-          ESP_LOGW("SerialEngine", "=== INVALID JSON STRUCTURE ===");
-          ESP_LOGW("SerialEngine", "JSON does not look valid: %.100s",
+          ESP_LOGW("SerialEngine",
+                   "Invalid JSON structure, first 50 chars: %.50s",
                    jsonStr.c_str());
         }
       }
