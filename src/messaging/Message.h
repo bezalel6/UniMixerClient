@@ -38,16 +38,33 @@ struct Message {
   String requestId;
   uint32_t timestamp = 0;
 
-  // Simple payload data - trivial structs for union compatibility
-  struct AudioData {
+  // Simple payload data - NEW FORMAT for complex audio status
+  struct SessionData {
+    int processId;
     char processName[64];
-    int volume;
+    char displayName[64];
+    float volume;
     bool isMuted;
+    char state[32];
+  };
+
+  struct DefaultDeviceData {
+    char friendlyName[128];
+    float volume;
+    bool isMuted;
+    char dataFlow[16];
+    char deviceRole[16];
+  };
+
+  struct AudioData {
+    SessionData sessions[16];  // Max 16 sessions
+    int sessionCount;
+    DefaultDeviceData defaultDevice;
     bool hasDefaultDevice;
-    char defaultDeviceName[64];
-    int defaultVolume;
-    bool defaultIsMuted;
     int activeSessionCount;
+    char reason[32];
+    char originatingRequestId[64];
+    char originatingDeviceId[64];
   };
 
   struct AssetData {
@@ -96,7 +113,12 @@ struct Message {
   }
 
   // Helper functions to initialize union members
-  void initializeAudioData() { memset(&data.audio, 0, sizeof(AudioData)); }
+  void initializeAudioData() { 
+    memset(&data.audio, 0, sizeof(AudioData)); 
+    data.audio.sessionCount = 0;
+    data.audio.hasDefaultDevice = false;
+    data.audio.activeSessionCount = 0;
+  }
 
   void initializeAssetData() { memset(&data.asset, 0, sizeof(AssetData)); }
 

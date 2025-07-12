@@ -75,23 +75,52 @@ String Message::toJson() const {
     JsonDocument doc;
 
     // Core fields
-    doc["messageType"] = typeToString();
+    doc["messageType"] = static_cast<int>(type);
     doc["deviceId"] = deviceId;
     doc["requestId"] = requestId;
     doc["timestamp"] = timestamp;
 
     // Type-specific data
     switch (type) {
-        case AUDIO_STATUS:
-            doc["processName"] = data.audio.processName;
-            doc["volume"] = data.audio.volume;
-            doc["isMuted"] = data.audio.isMuted;
-            doc["hasDefaultDevice"] = data.audio.hasDefaultDevice;
-            doc["defaultDeviceName"] = data.audio.defaultDeviceName;
-            doc["defaultVolume"] = data.audio.defaultVolume;
-            doc["defaultIsMuted"] = data.audio.defaultIsMuted;
+        case AUDIO_STATUS: {
             doc["activeSessionCount"] = data.audio.activeSessionCount;
+            
+            // Sessions array
+            JsonArray sessions = doc["sessions"].to<JsonArray>();
+            for (int i = 0; i < data.audio.sessionCount && i < 16; i++) {
+                JsonObject session = sessions.add<JsonObject>();
+                session["processId"] = data.audio.sessions[i].processId;
+                session["processName"] = data.audio.sessions[i].processName;
+                session["displayName"] = data.audio.sessions[i].displayName;
+                session["volume"] = data.audio.sessions[i].volume;
+                session["isMuted"] = data.audio.sessions[i].isMuted;
+                session["state"] = data.audio.sessions[i].state;
+            }
+            
+            // Default device
+            if (data.audio.hasDefaultDevice) {
+                JsonObject defaultDevice = doc["defaultDevice"].to<JsonObject>();
+                defaultDevice["friendlyName"] = data.audio.defaultDevice.friendlyName;
+                defaultDevice["volume"] = data.audio.defaultDevice.volume;
+                defaultDevice["isMuted"] = data.audio.defaultDevice.isMuted;
+                defaultDevice["dataFlow"] = data.audio.defaultDevice.dataFlow;
+                defaultDevice["deviceRole"] = data.audio.defaultDevice.deviceRole;
+            }
+            
+            // Additional fields
+            doc["reason"] = data.audio.reason;
+            if (strlen(data.audio.originatingRequestId) > 0) {
+                doc["originatingRequestId"] = data.audio.originatingRequestId;
+            } else {
+                doc["originatingRequestId"] = nullptr;
+            }
+            if (strlen(data.audio.originatingDeviceId) > 0) {
+                doc["originatingDeviceId"] = data.audio.originatingDeviceId;
+            } else {
+                doc["originatingDeviceId"] = nullptr;
+            }
             break;
+        }
 
         case ASSET_REQUEST:
             doc["processName"] = data.asset.processName;
@@ -140,7 +169,7 @@ Message Message::fromJson(const String& json) {
     }
 
     // Parse core fields
-    msg.type = stringToType(doc["messageType"] | "");
+    msg.type = static_cast<Type>(doc["messageType"] | 0);
     msg.deviceId = doc["deviceId"] | "";
     msg.requestId = doc["requestId"] | "";
     msg.timestamp = doc["timestamp"] | millis();
@@ -148,14 +177,41 @@ Message Message::fromJson(const String& json) {
     // Parse type-specific data
     switch (msg.type) {
         case AUDIO_STATUS: {
-            strncpy(msg.data.audio.processName, doc["processName"] | "", sizeof(msg.data.audio.processName) - 1);
-            msg.data.audio.volume = doc["volume"] | 0;
-            msg.data.audio.isMuted = doc["isMuted"] | false;
-            msg.data.audio.hasDefaultDevice = doc["hasDefaultDevice"] | false;
-            strncpy(msg.data.audio.defaultDeviceName, doc["defaultDeviceName"] | "", sizeof(msg.data.audio.defaultDeviceName) - 1);
-            msg.data.audio.defaultVolume = doc["defaultVolume"] | 0;
-            msg.data.audio.defaultIsMuted = doc["defaultIsMuted"] | false;
             msg.data.audio.activeSessionCount = doc["activeSessionCount"] | 0;
+            
+            // Parse sessions array
+            JsonArray sessions = doc["sessions"];
+            msg.data.audio.sessionCount = 0;
+            if (sessions) {
+                for (int i = 0; i < sessions.size() && i < 16; i++) {
+                    JsonObject session = sessions[i];
+                    msg.data.audio.sessions[i].processId = session["processId"] | 0;
+                    strncpy(msg.data.audio.sessions[i].processName, session["processName"] | "", sizeof(msg.data.audio.sessions[i].processName) - 1);
+                    strncpy(msg.data.audio.sessions[i].displayName, session["displayName"] | "", sizeof(msg.data.audio.sessions[i].displayName) - 1);
+                    msg.data.audio.sessions[i].volume = session["volume"] | 0.0f;
+                    msg.data.audio.sessions[i].isMuted = session["isMuted"] | false;
+                    strncpy(msg.data.audio.sessions[i].state, session["state"] | "", sizeof(msg.data.audio.sessions[i].state) - 1);
+                    msg.data.audio.sessionCount++;
+                }
+            }
+            
+            // Parse default device
+            JsonObject defaultDevice = doc["defaultDevice"];
+            if (defaultDevice) {
+                msg.data.audio.hasDefaultDevice = true;
+                strncpy(msg.data.audio.defaultDevice.friendlyName, defaultDevice["friendlyName"] | "", sizeof(msg.data.audio.defaultDevice.friendlyName) - 1);
+                msg.data.audio.defaultDevice.volume = defaultDevice["volume"] | 0.0f;
+                msg.data.audio.defaultDevice.isMuted = defaultDevice["isMuted"] | false;
+                strncpy(msg.data.audio.defaultDevice.dataFlow, defaultDevice["dataFlow"] | "", sizeof(msg.data.audio.defaultDevice.dataFlow) - 1);
+                strncpy(msg.data.audio.defaultDevice.deviceRole, defaultDevice["deviceRole"] | "", sizeof(msg.data.audio.defaultDevice.deviceRole) - 1);
+            } else {
+                msg.data.audio.hasDefaultDevice = false;
+            }
+            
+            // Parse additional fields
+            strncpy(msg.data.audio.reason, doc["reason"] | "", sizeof(msg.data.audio.reason) - 1);
+            strncpy(msg.data.audio.originatingRequestId, doc["originatingRequestId"] | "", sizeof(msg.data.audio.originatingRequestId) - 1);
+            strncpy(msg.data.audio.originatingDeviceId, doc["originatingDeviceId"] | "", sizeof(msg.data.audio.originatingDeviceId) - 1);
             break;
         }
 

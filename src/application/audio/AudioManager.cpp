@@ -29,43 +29,48 @@ bool AudioManager::init() {
     // Subscribe to audio status updates using BRUTAL messaging
     Messaging::subscribe(Messaging::Message::AUDIO_STATUS,
                         [this](const Messaging::Message& msg) {
-                            ESP_LOGD(TAG, "Received audio status update");
+                            ESP_LOGI(TAG, "Received audio status update");
 
-                            // Direct access to audio data - no unpacking!
+                            // Access the new audio data structure
                             const auto& audio = msg.data.audio;
 
-                            ESP_LOGD(TAG, "Origin: %s", msg.deviceId.c_str());
-
-                            if (audio.hasDefaultDevice) {
-                                ESP_LOGI(TAG, "Received default device: %s, volume: %d",
-                                         audio.defaultDeviceName, audio.defaultVolume);
-                            }
+                            ESP_LOGI(TAG, "Origin: %s, Sessions: %d, Reason: %s", 
+                                     msg.deviceId.c_str(), audio.sessionCount, audio.reason);
 
                             // Create AudioStatus from message data
                             AudioStatus status;
+                            status.timestamp = msg.timestamp;
 
-                            // Add the current process as a device
-                            if (strlen(audio.processName) > 0) {
+                            // Process sessions array
+                            for (int i = 0; i < audio.sessionCount && i < 16; i++) {
+                                const auto& session = audio.sessions[i];
+                                
                                 AudioLevel level;
-                                level.processName = audio.processName;
-                                level.friendlyName = audio.processName;
-                                level.volume = audio.volume;
-                                level.isMuted = audio.isMuted;
+                                level.processName = session.processName;
+                                level.friendlyName = strlen(session.displayName) > 0 ? session.displayName : session.processName;
+                                level.volume = static_cast<int>(session.volume * 100); // Convert from 0-1 to 0-100
+                                level.isMuted = session.isMuted;
+                                level.state = session.state;
                                 level.lastUpdate = msg.timestamp;
+                                
                                 status.addOrUpdateDevice(level);
+                                
+                                ESP_LOGD(TAG, "Added session: %s (ID: %d), volume: %d, muted: %s", 
+                                         level.processName.c_str(), session.processId, level.volume, level.isMuted ? "yes" : "no");
                             }
 
                             // Set default device info
                             if (audio.hasDefaultDevice) {
-                                status.defaultDevice.friendlyName = audio.defaultDeviceName;
-                                status.defaultDevice.volume = audio.defaultVolume;
-                                status.defaultDevice.isMuted = audio.defaultIsMuted;
+                                status.defaultDevice.friendlyName = audio.defaultDevice.friendlyName;
+                                status.defaultDevice.volume = static_cast<int>(audio.defaultDevice.volume * 100); // Convert from 0-1 to 0-100
+                                status.defaultDevice.isMuted = audio.defaultDevice.isMuted;
+                                status.defaultDevice.state = String(audio.defaultDevice.dataFlow) + "/" + String(audio.defaultDevice.deviceRole);
+                                status.defaultDevice.lastUpdate = msg.timestamp;
                                 status.hasDefaultDevice = true;
+                                
+                                ESP_LOGI(TAG, "Default device: %s, volume: %d, muted: %s", 
+                                         status.defaultDevice.friendlyName.c_str(), status.defaultDevice.volume, status.defaultDevice.isMuted ? "yes" : "no");
                             }
-
-                            status.timestamp = msg.timestamp;
-
-                            // Check and request logos - skip for now since old function used AudioStatusData
 
                             // Process the audio status
                             this->onAudioStatusReceived(status);
@@ -447,34 +452,65 @@ void AudioManager::subscribeToStateChanges(StateChangeCallback callback) {
 // === EXTERNAL COMMUNICATION ===
 
 void AudioManager::publishStatusUpdate() {
-    // Create audio status message - BRUTAL and direct!
+    // Create audio status message using NEW format
     Messaging::Message::AudioData audio;
-
-    // Get current selected device
-    AudioLevel* currentDevice = state.getCurrentSelectedDevice();
-    if (currentDevice) {
-        strncpy(audio.processName, currentDevice->processName.c_str(),
-                sizeof(audio.processName) - 1);
-        audio.volume = currentDevice->volume;
-        audio.isMuted = currentDevice->isMuted;
+    
+    // Initialize structure
+    audio.sessionCount = 0;
+    audio.hasDefaultDevice = false;
+    audio.activeSessionCount = state.currentStatus.getDeviceCount();
+    
+    // Populate sessions array from our current devices
+    int sessionIndex = 0;
+    for (const auto& devicePair : state.currentStatus.audioDevices) {
+        if (sessionIndex >= 16) break; // Max sessions limit
+        
+        const auto& device = devicePair.second;
+        auto& session = audio.sessions[sessionIndex];
+        
+        session.processId = 0; // We don't track process IDs locally
+        strncpy(session.processName, device.processName.c_str(), sizeof(session.processName) - 1);
+        strncpy(session.displayName, device.friendlyName.c_str(), sizeof(session.displayName) - 1);
+        session.volume = device.volume / 100.0f; // Convert from 0-100 to 0-1
+        session.isMuted = device.isMuted;
+        strncpy(session.state, device.state.c_str(), sizeof(session.state) - 1);
+        
+        sessionIndex++;
     }
-
+    audio.sessionCount = sessionIndex;
+    
     // Set default device info
     if (state.currentStatus.hasDefaultDevice) {
         audio.hasDefaultDevice = true;
-        strncpy(audio.defaultDeviceName, state.currentStatus.defaultDevice.friendlyName.c_str(),
-                sizeof(audio.defaultDeviceName) - 1);
-        audio.defaultVolume = state.currentStatus.defaultDevice.volume;
-        audio.defaultIsMuted = state.currentStatus.defaultDevice.isMuted;
+        strncpy(audio.defaultDevice.friendlyName, state.currentStatus.defaultDevice.friendlyName.c_str(), sizeof(audio.defaultDevice.friendlyName) - 1);
+        audio.defaultDevice.volume = state.currentStatus.defaultDevice.volume / 100.0f; // Convert from 0-100 to 0-1
+        audio.defaultDevice.isMuted = state.currentStatus.defaultDevice.isMuted;
+        
+        // Parse state back to dataFlow/deviceRole if possible
+        String deviceState = state.currentStatus.defaultDevice.state;
+        int slashPos = deviceState.indexOf('/');
+        if (slashPos >= 0) {
+            String dataFlow = deviceState.substring(0, slashPos);
+            String deviceRole = deviceState.substring(slashPos + 1);
+            strncpy(audio.defaultDevice.dataFlow, dataFlow.c_str(), sizeof(audio.defaultDevice.dataFlow) - 1);
+            strncpy(audio.defaultDevice.deviceRole, deviceRole.c_str(), sizeof(audio.defaultDevice.deviceRole) - 1);
+        } else {
+            strncpy(audio.defaultDevice.dataFlow, "Render", sizeof(audio.defaultDevice.dataFlow) - 1);
+            strncpy(audio.defaultDevice.deviceRole, "Console", sizeof(audio.defaultDevice.deviceRole) - 1);
+        }
     }
-
-    audio.activeSessionCount = state.currentStatus.getDeviceCount();
+    
+    // Set additional fields
+    strncpy(audio.reason, "UpdateResponse", sizeof(audio.reason) - 1);
+    audio.originatingRequestId[0] = '\0'; // Empty
+    audio.originatingDeviceId[0] = '\0';  // Empty
 
     // Create and send the message
     auto msg = Messaging::Message::createAudioStatus(audio, "");
     Messaging::sendMessage(msg);
 
-    ESP_LOGI(TAG, "Published audio status update - %d devices", audio.activeSessionCount);
+    ESP_LOGI(TAG, "Published audio status update - %d sessions, default device: %s", 
+             audio.sessionCount, audio.hasDefaultDevice ? "yes" : "no");
 }
 
 void AudioManager::publishStatusRequest(bool delayed) {
