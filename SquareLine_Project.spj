@@ -1221,8 +1221,7 @@
                 "InheritedType": 11
               }
             ],
-            "saved_objtypeKey": "TABVIEW",
-            "tree_closed": true
+            "saved_objtypeKey": "TABVIEW"
           },
           {
             "guid": "GUID60171047-856601S177004159",
@@ -5062,7 +5061,7 @@
     "description": "",
     "board": "CMake/Eclipse/VScode with SDL for development on PC",
     "board_version": "v2.0.0",
-    "editor_version": "1.5.2",
+    "editor_version": "1.5.3",
     "image": "",
     "export_temp_image": false,
     "force_export_images": false,

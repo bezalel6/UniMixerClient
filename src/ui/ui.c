@@ -26,8 +26,6 @@ lv_anim_t * slideIntoFrame_Animation(lv_obj_t * TargetObject, int delay)
     lv_anim_t * out_anim;
     ui_anim_user_data_t * PropertyAnimation_0_user_data = lv_malloc(sizeof(ui_anim_user_data_t));
     PropertyAnimation_0_user_data->target = TargetObject;
-    PropertyAnimation_0_user_data->imgset = (lv_img_dsc_t **)ui_imgset_;
-    PropertyAnimation_0_user_data->imgset_size = sizeof(ui_imgset_) / (sizeof(lv_image_dsc_t *));
     PropertyAnimation_0_user_data->val = -1;
     lv_anim_t PropertyAnimation_0;
     lv_anim_init(&PropertyAnimation_0);
@@ -53,8 +51,6 @@ lv_anim_t * slideOutOfFrame_Animation(lv_obj_t * TargetObject, int delay)
     lv_anim_t * out_anim;
     ui_anim_user_data_t * PropertyAnimation_0_user_data = lv_malloc(sizeof(ui_anim_user_data_t));
     PropertyAnimation_0_user_data->target = TargetObject;
-    PropertyAnimation_0_user_data->imgset = (lv_img_dsc_t **)ui_imgset_;
-    PropertyAnimation_0_user_data->imgset_size = sizeof(ui_imgset_) / (sizeof(lv_image_dsc_t *));
     PropertyAnimation_0_user_data->val = -1;
     lv_anim_t PropertyAnimation_0;
     lv_anim_init(&PropertyAnimation_0);

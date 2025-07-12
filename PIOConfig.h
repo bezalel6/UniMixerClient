@@ -164,8 +164,8 @@
 #endif
 
 // >>> AUTO-GENERATED BUILD INFO BEGIN
-#define FIRMWARE_BUILD_NUMBER "c6f9fb2"
+#define FIRMWARE_BUILD_NUMBER "c890d8b"
 #define GIT_BRANCH "cursor/streamline-logo-asset-management-a93c"
-#define BUILD_TIMESTAMP_NUM "20250712_154700"
+#define BUILD_TIMESTAMP_NUM "20250712_193542"
 // <<< AUTO-GENERATED BUILD INFO END
 #endif

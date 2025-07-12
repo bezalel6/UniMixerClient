@@ -1,7 +1,7 @@
 #include "AudioUI.h"
+#include "../../logo/SimpleLogoManager.h"
 #include "UiEventHandlers.h"
 #include "ui/screens/ui_screenMain.h"
-#include "../../logo/SimpleLogoManager.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 
@@ -478,6 +478,9 @@ void AudioUI::updateSingleTabLogo() {
   // Only update if we're on the Single tab
   if (!state.isInSingleTab()) {
     lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+    // Ensure transparency is maintained when hidden
+    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
     return;
   }
 
@@ -485,6 +488,9 @@ void AudioUI::updateSingleTabLogo() {
   if (!state.selectedSingleDevice) {
     ESP_LOGD(TAG, "No device selected on Single tab - hiding logo");
     lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+    // Ensure transparency is maintained when hidden
+    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
     return;
   }
 
@@ -496,19 +502,36 @@ void AudioUI::updateSingleTabLogo() {
   if (SimpleLogoManager::getInstance().hasLogo(processName)) {
     String logoPath = SimpleLogoManager::getInstance().getLVGLPath(processName);
 
-    ESP_LOGI(TAG, "Found logo for %s at: %s", processName.c_str(),
+    ESP_LOGW(TAG, "Found logo for %s at: %s", processName.c_str(),
              logoPath.c_str());
 
     // Set the logo image source
     lv_img_set_src(ui_img, logoPath.c_str());
 
+    // Configure image display properties
+    lv_obj_set_size(ui_img, LV_SIZE_CONTENT,
+                    LV_SIZE_CONTENT); // Auto size to content
+
+    // Enable auto-scaling if the image is too large
+    lv_image_set_scale(ui_img, 256); // Scale to fit (256 = 100% scale)
+
+    // Remove white background to enable transparency
+    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // Make sure the image object itself is properly sized and positioned
+    lv_obj_center(ui_img); // Center the image in its parent
+
     // Show the image
     lv_obj_remove_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
 
-    ESP_LOGI(TAG, "Logo displayed for %s", processName.c_str());
+    ESP_LOGI(TAG, "Logo configured and displayed for %s", processName.c_str());
   } else {
     ESP_LOGD(TAG, "No logo found for %s - hiding image", processName.c_str());
     lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+    // Ensure transparency is maintained when hidden
+    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
   }
 }
 

@@ -67,7 +67,6 @@ extern lv_obj_t * ui_objMQTTIndicator;
 extern lv_obj_t * ui_lblMQTTValue;
 extern lv_obj_t * ui_lblFPS;
 extern lv_obj_t * ui_img;
-extern lv_obj_t * ui_img1;
 // CUSTOM VARIABLES
 extern lv_obj_t * ui_lblPrimaryVolumeSlider;
 extern lv_obj_t * ui_primaryVolumeSlider;
