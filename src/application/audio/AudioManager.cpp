@@ -967,32 +967,23 @@ void AudioManager::checkSingleProcessLogo(const char *processName) {
     return;
   }
 
-  // Request logo from server via MessageBusLogoSupplier
-  auto &logoSupplier =
-      Application::LogoAssets::MessageBusLogoSupplier::getInstance();
-  if (!logoSupplier.isReady()) {
-    ESP_LOGD(TAG, "Logo supplier not ready, cannot request logo for: %s",
-             processName);
-    return;
-  }
-
   ESP_LOGI(TAG, "Requesting logo for process: %s", processName);
 
-  // Request logo asynchronously
-  bool requested = logoSupplier.requestLogo(
+  // Request logo using BRUTAL system
+  bool requested = BrutalLogoManager::getInstance().requestLogo(
       processName,
-      [processName](const Application::LogoAssets::AssetResponse &response) {
-        LOG_INFO_IF(response.success, TAG,
-                    "Successfully received logo for process: %s", processName);
-        LOG_WARN_IF(!response.success, TAG,
-                    "Failed to receive logo for process: %s - %s", processName,
-                    response.errorMessage.c_str());
+      [processName](bool success, uint8_t* data, size_t size, const String& error) {
+        if (success) {
+          ESP_LOGI(TAG, "Successfully received logo for process: %s (%zu bytes)", processName, size);
+          // Logo data is automatically handled by the brutal system
+          // The data pointer will be freed automatically
+        } else {
+          ESP_LOGW(TAG, "Failed to receive logo for process: %s - %s", processName, error.c_str());
+        }
       });
 
-  LOG_DEBUG_IF(requested, TAG, "Logo request submitted for process: %s",
-               processName);
-  LOG_WARN_IF(!requested, TAG, "Failed to submit logo request for process: %s",
-              processName);
+  LOG_DEBUG_IF(requested, TAG, "Logo request submitted for process: %s", processName);
+  LOG_WARN_IF(!requested, TAG, "Failed to submit logo request for process: %s", processName);
 }
 
 } // namespace Audio
