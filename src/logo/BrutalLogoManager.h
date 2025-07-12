@@ -3,8 +3,8 @@
 #include <Arduino.h>
 #include <functional>
 #include <unordered_map>
-#include <SD.h>
 #include "../messaging/Message.h"
+#include "../hardware/SDManager.h"
 #include "LogoStorage.h"
 
 /**
@@ -97,21 +97,23 @@ public:
 
         // Check if logo already exists locally
         if (hasLogo(processName)) {
-            // Load existing logo
+            // Load existing logo using SD manager
             String fileName = Logo::LogoStorage::getInstance().getProcessMapping(processName);
             if (!fileName.isEmpty()) {
                 String filePath = Logo::LogoStorage::getInstance().getFilePath(fileName);
-                File file = SD.open(filePath, FILE_READ);
-                if (file) {
-                    size_t size = file.size();
-                    uint8_t* data = (uint8_t*)malloc(size);
-                    if (data && file.read(data, size) == size) {
+                if (Hardware::SD::isMounted()) {
+                    File file = Hardware::SD::open(filePath, FILE_READ);
+                    if (file) {
+                        size_t size = file.size();
+                        uint8_t* data = (uint8_t*)malloc(size);
+                        if (data && file.read(data, size) == size) {
+                            file.close();
+                            if (callback) callback(true, data, size, "");
+                            return true;
+                        }
+                        if (data) free(data);
                         file.close();
-                        if (callback) callback(true, data, size, "");
-                        return true;
                     }
-                    if (data) free(data);
-                    file.close();
                 }
             }
         }

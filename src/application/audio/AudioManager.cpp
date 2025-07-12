@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERROR#include "AudioManager.h"
+#include "AudioManager.h"
 #include "../../hardware/DeviceManager.h"
 #include "../../logo/LogoManager.h"
 #include "../../logo/BrutalLogoManager.h"
@@ -969,8 +969,9 @@ void AudioManager::checkSingleProcessLogo(const char *processName) {
       [processName](bool success, uint8_t* data, size_t size, const String& error) {
         if (success) {
           ESP_LOGI(TAG, "Successfully received logo for process: %s (%zu bytes)", processName, size);
-          // Logo data is automatically handled by the brutal system
-          // The data pointer will be freed automatically
+          // Logo data is automatically saved by the brutal system
+          // Free the data pointer since we don't need it here
+          if (data) free(data);
         } else {
           ESP_LOGW(TAG, "Failed to receive logo for process: %s - %s", processName, error.c_str());
         }
