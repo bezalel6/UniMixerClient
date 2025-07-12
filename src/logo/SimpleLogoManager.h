@@ -67,4 +67,7 @@ private:
     String getLogoPath(const String& processName);
     String sanitizeProcessName(const String& processName);
     bool ensureLogosDirectory();
+    
+    // Base64 decode helper
+    static size_t base64Decode(const char* encoded, uint8_t* decoded, size_t maxDecodedSize);
 };

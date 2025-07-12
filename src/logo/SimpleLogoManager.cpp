@@ -167,26 +167,55 @@ void SimpleLogoManager::handleAssetResponse(const Messaging::Message& msg) {
     LogoRequest& request = it->second;
     
     if (asset.success && strlen(asset.assetDataBase64) > 0) {
-        // TODO: Decode base64 to binary PNG data
-        // For now, we'll assume the data is already binary (as per user's changes)
-        size_t dataSize = strlen(asset.assetDataBase64);
+        // Decode base64 to binary PNG data
+        size_t base64Len = strlen(asset.assetDataBase64);
+        size_t decodedSize = (base64Len * 3) / 4; // Approximate size
+        uint8_t* decodedData = (uint8_t*)malloc(decodedSize);
+        
+        if (!decodedData) {
+            ESP_LOGE(TAG, "Failed to allocate memory for decoded PNG");
+            if (request.callback) {
+                request.callback(false, nullptr, 0, "Memory allocation failed");
+            }
+            requestsFailed++;
+            pendingRequests.erase(it);
+            return;
+        }
+        
+        // Decode base64
+        size_t actualDecodedSize = base64Decode(asset.assetDataBase64, decodedData, decodedSize);
+        
+        if (actualDecodedSize == 0) {
+            ESP_LOGE(TAG, "Failed to decode base64 data");
+            free(decodedData);
+            if (request.callback) {
+                request.callback(false, nullptr, 0, "Base64 decode failed");
+            }
+            requestsFailed++;
+            pendingRequests.erase(it);
+            return;
+        }
         
         // Save PNG directly to SD card
         String filePath = getLogoPath(request.processName);
         Hardware::SD::SDFileResult writeResult = Hardware::SD::writeFile(
             filePath.c_str(), 
-            asset.assetDataBase64, 
+            (const char*)decodedData, 
             false
         );
         
         if (writeResult.success) {
-            // Success! Call callback with data
+            // Success! Call callback with decoded data
             if (request.callback) {
-                request.callback(true, (uint8_t*)asset.assetDataBase64, dataSize, "");
+                request.callback(true, decodedData, actualDecodedSize, "");
+            } else {
+                // Free the data if no callback to consume it
+                free(decodedData);
             }
             responsesReceived++;
         } else {
             // Failed to save
+            free(decodedData);
             if (request.callback) {
                 request.callback(false, nullptr, 0, "Failed to save logo file");
             }
@@ -240,4 +269,48 @@ String SimpleLogoManager::sanitizeProcessName(const String& processName) {
 
 bool SimpleLogoManager::ensureLogosDirectory() {
     return Hardware::SD::ensureDirectory(LOGOS_DIR);
+}
+
+size_t SimpleLogoManager::base64Decode(const char* encoded, uint8_t* decoded, size_t maxDecodedSize) {
+    static const char base64_chars[] = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    
+    // Create reverse lookup table
+    uint8_t decode_table[256];
+    memset(decode_table, 0xFF, sizeof(decode_table));
+    for (int i = 0; i < 64; i++) {
+        decode_table[(uint8_t)base64_chars[i]] = i;
+    }
+    
+    size_t encoded_len = strlen(encoded);
+    size_t decoded_len = 0;
+    
+    for (size_t i = 0; i < encoded_len; i += 4) {
+        // Stop if we're going to exceed the output buffer
+        if (decoded_len + 3 > maxDecodedSize) {
+            break;
+        }
+        
+        uint8_t a = decode_table[(uint8_t)encoded[i]];
+        uint8_t b = decode_table[(uint8_t)encoded[i + 1]];
+        uint8_t c = (i + 2 < encoded_len && encoded[i + 2] != '=') ? decode_table[(uint8_t)encoded[i + 2]] : 0;
+        uint8_t d = (i + 3 < encoded_len && encoded[i + 3] != '=') ? decode_table[(uint8_t)encoded[i + 3]] : 0;
+        
+        if (a == 0xFF || b == 0xFF) {
+            // Invalid character
+            return 0;
+        }
+        
+        decoded[decoded_len++] = (a << 2) | (b >> 4);
+        
+        if (i + 2 < encoded_len && encoded[i + 2] != '=') {
+            decoded[decoded_len++] = (b << 4) | (c >> 2);
+            
+            if (i + 3 < encoded_len && encoded[i + 3] != '=') {
+                decoded[decoded_len++] = (c << 6) | d;
+            }
+        }
+    }
+    
+    return decoded_len;
 }
