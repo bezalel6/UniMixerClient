@@ -99,7 +99,7 @@ static const char *TAG = "UIEventHandlers";
 static volatile bool volumeChangeRequested = false;
 static volatile int requestedVolumeValue = -1;
 
-// Core 1 Message Queue System moved to SerialEngine
+// Includes for FreeRTOS (kept for other potential usage)
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
@@ -254,22 +254,22 @@ void processVolumeChangeRequest() {
     // Update UI immediately for visual feedback (Core 0 safe)
     Application::Audio::AudioUI::getInstance().updateVolumeDisplay();
 
-    // Enqueue the volume change message for Core 1 to send
-    if (Messaging::getSerialEngine().enqueueVolumeChangeForCore1(volume)) {
-      ESP_LOGI(TAG, "Volume change enqueued for Core 1 messaging");
-    } else {
-      ESP_LOGW(TAG, "Failed to enqueue volume change for Core 1");
-    }
+    // Send volume change message via streamlined SerialEngine
+    auto volumeMsg = Messaging::Message::createVolumeChange("", volume, "");
+    volumeMsg.send(); // Use the new streamlined send method
+
+    ESP_LOGI(TAG, "Volume change message sent via streamlined SerialEngine");
   }
 }
 
-// Cleanup function for Core 1 message queue - now handled by SerialEngine
+// Cleanup function - simplified since messaging queue is handled by
+// SerialEngine
 void cleanupVolumeDebouncing() {
   // Reset volume change flags
   volumeChangeRequested = false;
   requestedVolumeValue = -1;
 
-  // Core 1 message queue cleanup is now handled by SerialEngine
+  // All message queue cleanup is now handled by SerialEngine
   ESP_LOGI(TAG, "Volume debouncing cleaned up");
 }
 

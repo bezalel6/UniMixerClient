@@ -128,6 +128,9 @@ struct Message {
   String toJson() const;
   static Message fromJson(const String &json);
 
+  // STREAMLINED MESSAGE SENDING - Send this message via SerialEngine
+  void send() const;
+
   // Utility
   const char *typeToString() const;
   static String stringToType(const String &str);

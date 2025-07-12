@@ -135,6 +135,24 @@ String Message::toJson() const {
   return result;
 }
 
+// =============================================================================
+// STREAMLINED MESSAGE SENDING
+// =============================================================================
+
+void Message::send() const {
+  if (!isValid()) {
+    ESP_LOGW(TAG, "Cannot send invalid message");
+    return;
+  }
+
+  // Use the streamlined SerialEngine send method
+  SerialEngine::getInstance().send(*this);
+}
+
+// =============================================================================
+// JSON DESERIALIZATION
+// =============================================================================
+
 Message Message::fromJson(const String &json) {
   Message msg;
   JsonDocument doc;
@@ -188,7 +206,7 @@ Message Message::fromJson(const String &json) {
         SAFE_JSON_EXTRACT_CSTRING(session, "displayName",
                                   sessionData.displayName,
                                   sizeof(sessionData.displayName), "");
-        sessionData.volume = session["volume"] | 0.0f;
+        SAFE_JSON_EXTRACT_FLOAT(session, "volume", sessionData.volume, 0.0f);
         sessionData.isMuted = session["isMuted"] | false;
         SAFE_JSON_EXTRACT_CSTRING(session, "state", sessionData.state,
                                   sizeof(sessionData.state), "");
@@ -209,7 +227,8 @@ Message Message::fromJson(const String &json) {
           defaultDevice, "friendlyName",
           msg.data.audio.defaultDevice.friendlyName,
           sizeof(msg.data.audio.defaultDevice.friendlyName), "");
-      msg.data.audio.defaultDevice.volume = defaultDevice["volume"] | 0.0f;
+      SAFE_JSON_EXTRACT_FLOAT(defaultDevice, "volume",
+                              msg.data.audio.defaultDevice.volume, 0.0f);
       msg.data.audio.defaultDevice.isMuted = defaultDevice["isMuted"] | false;
       SAFE_JSON_EXTRACT_CSTRING(
           defaultDevice, "dataFlow", msg.data.audio.defaultDevice.dataFlow,

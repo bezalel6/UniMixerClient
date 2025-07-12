@@ -52,22 +52,23 @@ static uint8_t testPayload[] = {
     0x69, 0x63, 0x65, 0x49, 0x64, 0x22, 0x3A, 0x6E, 0x75, 0x6C, 0x6C, 0x7D,
     0x5D, 0x7F};
 
-// Core 1 Message Queue System - now part of SerialEngine
-struct Core1Message {
-  enum Type { VOLUME_CHANGE, STATUS_REQUEST, MUTE_TOGGLE } type;
-
-  struct VolumeChangeData {
-    char deviceName[64]; // Empty string = current device
-    int volume;
-  } volumeData;
-
-  uint32_t timestamp;
-};
-
 /**
  * SIMPLE SERIAL ENGINE
- * No transport abstraction. Just send and receive messages.
- * Includes Core 1 message queue system for inter-core communication.
+ * Streamlined message sending: App code calls SerialEngine::send() with Message
+ * objects. Messages are converted to JSON and queued for efficient Core 1
+ * transmission. The queuing stage is completely invisible to application code.
+ *
+ * Usage Examples:
+ *   // Method 1: Direct SerialEngine call
+ *   auto msg = Message::createStatusRequest("device123");
+ *   SerialEngine::getInstance().send(msg);
+ *
+ *   // Method 2: Message self-send (preferred)
+ *   auto msg = Message::createVolumeChange("chrome", 75, "");
+ *   msg.send();
+ *
+ * Core Detection: Messages from Core 0 are queued, Core 1 messages sent
+ * directly.
  */
 class SerialEngine {
 private:
@@ -84,9 +85,10 @@ private:
   // Frame buffer for encoding - shared across all send operations
   uint8_t frameBuffer[4096];
 
-  // Core 1 Message Queue System
-  QueueHandle_t core1MessageQueue = nullptr;
-  static const int CORE1_QUEUE_SIZE = 10;
+  // Inter-core message queue for stringified JSON messages
+  QueueHandle_t txMessageQueue = nullptr;
+  static const int TX_QUEUE_SIZE = 20;
+  static const int MAX_JSON_MESSAGE_SIZE = 2048;
 
 public:
   // Binary protocol for framing
@@ -99,6 +101,8 @@ private:
     uint32_t messagesSent = 0;
     uint32_t parseErrors = 0;
     uint32_t framingErrors = 0;
+    uint32_t messagesQueued = 0;
+    uint32_t queueOverflows = 0;
   } stats;
 
   SerialEngine() = default;
@@ -152,6 +156,12 @@ public:
       Serial.read();
     }
 
+    // Initialize the TX message queue
+    if (!initTxMessageQueue()) {
+      ESP_LOGE("SerialEngine", "Failed to initialize TX message queue");
+      return false;
+    }
+
     // Mark as running but delay task creation
     running = true;
     ESP_LOGI("SerialEngine",
@@ -191,155 +201,49 @@ public:
     return true;
   }
 
-  // Core 1 Message Queue Management
-  bool initCore1MessageQueue() {
-    if (core1MessageQueue == nullptr) {
-      core1MessageQueue = xQueueCreate(CORE1_QUEUE_SIZE, sizeof(Core1Message));
-      if (core1MessageQueue == nullptr) {
-        ESP_LOGE("SerialEngine", "Failed to create Core 1 message queue");
-        return false;
-      }
-      ESP_LOGI("SerialEngine", "Core 1 message queue initialized");
-    }
-    return true;
-  }
-
-  bool enqueueVolumeChangeForCore1(int volume, const char *deviceName = "") {
-    if (!initCore1MessageQueue()) {
-      return false;
-    }
-
-    Core1Message msg;
-    msg.type = Core1Message::VOLUME_CHANGE;
-    msg.timestamp = millis();
-    msg.volumeData.volume = volume;
-    strncpy(msg.volumeData.deviceName, deviceName,
-            sizeof(msg.volumeData.deviceName) - 1);
-    msg.volumeData.deviceName[sizeof(msg.volumeData.deviceName) - 1] = '\0';
-
-    BaseType_t result = xQueueSend(core1MessageQueue, &msg, 0); // Non-blocking
-    if (result == pdTRUE) {
-      ESP_LOGI("SerialEngine",
-               "Enqueued volume change for Core 1: device='%s', volume=%d",
-               deviceName, volume);
-      return true;
-    } else {
-      ESP_LOGW("SerialEngine", "Failed to enqueue volume change - queue full");
-      return false;
-    }
-  }
-
-  bool processCore1MessageQueue() {
-    if (core1MessageQueue == nullptr) {
-      return false;
-    }
-
-    bool processedMessages = false;
-    Core1Message msg;
-
-    while (xQueueReceive(core1MessageQueue, &msg, 0) == pdTRUE) {
-      processedMessages = true;
-      ESP_LOGI("SerialEngine", "Core 1 processing message type %d (Core %d)",
-               msg.type, xPortGetCoreID());
-
-      switch (msg.type) {
-      case Core1Message::VOLUME_CHANGE: {
-        // Create and send volume change message via proper messaging system
-        auto volumeMsg = Messaging::Message::createVolumeChange(
-            msg.volumeData.deviceName, msg.volumeData.volume, "");
-        Messaging::sendMessage(volumeMsg);
-
-        ESP_LOGI("SerialEngine",
-                 "Core 1 sent volume change: device='%s', volume=%d",
-                 msg.volumeData.deviceName, msg.volumeData.volume);
-        break;
-      }
-      default:
-        ESP_LOGW("SerialEngine", "Unknown Core 1 message type: %d", msg.type);
-        break;
-      }
-    }
-
-    return processedMessages;
-  }
-
-  void cleanupCore1MessageQueue() {
-    if (core1MessageQueue) {
-      vQueueDelete(core1MessageQueue);
-      core1MessageQueue = nullptr;
-      ESP_LOGI("SerialEngine", "Core 1 message queue cleaned up");
-    }
-  }
-
-  // Send a message (now delegated to TX task for proper Core 1 processing)
+  // STREAMLINED MESSAGE SENDING - The only app-wide entry point
   void send(const Message &msg) {
     if (!running) {
       ESP_LOGW("SerialEngine", "Serial engine not running");
       return;
     }
 
-    // DEBUG: Check which core is calling send()
-    int coreId = xPortGetCoreID();
-    ESP_LOGI("SerialEngine",
-             "=== DELEGATING MESSAGE FROM CORE %d TO TX TASK ===", coreId);
+    if (!msg.isValid()) {
+      ESP_LOGW("SerialEngine", "Attempted to send invalid message");
+      return;
+    }
 
-    ESP_LOGI("SerialEngine", "Type: %s", msg.type.c_str());
-    ESP_LOGI("SerialEngine", "Device ID: %.50s", msg.deviceId.c_str());
-    ESP_LOGI("SerialEngine", "Request ID: %.50s", msg.requestId.c_str());
-    ESP_LOGI("SerialEngine", "Timestamp: %u", msg.timestamp);
-
-    // Convert to JSON here (Core 0 context) and delegate the actual sending to
-    // TX task
+    // Convert message to JSON immediately
     String json = msg.toJson();
 
-    ESP_LOGI("SerialEngine", "JSON Length: %d", json.length());
-    ESP_LOGI("SerialEngine", "Delegating to TX task for transmission");
+    int coreId = xPortGetCoreID();
+    ESP_LOGI("SerialEngine", "Sending message from Core %d: type=%s, length=%d",
+             coreId, msg.type.c_str(), json.length());
 
-    sendRaw(json);
+    if (coreId == 1) {
+      // Already on Core 1 - send directly for efficiency
+      sendJsonDirect(json);
+    } else {
+      // Core 0 - queue for Core 1 processing
+      enqueueJsonForTx(json);
+    }
+
     stats.messagesSent++;
   }
 
-  // Send raw string (for compatibility)
+  // Send raw string (for compatibility and testing)
   void sendRaw(const String &data) {
     if (!running)
       return;
 
-    ESP_LOGI("SerialEngine", "=== SENDING RAW DATA ===");
-    ESP_LOGI("SerialEngine", "Raw data: %s", data.c_str());
+    int coreId = xPortGetCoreID();
+    ESP_LOGI("SerialEngine", "Sending raw data from Core %d: length=%d", coreId,
+             data.length());
 
-    // Use the binary framer to encode the message - using class member buffer
-    size_t frameLength = 0;
-    std::vector<uint8_t> binaryFrame;
-
-    if (framer.encodeMessage(data, frameBuffer, sizeof(frameBuffer),
-                             frameLength)) {
-      binaryFrame.assign(frameBuffer, frameBuffer + frameLength);
-    }
-
-    if (!binaryFrame.empty()) {
-      ESP_LOGI("SerialEngine", "Binary frame size: %zu bytes",
-               binaryFrame.size());
-
-      // Print first few bytes of binary frame for debugging
-      String hexStr = "";
-      for (int i = 0; i < min((int)binaryFrame.size(), 32); i++) {
-        hexStr += String(binaryFrame[i], HEX) + " ";
-      }
-      ESP_LOGI("SerialEngine", "Binary frame (first 32 bytes): %s",
-               hexStr.c_str());
-
-      // Send the binary frame via Arduino Serial
-      size_t written = Serial.write(binaryFrame.data(), binaryFrame.size());
-      Serial.flush();
-
-      if (written != binaryFrame.size()) {
-        ESP_LOGW("SerialEngine", "Failed to write complete frame: %zu/%zu",
-                 written, binaryFrame.size());
-      } else {
-        ESP_LOGI("SerialEngine", "Successfully sent %zu bytes", written);
-      }
+    if (coreId == 1) {
+      sendJsonDirect(data);
     } else {
-      ESP_LOGW("SerialEngine", "Failed to frame message");
+      enqueueJsonForTx(data);
     }
   }
 
@@ -355,13 +259,121 @@ public:
       rxtxTaskHandle = nullptr;
     }
 
-    // Cleanup Core 1 message queue
-    cleanupCore1MessageQueue();
+    // Cleanup TX message queue
+    if (txMessageQueue) {
+      vQueueDelete(txMessageQueue);
+      txMessageQueue = nullptr;
+      ESP_LOGI("SerialEngine", "TX message queue cleaned up");
+    }
 
     ESP_LOGI("SerialEngine", "RXTX task stopped");
   }
 
 private:
+  // Initialize TX message queue for inter-core communication
+  bool initTxMessageQueue() {
+    if (txMessageQueue == nullptr) {
+      txMessageQueue = xQueueCreate(TX_QUEUE_SIZE, MAX_JSON_MESSAGE_SIZE);
+      if (txMessageQueue == nullptr) {
+        ESP_LOGE("SerialEngine", "Failed to create TX message queue");
+        return false;
+      }
+      ESP_LOGI("SerialEngine", "TX message queue initialized");
+    }
+    return true;
+  }
+
+  // Enqueue JSON string for Core 1 transmission (called from Core 0)
+  void enqueueJsonForTx(const String &json) {
+    if (!txMessageQueue) {
+      ESP_LOGW("SerialEngine", "TX queue not initialized");
+      return;
+    }
+
+    if (json.length() >= MAX_JSON_MESSAGE_SIZE) {
+      ESP_LOGW("SerialEngine", "Message too large for queue: %d bytes",
+               json.length());
+      stats.queueOverflows++;
+      return;
+    }
+
+    // Create a fixed-size buffer for the queue
+    char queueBuffer[MAX_JSON_MESSAGE_SIZE];
+    strncpy(queueBuffer, json.c_str(), MAX_JSON_MESSAGE_SIZE - 1);
+    queueBuffer[MAX_JSON_MESSAGE_SIZE - 1] = '\0';
+
+    BaseType_t result =
+        xQueueSend(txMessageQueue, queueBuffer, 0); // Non-blocking
+    if (result == pdTRUE) {
+      stats.messagesQueued++;
+      ESP_LOGD("SerialEngine", "Queued JSON message for Core 1 TX: %d bytes",
+               json.length());
+    } else {
+      stats.queueOverflows++;
+      ESP_LOGW("SerialEngine", "TX queue full - message dropped");
+    }
+  }
+
+  // Send JSON directly (called from Core 1 or for immediate transmission)
+  void sendJsonDirect(const String &json) {
+    if (json.isEmpty()) {
+      return;
+    }
+
+    ESP_LOGD("SerialEngine", "Direct JSON transmission: %d bytes",
+             json.length());
+
+    // Use the binary framer to encode the message - using class member buffer
+    size_t frameLength = 0;
+    std::vector<uint8_t> binaryFrame;
+
+    if (framer.encodeMessage(json, frameBuffer, sizeof(frameBuffer),
+                             frameLength)) {
+      binaryFrame.assign(frameBuffer, frameBuffer + frameLength);
+    }
+
+    if (!binaryFrame.empty()) {
+      ESP_LOGD("SerialEngine", "Binary frame size: %zu bytes",
+               binaryFrame.size());
+
+      // Send the binary frame via Arduino Serial
+      size_t written = Serial.write(binaryFrame.data(), binaryFrame.size());
+      Serial.flush();
+
+      if (written != binaryFrame.size()) {
+        ESP_LOGW("SerialEngine", "Failed to write complete frame: %zu/%zu",
+                 written, binaryFrame.size());
+      } else {
+        ESP_LOGD("SerialEngine", "Successfully sent %zu bytes", written);
+      }
+    } else {
+      ESP_LOGW("SerialEngine", "Failed to frame message");
+    }
+  }
+
+  // Process queued TX messages (called by Core 1 RXTX task)
+  bool processTxMessageQueue() {
+    if (!txMessageQueue) {
+      return false;
+    }
+
+    bool processedMessages = false;
+    char queueBuffer[MAX_JSON_MESSAGE_SIZE];
+
+    while (xQueueReceive(txMessageQueue, queueBuffer, 0) == pdTRUE) {
+      processedMessages = true;
+      queueBuffer[MAX_JSON_MESSAGE_SIZE - 1] = '\0'; // Ensure null termination
+
+      String json(queueBuffer);
+      ESP_LOGD("SerialEngine", "Processing queued message: %d bytes",
+               json.length());
+
+      sendJsonDirect(json);
+    }
+
+    return processedMessages;
+  }
+
   // Task wrapper
   static void rxtxTaskWrapper(void *param) {
     static_cast<SerialEngine *>(param)->rxtxTask();
@@ -451,9 +463,8 @@ private:
         }
       }
 
-      // Handle outgoing messages (TX)
-      // Check for Core 1 messages with a reasonable timeout
-      bool hasMessages = processCore1MessageQueue();
+      // Handle outgoing messages (TX) - process queued JSON messages
+      bool hasMessages = processTxMessageQueue();
 
       if (!hasMessages) {
         // No messages processed, short delay to prevent tight loop
