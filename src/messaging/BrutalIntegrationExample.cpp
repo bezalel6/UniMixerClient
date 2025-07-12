@@ -42,15 +42,34 @@ public:
     }
 
     void sendStatusUpdate() {
-        // Create status message - no JSON manipulation!
+        // Create status message using NEW format
         Messaging::Message::AudioData audio;
-        strncpy(audio.processName, "SimpleAudio", sizeof(audio.processName));
-        audio.volume = currentVolume;
-        audio.isMuted = isMuted;
+        
+        // Initialize structure
+        audio.sessionCount = 1;
         audio.hasDefaultDevice = true;
-        strncpy(audio.defaultDeviceName, "Speakers", sizeof(audio.defaultDeviceName));
-        audio.defaultVolume = currentVolume;
-        audio.defaultIsMuted = isMuted;
+        audio.activeSessionCount = 1;
+        
+        // Create single session
+        auto& session = audio.sessions[0];
+        session.processId = 12345;
+        strncpy(session.processName, "SimpleAudio", sizeof(session.processName) - 1);
+        strncpy(session.displayName, "Simple Audio Controller", sizeof(session.displayName) - 1);
+        session.volume = currentVolume / 100.0f; // Convert to 0-1 range
+        session.isMuted = isMuted;
+        strncpy(session.state, "AudioSessionStateActive", sizeof(session.state) - 1);
+        
+        // Set default device
+        strncpy(audio.defaultDevice.friendlyName, "Speakers", sizeof(audio.defaultDevice.friendlyName) - 1);
+        audio.defaultDevice.volume = currentVolume / 100.0f; // Convert to 0-1 range
+        audio.defaultDevice.isMuted = isMuted;
+        strncpy(audio.defaultDevice.dataFlow, "Render", sizeof(audio.defaultDevice.dataFlow) - 1);
+        strncpy(audio.defaultDevice.deviceRole, "Console", sizeof(audio.defaultDevice.deviceRole) - 1);
+        
+        // Set additional fields
+        strncpy(audio.reason, "UpdateResponse", sizeof(audio.reason) - 1);
+        audio.originatingRequestId[0] = '\0'; // Empty
+        audio.originatingDeviceId[0] = '\0';  // Empty
 
         auto msg = Messaging::Message::createAudioStatus(audio, "");
         Messaging::sendMessage(msg);
