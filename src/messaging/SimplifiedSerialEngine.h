@@ -340,30 +340,9 @@ private:
 
         if (isValidJson) {
           stats.messagesReceived++;
-
-          // SIMPLE pattern matching to determine message type without full
-          // parsing
-          String messageType = "UNKNOWN";
-          if (jsonStr.indexOf("\"STATUS_MESSAGE\"") != -1) {
-            messageType = "STATUS_MESSAGE";
-          } else if (jsonStr.indexOf("\"GET_STATUS\"") != -1) {
-            messageType = "GET_STATUS";
-          } else if (jsonStr.indexOf("\"GET_ASSETS\"") != -1) {
-            messageType = "GET_ASSETS";
-          } else if (jsonStr.indexOf("\"ASSET_RESPONSE\"") != -1) {
-            messageType = "ASSET_RESPONSE";
-          } else if (jsonStr.indexOf("\"VOLUME_CHANGE\"") != -1) {
-            messageType = "VOLUME_CHANGE";
-          }
-
-          ESP_LOGI("SerialEngine", "=== LIGHTWEIGHT MESSAGE ANALYSIS ===");
-          ESP_LOGI("SerialEngine", "Detected Type: %s", messageType.c_str());
-          ESP_LOGI("SerialEngine", "JSON Length: %d", jsonStr.length());
-          ESP_LOGI("SerialEngine", "Valid JSON Structure: Yes");
-          ESP_LOGI("SerialEngine", "=== DEBUG: NOT PARSING OR ROUTING ===");
-
-          // Skip full parsing to avoid stack overflow on Core 1
-          // Real parsing would happen on Core 0 when routing is enabled
+          auto parsed = Messaging::Message::fromJson(jsonStr);
+          ESP_LOGW("SerialEngine", "Parsed message %s",
+                   parsed.toString().c_str());
 
         } else {
           stats.parseErrors++;

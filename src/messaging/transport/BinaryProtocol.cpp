@@ -349,6 +349,10 @@ BinaryProtocolFramer::processIncomingBytes(const uint8_t *data, size_t length) {
     case ReceiveState::ReadingPayload:
       if (byte == MSG_END_MARKER && !isEscapeNext_) {
         // Message complete
+        ESP_LOGI(
+            TAG,
+            "Found end marker - payload complete: %zu bytes (expected %lu)",
+            payloadBufferSize_, expectedPayloadLength_);
         String decodedMessage = processCompleteMessage();
         if (!decodedMessage.isEmpty()) {
           messages.push_back(decodedMessage);
@@ -412,8 +416,14 @@ bool BinaryProtocolFramer::processHeader() {
     return false;
   }
 
-  ESP_LOGD(TAG, "Header: Length=%lu, CRC=0x%04X, Type=0x%02X",
+  ESP_LOGI(TAG, "Header: Length=%lu, CRC=0x%04X, Type=0x%02X",
            expectedPayloadLength_, expectedCrc_, messageType_);
+
+  // Debug: Print raw header bytes
+  ESP_LOGI(TAG, "Raw header bytes: %02X %02X %02X %02X %02X %02X %02X",
+           headerBuffer_[0], headerBuffer_[1], headerBuffer_[2],
+           headerBuffer_[3], headerBuffer_[4], headerBuffer_[5],
+           headerBuffer_[6]);
 
   return true;
 }
@@ -427,16 +437,21 @@ void BinaryProtocolFramer::processPayloadByte(uint8_t byte) {
       payloadBuffer_[payloadBufferSize_++] = unescaped;
     }
     isEscapeNext_ = false;
+    ESP_LOGD(TAG, "Unescaped byte: 0x%02X -> 0x%02X (payload size: %zu/%lu)",
+             byte, unescaped, payloadBufferSize_, expectedPayloadLength_);
 
   } else if (byte == MSG_ESCAPE_CHAR) {
     // Next byte should be un-escaped (like working SerialBridge)
     isEscapeNext_ = true;
+    ESP_LOGD(TAG, "Found escape char, next byte will be unescaped");
     return; // Don't add escape marker to payload
   } else {
     // Regular byte
     if (payloadBufferSize_ < MAX_PAYLOAD_SIZE) {
       payloadBuffer_[payloadBufferSize_++] = byte;
     }
+    ESP_LOGD(TAG, "Regular byte: 0x%02X (payload size: %zu/%lu)", byte,
+             payloadBufferSize_, expectedPayloadLength_);
   }
 
   // Check if we've received enough unescaped bytes

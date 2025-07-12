@@ -57,7 +57,7 @@ struct Message {
   };
 
   struct AudioData {
-    SessionData sessions[16];  // Max 16 sessions
+    SessionData sessions[16]; // Max 16 sessions
     int sessionCount;
     DefaultDeviceData defaultDevice;
     bool hasDefaultDevice;
@@ -114,8 +114,8 @@ struct Message {
   }
 
   // Helper functions to initialize union members
-  void initializeAudioData() { 
-    memset(&data.audio, 0, sizeof(AudioData)); 
+  void initializeAudioData() {
+    memset(&data.audio, 0, sizeof(AudioData));
     data.audio.sessionCount = 0;
     data.audio.hasDefaultDevice = false;
     data.audio.activeSessionCount = 0;
@@ -144,6 +144,7 @@ struct Message {
   // Utility
   const char *typeToString() const;
   static Type stringToType(const String &str);
+  String toString() const;
   bool isValid() const { return type != INVALID; }
 };
 

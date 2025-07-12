@@ -6,11 +6,6 @@
 static const char *TAG = "Message";
 
 namespace Messaging {
-template class ArduinoJson::VariantRef;
-template class ArduinoJson::VariantConstRef;
-template class ArduinoJson::JsonVariant;
-template class ArduinoJson::JsonVariantConst;
-
 MessageRouter *MessageRouter::instance = nullptr;
 
 // =============================================================================
@@ -327,6 +322,117 @@ Message::Type Message::stringToType(const String &str) {
   if (str == "SET_DEFAULT_DEVICE")
     return SET_DEFAULT_DEVICE;
   return INVALID;
+}
+
+String Message::toString() const {
+  String result = "Message[";
+  result += typeToString();
+  result += "] ";
+  result += "DeviceId: " + deviceId + " ";
+  result += "RequestId: " + requestId + " ";
+  result += "Timestamp: " + String(timestamp) + " ";
+
+  switch (type) {
+  case AUDIO_STATUS: {
+    result += "AudioStatus: ";
+    result += "Sessions(" + String(data.audio.sessionCount) + ") ";
+    result += "ActiveSessions(" + String(data.audio.activeSessionCount) + ") ";
+
+    for (int i = 0; i < data.audio.sessionCount && i < 16; i++) {
+      result += "[Session" + String(i) + ": ";
+      result += "ProcessId=" + String(data.audio.sessions[i].processId) + " ";
+      result +=
+          "ProcessName='" + String(data.audio.sessions[i].processName) + "' ";
+      result +=
+          "DisplayName='" + String(data.audio.sessions[i].displayName) + "' ";
+      result += "Volume=" + String(data.audio.sessions[i].volume) + " ";
+      result +=
+          "Muted=" + String(data.audio.sessions[i].isMuted ? "true" : "false") +
+          " ";
+      result += "State='" + String(data.audio.sessions[i].state) + "'] ";
+    }
+
+    if (data.audio.hasDefaultDevice) {
+      result += "DefaultDevice: ";
+      result += "Name='" + String(data.audio.defaultDevice.friendlyName) + "' ";
+      result += "Volume=" + String(data.audio.defaultDevice.volume) + " ";
+      result += "Muted=" +
+                String(data.audio.defaultDevice.isMuted ? "true" : "false") +
+                " ";
+      result += "DataFlow='" + String(data.audio.defaultDevice.dataFlow) + "' ";
+      result +=
+          "DeviceRole='" + String(data.audio.defaultDevice.deviceRole) + "' ";
+    }
+
+    if (strlen(data.audio.reason) > 0) {
+      result += "Reason: '" + String(data.audio.reason) + "' ";
+    }
+    if (strlen(data.audio.originatingRequestId) > 0) {
+      result += "OriginatingRequestId: '" +
+                String(data.audio.originatingRequestId) + "' ";
+    }
+    if (strlen(data.audio.originatingDeviceId) > 0) {
+      result += "OriginatingDeviceId: '" +
+                String(data.audio.originatingDeviceId) + "' ";
+    }
+    break;
+  }
+
+  case ASSET_REQUEST: {
+    result += "AssetRequest: ";
+    result += "ProcessName='" + String(data.asset.processName) + "' ";
+    break;
+  }
+
+  case ASSET_RESPONSE: {
+    result += "AssetResponse: ";
+    result += "ProcessName='" + String(data.asset.processName) + "' ";
+    result += "Success=" + String(data.asset.success ? "true" : "false") + " ";
+    if (!data.asset.success && strlen(data.asset.errorMessage) > 0) {
+      result += "Error='" + String(data.asset.errorMessage) + "' ";
+    }
+    if (data.asset.success) {
+      result += "Dimensions=" + String(data.asset.width) + "x" +
+                String(data.asset.height) + " ";
+      result += "Format='" + String(data.asset.format) + "' ";
+      result +=
+          "DataSize=" + String(strlen(data.asset.assetDataBase64)) + "bytes ";
+    }
+    break;
+  }
+
+  case SET_VOLUME:
+  case VOLUME_CHANGE: {
+    result += "VolumeChange: ";
+    result += "ProcessName='" + String(data.volume.processName) + "' ";
+    result += "Volume=" + String(data.volume.volume) + " ";
+    result += "Target='" + String(data.volume.target) + "' ";
+    break;
+  }
+
+  case GET_STATUS: {
+    result += "StatusRequest";
+    break;
+  }
+
+  case MUTE_TOGGLE: {
+    result += "MuteToggle";
+    break;
+  }
+
+  case SET_DEFAULT_DEVICE: {
+    result += "SetDefaultDevice";
+    break;
+  }
+
+  case INVALID:
+  default: {
+    result += "Invalid/Unknown message type";
+    break;
+  }
+  }
+
+  return result;
 }
 
 // =============================================================================
