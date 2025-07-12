@@ -1,4 +1,4 @@
-#include "AudioManager.h"
+THIS SHOULD BE A LINTER ERROR#include "AudioManager.h"
 #include "../../hardware/DeviceManager.h"
 #include "../../logo/LogoManager.h"
 #include "../../logo/BrutalLogoManager.h"
@@ -955,14 +955,8 @@ void AudioManager::checkSingleProcessLogo(const char *processName) {
     return;
   }
 
-  if (!Logo::LogoManager::getInstance().isInitialized()) {
-    ESP_LOGD(TAG, "Logo system not initialized, skipping logo check for: %s",
-             processName);
-    return;
-  }
-
   // Check if logo already exists locally
-  if (Logo::LogoManager::getInstance().hasLogo(processName)) {
+  if (BrutalLogoManager::getInstance().hasLogo(processName)) {
     ESP_LOGD(TAG, "Logo already exists for process: %s", processName);
     return;
   }

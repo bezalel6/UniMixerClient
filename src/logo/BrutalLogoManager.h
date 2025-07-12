@@ -3,7 +3,9 @@
 #include <Arduino.h>
 #include <functional>
 #include <unordered_map>
+#include <SD.h>
 #include "../messaging/Message.h"
+#include "LogoStorage.h"
 
 /**
  * BRUTAL LOGO MANAGER
@@ -58,6 +60,11 @@ public:
     bool init() {
         if (initialized) return true;
         
+        // Initialize logo storage
+        if (!Logo::LogoStorage::getInstance().ensureDirectoryStructure()) {
+            return false;
+        }
+        
         // Subscribe to asset responses using BRUTAL messaging
         Messaging::subscribe(Messaging::Message::TYPE_ASSET_RESPONSE, [this](const Messaging::Message& msg) {
             handleAssetResponse(msg);
@@ -86,6 +93,27 @@ public:
         if (!initialized) {
             if (callback) callback(false, nullptr, 0, "Not initialized");
             return false;
+        }
+
+        // Check if logo already exists locally
+        if (hasLogo(processName)) {
+            // Load existing logo
+            String fileName = Logo::LogoStorage::getInstance().getProcessMapping(processName);
+            if (!fileName.isEmpty()) {
+                String filePath = Logo::LogoStorage::getInstance().getFilePath(fileName);
+                File file = SD.open(filePath, FILE_READ);
+                if (file) {
+                    size_t size = file.size();
+                    uint8_t* data = (uint8_t*)malloc(size);
+                    if (data && file.read(data, size) == size) {
+                        file.close();
+                        if (callback) callback(true, data, size, "");
+                        return true;
+                    }
+                    if (data) free(data);
+                    file.close();
+                }
+            }
         }
 
         // Create asset request message
@@ -138,6 +166,14 @@ public:
     }
 
     /**
+     * Check if a logo exists for a process
+     */
+    bool hasLogo(const String& processName) {
+        if (!initialized) return false;
+        return Logo::LogoStorage::getInstance().hasProcessMapping(processName);
+    }
+
+    /**
      * Get status string for debugging
      */
     String getStatus() const {
@@ -180,11 +216,38 @@ private:
                     );
                     
                     if (result == 0) {
-                        // Success!
-                        if (request.callback) {
-                            request.callback(true, logoData, actualSize, "");
+                        // Save logo to storage
+                        Logo::LogoStorage& storage = Logo::LogoStorage::getInstance();
+                        String fileName = storage.generateUniqueFileName(request.processName, Logo::LogoStorage::FileType::BINARY);
+                        
+                        if (storage.saveFile(fileName, logoData, actualSize)) {
+                            // Save process mapping
+                            if (storage.saveProcessMapping(request.processName, fileName)) {
+                                // Save metadata
+                                storage.saveMetadata(request.processName, true, false, millis());
+                                
+                                // Success! Call callback with data
+                                if (request.callback) {
+                                    request.callback(true, logoData, actualSize, "");
+                                }
+                                responsesReceived++;
+                            } else {
+                                // Failed to save mapping
+                                storage.deleteFile(fileName); // Cleanup
+                                free(logoData);
+                                if (request.callback) {
+                                    request.callback(false, nullptr, 0, "Failed to save logo mapping");
+                                }
+                                requestsFailed++;
+                            }
+                        } else {
+                            // Failed to save file
+                            free(logoData);
+                            if (request.callback) {
+                                request.callback(false, nullptr, 0, "Failed to save logo file");
+                            }
+                            requestsFailed++;
                         }
-                        responsesReceived++;
                     } else {
                         // Decode failed
                         free(logoData);
