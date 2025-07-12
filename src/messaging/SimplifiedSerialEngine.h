@@ -366,32 +366,34 @@ private:
     for (const String &jsonStr : messages) {
       if (!jsonStr.isEmpty()) {
         ESP_LOGI("SerialEngine", "=== RECEIVED RAW JSON ===");
-        ESP_LOGW("SerialEngine", "JSON: %s", jsonStr.c_str());
+        ESP_LOGI("SerialEngine", "JSON: %s", jsonStr.c_str());
 
         // LIGHTWEIGHT parsing to avoid stack overflow - just check if it's
         // valid JSON
         bool isValidJson = jsonStr.startsWith("{") && jsonStr.endsWith("}") &&
                            jsonStr.length() > 10;
 
-        ESP_LOGW("SerialEngine", "=== JSON VALIDATION DEBUG ===");
-        ESP_LOGW("SerialEngine", "JSON length: %d", jsonStr.length());
-        ESP_LOGW("SerialEngine", "Starts with {: %s",
+        ESP_LOGI("SerialEngine", "=== JSON VALIDATION DEBUG ===");
+        ESP_LOGI("SerialEngine", "JSON length: %d", jsonStr.length());
+        ESP_LOGI("SerialEngine", "Starts with {: %s",
                  jsonStr.startsWith("{") ? "true" : "false");
-        ESP_LOGW("SerialEngine", "Ends with }: %s",
+        ESP_LOGI("SerialEngine", "Ends with }: %s",
                  jsonStr.endsWith("}") ? "true" : "false");
-        ESP_LOGW("SerialEngine", "First 50 chars: %.50s", jsonStr.c_str());
-        ESP_LOGW("SerialEngine", "Last 50 chars: %s",
+        ESP_LOGI("SerialEngine", "First 50 chars: %.50s", jsonStr.c_str());
+        ESP_LOGI("SerialEngine", "Last 50 chars: %s",
                  jsonStr.substring(jsonStr.length() - 50).c_str());
 
         if (isValidJson) {
           stats.messagesReceived++;
           auto parsed = Messaging::Message::fromJson(jsonStr);
-          ESP_LOGW("SerialEngine", "=== PARSED MESSAGE DEBUG ===");
-          ESP_LOGW("SerialEngine", "Message type: %s", parsed.type.c_str());
-          ESP_LOGW("SerialEngine", "Device ID: %s", parsed.deviceId.c_str());
-          ESP_LOGW("SerialEngine", "Full message: %s",
+          ESP_LOGI("SerialEngine", "=== PARSED MESSAGE DEBUG ===");
+          ESP_LOGI("SerialEngine", "Message type: %s", parsed.type.c_str());
+          ESP_LOGI("SerialEngine", "Device ID: %s", parsed.deviceId.c_str());
+          ESP_LOGI("SerialEngine", "Full message: %s",
                    parsed.toString().c_str());
 
+          // Route valid messages to handlers
+          Messaging::MessageRouter::getInstance().route(parsed);
         } else {
           stats.parseErrors++;
           ESP_LOGW("SerialEngine", "=== INVALID JSON STRUCTURE ===");

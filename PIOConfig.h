@@ -164,8 +164,8 @@
 #endif
 
 // >>> AUTO-GENERATED BUILD INFO BEGIN
-#define FIRMWARE_BUILD_NUMBER "49fbf57"
+#define FIRMWARE_BUILD_NUMBER "6b57f1d"
 #define GIT_BRANCH "cursor/diagnose-messaging-system-upgrade-status-8de0"
-#define BUILD_TIMESTAMP_NUM "20250712_073710"
+#define BUILD_TIMESTAMP_NUM "20250712_074432"
 // <<< AUTO-GENERATED BUILD INFO END
 #endif
