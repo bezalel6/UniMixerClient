@@ -23,7 +23,7 @@ void setup() {
   // This must be done before any ESP_LOG calls to ensure proper filtering
 
   // Initialize application
-  // CoreLoggingFilter::init();
+  CoreLoggingFilter::init();
 
   // Comment out to actually filter out core0
   // CoreLoggingFilter::disableFilter();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <StringAbstraction.h>
 #include <esp_log.h>
 #include <functional>
 #include <memory>
@@ -13,27 +14,19 @@ namespace Messaging {
  * No abstractions. No variants. No shapes. Just data.
  */
 struct Message {
-  // Only the message types we ACTUALLY use
-  enum Type {
-    INVALID = 0,
-
-    // Audio messages
-    AUDIO_STATUS,  // Status of all audio devices
-    VOLUME_CHANGE, // Change volume for a process
-    MUTE_TOGGLE,   // Mute/unmute a process
-
-    // Asset messages
-    ASSET_REQUEST,  // Request logo/asset for process
-    ASSET_RESPONSE, // Response with asset data
-
-    // Control messages
-    GET_STATUS,        // Request current status
-    SET_VOLUME,        // Set volume command
-    SET_DEFAULT_DEVICE // Set default audio device
-  };
+  // String-based message types instead of enums
+  static const char *TYPE_INVALID;
+  static const char *TYPE_AUDIO_STATUS;
+  static const char *TYPE_VOLUME_CHANGE;
+  static const char *TYPE_MUTE_TOGGLE;
+  static const char *TYPE_ASSET_REQUEST;
+  static const char *TYPE_ASSET_RESPONSE;
+  static const char *TYPE_GET_STATUS;
+  static const char *TYPE_SET_VOLUME;
+  static const char *TYPE_SET_DEFAULT_DEVICE;
 
   // Core fields every message has
-  Type type = INVALID;
+  String type = TYPE_INVALID;
   String deviceId;
   String requestId;
   uint32_t timestamp = 0;
@@ -91,25 +84,19 @@ struct Message {
   } data;
 
   // Constructor - manually initialize the data
-  Message() : type(INVALID), timestamp(0) { initializeAudioData(); }
+  Message() : type(TYPE_INVALID), timestamp(0) { initializeAudioData(); }
 
-  Message(Type t) : type(t), timestamp(0) {
-    switch (t) {
-    case AUDIO_STATUS:
-    case 2:
+  Message(const String &messageType) : type(messageType), timestamp(0) {
+    if (messageType == TYPE_AUDIO_STATUS) {
       initializeAudioData();
-      break;
-    case ASSET_REQUEST:
-    case ASSET_RESPONSE:
+    } else if (messageType == TYPE_ASSET_REQUEST ||
+               messageType == TYPE_ASSET_RESPONSE) {
       initializeAssetData();
-      break;
-    // case VOLUME_CHANGE:
-    case SET_VOLUME:
+    } else if (messageType == TYPE_SET_VOLUME ||
+               messageType == TYPE_VOLUME_CHANGE) {
       initializeVolumeData();
-      break;
-    default:
+    } else {
       initializeAudioData();
-      break;
     }
   }
 
@@ -143,9 +130,9 @@ struct Message {
 
   // Utility
   const char *typeToString() const;
-  static Type stringToType(const String &str);
+  static String stringToType(const String &str);
   String toString() const;
-  bool isValid() const { return type != INVALID; }
+  bool isValid() const { return type != TYPE_INVALID; }
 };
 
 /**
@@ -154,8 +141,11 @@ struct Message {
  */
 class MessageRouter {
 private:
-  std::unordered_map<int, std::vector<std::function<void(const Message &)>>>
-      handlers;
+  struct HandlerEntry {
+    String type;
+    std::function<void(const Message &)> handler;
+  };
+  std::vector<HandlerEntry> handlers;
   static MessageRouter *instance;
 
 public:
@@ -167,9 +157,9 @@ public:
   }
 
   // Subscribe to message type
-  void subscribe(Message::Type type,
+  void subscribe(const String &type,
                  std::function<void(const Message &)> handler) {
-    handlers[type].push_back(handler);
+    handlers.push_back({type, handler});
   }
 
   // Route incoming message to handlers
@@ -179,10 +169,9 @@ public:
       return;
     }
 
-    auto it = handlers.find(msg.type);
-    if (it != handlers.end()) {
-      for (auto &handler : it->second) {
-        handler(msg);
+    for (auto &entry : handlers) {
+      if (entry.type == msg.type) {
+        entry.handler(msg);
       }
     }
   }
@@ -191,21 +180,18 @@ public:
   void send(const Message &msg);
 
   // Get handler count for status
-  size_t getHandlerCount() const {
-    size_t count = 0;
-    for (const auto &[type, handlers] : handlers) {
-      count += handlers.size();
-    }
-    return count;
-  }
+  size_t getHandlerCount() const { return handlers.size(); }
 };
 
-// Global convenience functions
+// =============================================================================
+// INLINE HELPERS
+// =============================================================================
+
 inline void sendMessage(const Message &msg) {
   MessageRouter::getInstance().send(msg);
 }
 
-inline void subscribe(Message::Type type,
+inline void subscribe(const String &type,
                       std::function<void(const Message &)> handler) {
   MessageRouter::getInstance().subscribe(type, handler);
 }
