@@ -6,6 +6,8 @@ SET(SOURCES components/ui_comp_btn.c
     screens/ui_screenDebug.c
     ui.c
     components/ui_comp_hook.c
-    ui_helpers.c)
+    ui_helpers.c
+    images/ui_img_2039083_png.c
+    UIPerformanceOptimizations.cpp)
 
 add_library(ui ${SOURCES})
