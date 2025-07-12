@@ -3,83 +3,56 @@
 
 #include <Arduino.h>
 #include <FS.h>
-#include <ArduinoJson.h>
+#include <vector>
 
 namespace Logo {
 
 /**
- * Handles organized logo file structure:
- * /logos/files/     - Logo files (binary .bin and PNG .png)
- * /logos/mappings/  - Process name to file mappings
- * /logos/metadata/  - Logo metadata (verified, flagged, etc.)
+ * BRUTAL SIMPLIFICATION: Direct PNG storage by process name
+ * /logos/files/chrome.png, /logos/files/firefox.png, etc.
+ * No mappings, no metadata, no JSON, no complexity.
  */
 class LogoStorage {
-   public:
-    enum class FileType {
-        BINARY,  // LVGL binary format
-        PNG      // PNG image format
-    };
+public:
+  static LogoStorage &getInstance();
 
-    static LogoStorage& getInstance();
+  // Core operations - PNG logos only
+  bool saveLogo(const String &processName, const uint8_t *pngData, size_t size);
+  bool deleteLogo(const String &processName);
+  bool hasLogo(const String &processName);
+  size_t getLogoSize(const String &processName);
 
-    // Core file operations (/logos/files/)
-    bool saveFile(const String& fileName, const uint8_t* data, size_t size);
-    bool deleteFile(const String& fileName);
-    bool fileExists(const String& fileName);
-    size_t getFileSize(const String& fileName);
-    String generateUniqueFileName(const String& baseName, FileType type);
-    std::vector<String> listFiles();
-    std::vector<String> listFilesByType(FileType type);
+  // Path helpers
+  String getLogoPath(
+      const String &processName); // "S:/logos/files/chrome.png" for LVGL
+  String getFileSystemPath(
+      const String &processName); // "/logos/files/chrome.png" for SD operations
 
-    // File type utilities
-    FileType getFileType(const String& fileName);
-    String getFileExtension(FileType type);
-    bool isValidFileType(const String& fileName);
+  // List operations
+  std::vector<String> listLogos(); // Returns process names, not filenames
 
-    // Mapping operations (/logos/mappings/)
-    bool saveProcessMapping(const String& processName, const String& fileName);
-    String getProcessMapping(const String& processName);
-    bool deleteProcessMapping(const String& processName);
-    bool hasProcessMapping(const String& processName);
-    std::vector<String> listMappedProcesses();
+  // System operations
+  bool isReady();
+  bool ensureDirectoryStructure();
+  void cleanup();
 
-    // Metadata operations (/logos/metadata/)
-    bool saveMetadata(const String& processName, bool verified, bool flagged, uint64_t timestamp = 0);
-    bool getMetadata(const String& processName, bool& verified, bool& flagged, uint64_t& timestamp);
-    bool deleteMetadata(const String& processName);
-    bool hasMetadata(const String& processName);
+  // Utility
+  String sanitizeProcessName(const String &processName);
 
-    // Path helpers
-    String getFilePath(const String& fileName);         // "S:/logos/files/file.bin" or "S:/logos/files/file.png"
-    String getMappingPath(const String& processName);   // "/logos/mappings/process.json"
-    String getMetadataPath(const String& processName);  // "/logos/metadata/process.json"
+private:
+  LogoStorage() = default;
+  ~LogoStorage() = default;
+  LogoStorage(const LogoStorage &) = delete;
+  LogoStorage &operator=(const LogoStorage &) = delete;
 
-    // Directory management
-    bool ensureDirectoryStructure();
-    bool isReady();
-    void cleanup();
+  // Single directory - brutal simplicity
+  static const char *LOGOS_DIR;
 
-    // Utility
-    String sanitizeFileName(const String& input);
-
-   private:
-    LogoStorage() = default;
-    ~LogoStorage() = default;
-    LogoStorage(const LogoStorage&) = delete;
-    LogoStorage& operator=(const LogoStorage&) = delete;
-
-    // Directory constants
-    static const char* LOGOS_ROOT;
-    static const char* FILES_DIR;
-    static const char* MAPPINGS_DIR;
-    static const char* METADATA_DIR;
-
-    // Helper methods
-    bool ensureDirectory(const String& path);
-    String readJsonFile(const String& filePath);
-    bool writeJsonFile(const String& filePath, const String& content);
+  // Helper methods
+  bool ensureDirectory(const String &path);
+  String getFileName(const String &processName); // "chrome.png"
 };
 
-}  // namespace Logo
+} // namespace Logo
 
-#endif  // LOGO_STORAGE_H
+#endif // LOGO_STORAGE_H

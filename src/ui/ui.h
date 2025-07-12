@@ -33,9 +33,6 @@ extern lv_anim_t * slideOutOfFrame_Animation(lv_obj_t * TargetObject, int delay)
 
 extern lv_obj_t * ui____initial_actions0;
 
-// IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_2039083_png);    // assets/2039083.png
-
 // UI INIT
 void ui_init(void);
 void ui_destroy(void);
