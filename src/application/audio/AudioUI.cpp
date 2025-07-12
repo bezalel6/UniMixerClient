@@ -1,6 +1,7 @@
 #include "AudioUI.h"
 #include "UiEventHandlers.h"
 #include "ui/screens/ui_screenMain.h"
+#include "../../logo/SimpleLogoManager.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 
@@ -491,10 +492,9 @@ void AudioUI::updateSingleTabLogo() {
   ESP_LOGI(TAG, "Updating Single tab logo for process: %s",
            processName.c_str());
 
-  // Get logo path from simplified LogoStorage
-
-  if (Logo::LogoStorage::getInstance().hasLogo(processName)) {
-    String logoPath = Logo::LogoStorage::getInstance().getLogoPath(processName);
+  // Get logo path from SimpleLogoManager
+  if (SimpleLogoManager::getInstance().hasLogo(processName)) {
+    String logoPath = SimpleLogoManager::getInstance().getLVGLPath(processName);
 
     ESP_LOGI(TAG, "Found logo for %s at: %s", processName.c_str(),
              logoPath.c_str());

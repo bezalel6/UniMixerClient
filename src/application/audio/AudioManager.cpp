@@ -65,9 +65,9 @@ bool AudioManager::init() {
 
           // Auto-request logo for this process if we don't have it
           if (!level.processName.isEmpty() && 
-              !BrutalLogoManager::getInstance().hasLogo(level.processName)) {
+              !SimpleLogoManager::getInstance().hasLogo(level.processName)) {
             ESP_LOGD(TAG, "Auto-requesting logo for session: %s", level.processName.c_str());
-            BrutalLogoManager::getInstance().requestLogo(
+            SimpleLogoManager::getInstance().requestLogo(
                 level.processName,
                 [processName = level.processName](bool success, uint8_t* data, size_t size, const String& error) {
                   if (success) {
@@ -991,14 +991,14 @@ void AudioManager::requestLogosForNewProcesses() {
     }
     
     // Check if logo already exists
-    if (BrutalLogoManager::getInstance().hasLogo(processName)) {
+    if (SimpleLogoManager::getInstance().hasLogo(processName)) {
       continue; // Already have logo
     }
     
     // Request logo for this process
     ESP_LOGI(TAG, "Auto-requesting logo for new process: %s", processName.c_str());
     
-    bool requested = BrutalLogoManager::getInstance().requestLogo(
+    bool requested = SimpleLogoManager::getInstance().requestLogo(
         processName,
         [processName](bool success, uint8_t* data, size_t size, const String& error) {
           if (success) {
@@ -1029,7 +1029,7 @@ void AudioManager::checkSingleProcessLogo(const char *processName) {
   }
 
   // Check if logo already exists locally
-  if (BrutalLogoManager::getInstance().hasLogo(processName)) {
+  if (SimpleLogoManager::getInstance().hasLogo(processName)) {
     ESP_LOGD(TAG, "Logo already exists for process: %s", processName);
     return;
   }
@@ -1037,7 +1037,7 @@ void AudioManager::checkSingleProcessLogo(const char *processName) {
   ESP_LOGI(TAG, "Requesting logo for process: %s", processName);
 
   // Request logo using BRUTAL system
-  bool requested = BrutalLogoManager::getInstance().requestLogo(
+  bool requested = SimpleLogoManager::getInstance().requestLogo(
       processName,
       [processName](bool success, uint8_t* data, size_t size, const String& error) {
         if (success) {

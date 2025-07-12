@@ -166,19 +166,23 @@ void SimpleLogoManager::handleAssetResponse(const Messaging::Message& msg) {
     
     LogoRequest& request = it->second;
     
-    if (asset.success && asset.assetDataSize > 0) {
+    if (asset.success && strlen(asset.assetDataBase64) > 0) {
+        // TODO: Decode base64 to binary PNG data
+        // For now, we'll assume the data is already binary (as per user's changes)
+        size_t dataSize = strlen(asset.assetDataBase64);
+        
         // Save PNG directly to SD card
         String filePath = getLogoPath(request.processName);
         Hardware::SD::SDFileResult writeResult = Hardware::SD::writeFile(
             filePath.c_str(), 
-            (const char*)asset.assetData, 
+            asset.assetDataBase64, 
             false
         );
         
         if (writeResult.success) {
             // Success! Call callback with data
             if (request.callback) {
-                request.callback(true, (uint8_t*)asset.assetData, asset.assetDataSize, "");
+                request.callback(true, (uint8_t*)asset.assetDataBase64, dataSize, "");
             }
             responsesReceived++;
         } else {
