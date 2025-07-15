@@ -20,9 +20,18 @@ void updateProgress(int percentage);
 // Hide the boot screen and clean up
 void hide();
 
+// Complete boot process - handles both success and BSOD scenarios
+void completeBootProcess();
+
+// Force cleanup of boot screen objects (used when BSOD takes over)
+void forceCleanup();
+
 // Check if boot screen is currently visible
 bool isVisible();
-} // namespace BootProgress
+}  // namespace BootProgress
 
 // Convenience macro for updating boot status
 #define BOOT_STATUS(msg) BootProgress::updateStatus(msg)
+
+// Convenience macro for completing boot process
+#define BOOT_COMPLETE() BootProgress::completeBootProcess()

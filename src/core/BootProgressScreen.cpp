@@ -1,7 +1,11 @@
 #include "BootProgressScreen.h"
 #include "BuildInfo.h"
+#include "BSODHandler.h"  // Include for BSOD state checking
 #include <lvgl.h>
 #include <esp_log.h>
+
+// External reference to main screen from UI system
+extern lv_obj_t* ui_screenMain;
 
 static const char* TAG = "BootProgress";
 static lv_obj_t* bootScreen = nullptr;
@@ -76,7 +80,6 @@ bool init() {
 void updateStatus(const char* status) {
     if (!screenVisible || !statusLabel) return;
 
-    ESP_LOGI(TAG, "Boot status: %s", status);
     lv_label_set_text(statusLabel, status);
 
     // Force immediate update
@@ -99,16 +102,79 @@ void updateProgress(int percentage) {
 void hide() {
     if (!screenVisible || !bootScreen) return;
 
-    ESP_LOGI(TAG, "Hiding boot progress screen");
+    // Check if BSOD is active
+    if (BSODHandler::isActive()) {
+        lv_obj_del(bootScreen);
+        bootScreen = nullptr;
+        statusLabel = nullptr;
+        progressBar = nullptr;
+        screenVisible = false;
+        return;
+    }
 
-    // Clean up the screen objects
+    // Load main screen before deleting boot screen
+    if (ui_screenMain) {
+        lv_scr_load(ui_screenMain);
+        lv_timer_handler();
+        vTaskDelay(pdMS_TO_TICKS(50));
+    } else {
+        ESP_LOGE(TAG, "CRITICAL: ui_screenMain is NULL - cannot transition from boot screen");
+    }
+
+    // Clean up the boot screen objects
     lv_obj_del(bootScreen);
     bootScreen = nullptr;
     statusLabel = nullptr;
     progressBar = nullptr;
     screenVisible = false;
+}
 
-    ESP_LOGI(TAG, "Boot progress screen hidden and cleaned up");
+void completeBootProcess() {
+    if (!screenVisible || !bootScreen) return;
+
+    // Check if BSOD is active
+    if (BSODHandler::isActive()) {
+        // BSOD has taken over, just clean up boot screen objects
+        lv_obj_del(bootScreen);
+        bootScreen = nullptr;
+        statusLabel = nullptr;
+        progressBar = nullptr;
+        screenVisible = false;
+        return;
+    }
+
+    // Normal boot completion - transition to main screen
+    if (ui_screenMain) {
+        lv_scr_load(ui_screenMain);
+        lv_timer_handler();
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // Clean up boot screen objects
+        lv_obj_del(bootScreen);
+        bootScreen = nullptr;
+        statusLabel = nullptr;
+        progressBar = nullptr;
+        screenVisible = false;
+    } else {
+        ESP_LOGE(TAG, "CRITICAL: ui_screenMain is NULL - cannot complete boot transition");
+        // Still clean up to prevent memory leaks
+        lv_obj_del(bootScreen);
+        bootScreen = nullptr;
+        statusLabel = nullptr;
+        progressBar = nullptr;
+        screenVisible = false;
+    }
+}
+
+void forceCleanup() {
+    if (!screenVisible || !bootScreen) return;
+
+    // Direct cleanup without any screen loading logic
+    lv_obj_del(bootScreen);
+    bootScreen = nullptr;
+    statusLabel = nullptr;
+    progressBar = nullptr;
+    screenVisible = false;
 }
 
 bool isVisible() {

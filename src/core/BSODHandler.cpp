@@ -1,10 +1,14 @@
+
 #include "BSODHandler.h"
 #include "BuildInfo.h"
+#include "BootProgressScreen.h"  // Include for boot screen state checking
+#include <Arduino.h>
 #include <lvgl.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include "CoreLoggingFilter.h"
 
 static const char* TAG = "BSOD";
 static bool bsodReady = false;
@@ -29,12 +33,20 @@ bool isReady() {
     return bsodReady;
 }
 
+bool isActive() {
+    return bsodActive;
+}
+
 void show(const char* message, const char* file, int line) {
+    if (CoreLoggingFilter::isFilterActive()) CoreLoggingFilter::disableFilter();
+    ESP_LOGE(TAG, "BSOD triggered: %s", message);
+
     // Prevent recursive BSOD
     if (bsodActive) {
-        // If we're already in BSOD, just halt
+        ESP_LOGE(TAG, "Recursive BSOD prevented - halting immediately");
+        esp_task_wdt_delete(NULL);
         esp_task_wdt_deinit();
-        while(1) {
+        while (1) {
             vTaskDelay(portMAX_DELAY);
         }
     }
@@ -45,14 +57,23 @@ void show(const char* message, const char* file, int line) {
         ESP_LOGE(TAG, "Location: %s:%d", file, line);
     }
 
-    // Disable watchdog to prevent reboot while showing BSOD
+    // Disable watchdogs to prevent reboot while showing BSOD
+    TaskHandle_t lvglTask = xTaskGetHandle("LVGL_Task");
+    TaskHandle_t audioTask = xTaskGetHandle("Audio_Task");
+    TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
+
+    if (lvglTask != NULL) esp_task_wdt_delete(lvglTask);
+    if (audioTask != NULL) esp_task_wdt_delete(audioTask);
+    esp_task_wdt_delete(currentTask);
+    esp_task_wdt_delete(NULL);
     esp_task_wdt_deinit();
+
+    ESP_LOGE(TAG, "System halted - displaying error");
 
     // Check if LVGL is initialized
     if (!lv_is_initialized()) {
-        ESP_LOGE(TAG, "LVGL not initialized - cannot show BSOD screen");
-        // Fall back to infinite loop
-        while(1) {
+        ESP_LOGE(TAG, "LVGL not initialized - system halted");
+        while (1) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             ESP_LOGE(TAG, "SYSTEM HALTED: %s", message);
         }
@@ -60,7 +81,7 @@ void show(const char* message, const char* file, int line) {
 
     // Create BSOD screen
     bsodScreen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(bsodScreen, lv_color_hex(0x0078D7), 0); // Windows 10 blue
+    lv_obj_set_style_bg_color(bsodScreen, lv_color_hex(0x0078D7), 0);  // Windows 10 blue
 
     // Create container for centered content
     lv_obj_t* container = lv_obj_create(bsodScreen);
@@ -80,10 +101,10 @@ void show(const char* message, const char* file, int line) {
 
     // Error title
     lv_obj_t* title = lv_label_create(container);
-    lv_label_set_text(title, "Your device ran into a problem");
+    lv_label_set_text(title, "SYSTEM ERROR");
     lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_pad_bottom(title, 10, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_pad_bottom(title, 15, 0);
 
     // Main error message
     lv_obj_t* msgLabel = lv_label_create(container);
@@ -99,12 +120,12 @@ void show(const char* message, const char* file, int line) {
     if (file) {
         lv_obj_t* techDetails = lv_label_create(container);
         char techBuf[256];
-        snprintf(techBuf, sizeof(techBuf), "Technical details:\n%s:%d", file, line);
+        snprintf(techBuf, sizeof(techBuf), "Technical details:\nLocation: %s:%d", file, line);
         lv_label_set_text(techDetails, techBuf);
         lv_label_set_long_mode(techDetails, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(techDetails, LV_PCT(100));
         lv_obj_set_style_text_color(techDetails, lv_color_white(), 0);
-        lv_obj_set_style_text_font(techDetails, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(techDetails, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_align(techDetails, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_pad_bottom(techDetails, 10, 0);
     }
@@ -125,15 +146,18 @@ void show(const char* message, const char* file, int line) {
 
     // Load and display the screen
     lv_scr_load(bsodScreen);
-
-    // Force LVGL to process and render immediately
     lv_timer_handler();
 
-    // Infinite loop - system is halted
-    while(1) {
+    // Clean up boot screen if it was visible
+    if (BootProgress::isVisible()) {
+        BootProgress::forceCleanup();
+    }
+
+    // BSOD display loop
+    while (1) {
         lv_timer_handler();
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(16));  // ~60Hz updates
     }
 }
 
-} // namespace BSODHandler
+}  // namespace BSODHandler
