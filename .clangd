@@ -1,6 +1,6 @@
 CompileFlags:
   Add:
-    # ESP32-S3 specific defines matching your PlatformIO config
+    # ESP32-S3 specific defines
     - -DESP32
     - -DESP32S3
     - -DESP_PLATFORM
@@ -8,310 +8,81 @@ CompileFlags:
     - -DARDUINO_ESP32_DEV
     - -DARDUINO_BOARD="ESP32_8048S070C"
     - -DARDUINO_VARIANT="esp32s3"
-    - -DARDUINO_PARTITION_default
     - -DCONFIG_IDF_TARGET_ESP32S3=1
     - -DCONFIG_FREERTOS_HZ=1000
-    - -DCONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=1
-    - -DCONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=2304
-    - -DCONFIG_ESP_MAIN_TASK_STACK_SIZE=3584
-    - -DCONFIG_ESP_CONSOLE_UART_DEFAULT=1
-    - -DCONFIG_ESP_CONSOLE_UART=1
-    - -DCONFIG_ESP_CONSOLE_UART_NUM=0
-    - -DCONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
-    - -DCONFIG_LWIP_MAX_SOCKETS=10
-    - -DCONFIG_LWIP_SO_REUSE=1
-    - -DCONFIG_LWIP_SO_RCVBUF=1
-    - -DCONFIG_LWIP_DHCP_MAX_NTP_SERVERS=1
-    - -DCONFIG_LWIP_SNTP_UPDATE_DELAY=3600000
-    - -DCONFIG_PARTITION_TABLE_SINGLE_APP=1
-    - -DCONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=1
-    - -DCONFIG_ESP_TASK_WDT_EN=1
-    - -DCONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=1
-    - -DCONFIG_FREERTOS_USE_TRACE_FACILITY=1
-    - -DCONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS=1
 
-    # LVGL configuration matching your setup
+    # LVGL configuration
     - -DLV_CONF_PATH="include/lv_conf.h"
     - -DLV_LVGL_H_INCLUDE_SIMPLE
 
-    # C++ standard and compiler flags matching platformio.ini
+    # C++ standard and essential flags
     - -std=gnu++2a
-    - -fno-jump-tables
-    - -ffunction-sections
-    - -fdata-sections
-    - -Wall
-    - -Wextra
-    - -Wno-missing-field-initializers
-    - -Wno-unused-parameter
-    - -Wno-unused-function
-    - -Wno-unused-variable
-    - -Wno-error=unused-function
-    - -Wno-error=unused-variable
-    - -Wno-error=unused-but-set-variable
-    - -Wno-error=deprecated-declarations
-    - -Wno-sign-compare
-    - -Wno-enum-conversion
-    - -gdwarf-4
-    - -ggdb
-    - -O2
-    - -Wno-frame-address
     - -fno-rtti
     - -fno-exceptions
     - -include
     - PIOConfig.h
-
-    # Template instantiation fixes
-    - -ftemplate-backtrace-limit=0
-    - -fdelayed-template-parsing
     - -fparse-all-comments
     - -ferror-limit=0
 
-    # Force specific template instantiations for troublesome types
-    - -DARDUINO_STRING_TEMPLATE_INSTANTIATION=1
+    # Essential warning suppression for ESP32 development
+    - -Wno-unused-parameter
+    - -Wno-unused-function
+    - -Wno-unused-variable
+    - -Wno-sign-compare
 
-    # Windows-specific PlatformIO paths (adjust .platformio location as needed)
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/FS/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/SD/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/Update/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/ArduinoOTA/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/HTTPUpdate/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/NetBIOS/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/USB/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/WebSocketsServer/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/libraries/RainMaker/src
+    # Fixed paths for your specific user (bezal)
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/cores/esp32
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/variants/esp32s3
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/include
+    - -IC:/Users/bezal/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include
 
-    # Arduino ESP32 core includes
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/cores/esp32
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/variants/esp32s3
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/port/xtensa/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/deprecated
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/esp32s3/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/xtensa/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/xtensa/esp32s3/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include/apps
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32xx/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32xx/include/arch
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_wifi/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_timer/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nvs_flash/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_partition/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/app_update/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bootloader_support/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_phy/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_ipc/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_pm/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_psram/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_ringbuf/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_adc/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hid/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_http_client/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_http_server/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_https_ota/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_https_server/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_local_ctrl/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_mm/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_serial_slave_link/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_websocket_client/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-tls/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-tls/esp-tls-crypto
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_littlefs/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_vfs_dev/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_vfs_fat/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_vfs_semihost/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_vfs_usb_serial_jtag/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/src
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/vfs
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wear_levelling/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/sdmmc/include
-    - -IC:/Users/%USERNAME%/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_serial_slave_link/include
-
-    # Actual library dependencies paths from your project
+    # Project library dependencies
     - -I.pio/libdeps/esp32-8048S070C/esp32_smartdisplay/src
     - -I.pio/libdeps/esp32-8048S070C/ArduinoJson/src
     - -I.pio/libdeps/esp32-8048S070C/PubSubClient/src
     - -I.pio/libdeps/esp32-8048S070C/tiny-regex-c
     - -I.pio/libdeps/esp32-8048S070C/lvgl/src
 
-    # Alternative environment paths (if using different build environments)
-    - -I.pio/libdeps/esp32-8048S070C-debug/esp32_smartdisplay/src
-    - -I.pio/libdeps/esp32-8048S070C-debug/ArduinoJson/src
-    - -I.pio/libdeps/esp32-8048S070C-debug/PubSubClient/src
-    - -I.pio/libdeps/esp32-8048S070C-debug/tiny-regex-c
-    - -I.pio/libdeps/esp32-8048S070C-debug/lvgl/src
-
-    # Project specific includes
-    - -I.pio/build/esp32-8048S070C-serial/config
+    # Project directories
     - -Isrc
     - -Iinclude
     - -Ilib
     - -Icomponents
-    - -Imain
 
   Remove:
-    # Remove problematic flags that clangd doesn't understand
+    # Remove problematic ESP32-specific flags that clangd can't handle
     - -mtext-section-literals
     - -mlongcalls
-    - -mlong-calls
-    - -mcpu=esp32s3
     - -mfix-esp32-psram-cache-issue
     - -fstrict-volatile-bitfields
-    - -fno-tree-switch-conversion
-    - -std=gnu++11
 
 Index:
   Background: Build
   StandardLibrary: No
-  # Allow indexing even with errors
-  AllowBrokenHeaderUnits: true
 
 Diagnostics:
+  # Suppress common ESP32/Arduino issues that aren't real problems
   Suppress:
     - pp_file_not_found
     - unknown_typename
-    - unknown_identifier
-    - template_param_shadow
     - unused_value
     - unused_variable
     - unused_function
-    - unused_parameter
-    - err_template_arg_not_ice
-    - err_constexpr_var_requires_const_init
-    - err_constexpr_var_requires_const_init_2
-    - warn_template_export_unsupported
-    - err_template_instantiate_within_definition
-    - err_template_recursion
-    - err_template_instantiate_undefined
-    - err_template_decl_ref
-    - err_template_kw_refers_to_non_template
-    - err_template_kw_refers_to_class_template
-    - err_template_kw_missing_dependent_template_keyword
-    - err_template_missing_args
-    - err_template_arg_not_valid
-    - err_template_arg_not_ice
-    - err_template_param_shadow
-    - err_template_variable_noparams
-    - err_template_spec_decl_function_template
-    - err_template_spec_decl_class_template
-    - err_template_spec_decl_alias_template
-    - err_template_spec_decl_variable_template
-    - err_template_spec_decl_out_of_scope
-    - err_template_spec_decl_out_of_scope_global
   ClangTidy:
-    Add:
-      - readability-*
-      - performance-*
-      - modernize-*
-      - bugprone-*
     Remove:
       - readability-magic-numbers
-      - readability-uppercase-literal-suffix
       - modernize-use-trailing-return-type
       - bugprone-easily-swappable-parameters
-      - modernize-use-auto
-      - modernize-avoid-c-arrays
-      - readability-avoid-c-arrays
       - readability-identifier-length
-      - readability-function-cognitive-complexity
-      - performance-avoid-endl
-      - bugprone-macro-parentheses
-      - modernize-macro-to-enum
-      - readability-implicit-bool-conversion
-      - performance-unnecessary-value-param
-      - readability-convert-member-functions-to-static
-      - modernize-concat-nested-namespaces
-      - readability-redundant-access-specifiers
-      - readability-redundant-member-init
-      - readability-redundant-string-cstr
-      - readability-redundant-string-init
-      - readability-simplify-boolean-expr
-      - readability-simplify-subscript-expr
-      - readability-static-accessed-through-instance
-      - readability-string-compare
-      - readability-uniqueptr-delete-release
-      - readability-use-anyofallof
-      - performance-for-range-copy
-      - performance-implicit-conversion-in-loop
-      - performance-inefficient-algorithm
-      - performance-inefficient-string-concatenation
-      - performance-inefficient-vector-operation
-      - performance-move-const-arg
-      - performance-move-constructor-init
-      - performance-noexcept-move-constructor
-      - performance-trivially-destructible
-      - performance-type-promotion-in-math-fn
-      - performance-unnecessary-copy-initialization
-  # Continue analyzing even when there are errors
-  ContinueAfterError: true
-  # Allow incomplete translation units
-  IncompleteTranslationUnit: true
-  # Suppress template instantiation errors
-  SuppressSystemHeaders: true
 
 InlayHints:
-  Enabled: true
-  ParameterNames: true
-  DeducedTypes: true
+  Enabled: false  # Disable for better performance
 
 Hover:
   ShowAKA: true
-
-# For better performance with large codebases
----
-If:
-  PathMatch: .*\.(c|cpp|cc|cxx|h|hpp|hxx)$
-CompileFlags:
-  Add:
-    - -ferror-limit=0
-    - -ftemplate-backtrace-limit=0
-
-# Exclude deprecated files matching your PlatformIO src_filter
----
-If:
-  PathMatch: .*/src/messaging/deprecated/.*
-CompileFlags:
-  Add:
-    - -w
-
-# Special handling for template-heavy files
----
-If:
-  PathMatch: .*SimplifiedSerialEngine.*
-CompileFlags:
-  Add:
-    - -ftemplate-backtrace-limit=0
-    - -fdelayed-template-parsing
-    - -Wno-error=template-id-cdtor

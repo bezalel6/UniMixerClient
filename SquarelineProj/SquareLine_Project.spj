@@ -286,13 +286,13 @@
                     "guid": "GUID8576320-265686S5134164",
                     "cid": "GUID27075031-191919S4014161",
                     "coid": -1562214057,
-                    "cgid": 471453117,
+                    "cgid": 1100645754,
                     "deepid": -1529750851,
                     "children": [
                       {
                         "guid": "GUID35057852-265687S5134164",
                         "coid": 1957174148,
-                        "cgid": 471453117,
+                        "cgid": 1100645754,
                         "deepid": 1929939622,
                         "dont_export": false,
                         "locked": false,
@@ -778,10 +778,10 @@
                         "tree_closed": true
                       },
                       {
-                        "guid": "GUID97365264-265688S5134164",
-                        "coid": -603093129,
-                        "cgid": 471453117,
-                        "deepid": 2109328655,
+                        "guid": "GUID8536699-975520S174894196",
+                        "coid": -1684204683,
+                        "cgid": 1100645754,
+                        "deepid": -1270096428,
                         "dont_export": false,
                         "locked": false,
                         "properties": [
@@ -790,15 +790,6 @@
                             "compnid": 10,
                             "strtype": "OBJECT/Name",
                             "strval": "primaryVolumeSlider",
-                            "childs": [
-                              {
-                                "nid": 15,
-                                "flags": 1048576,
-                                "strtype": "_codename/Codename",
-                                "strval": "primaryVolumeSlider",
-                                "InheritedType": 10
-                              }
-                            ],
                             "InheritedType": 10
                           },
                           {
@@ -834,7 +825,7 @@
                             "strtype": "OBJECT/Position",
                             "intarray": [
                               0,
-                              25
+                              0
                             ],
                             "InheritedType": 7
                           },
@@ -844,8 +835,8 @@
                             "flags": 17,
                             "strtype": "OBJECT/Size",
                             "intarray": [
-                              300,
-                              300
+                              150,
+                              10
                             ],
                             "InheritedType": 7
                           },
@@ -853,12 +844,13 @@
                             "nid": 70,
                             "compnid": 70,
                             "strtype": "OBJECT/Align",
-                            "strval": "BOTTOM_MID",
+                            "strval": "CENTER",
                             "InheritedType": 3
                           },
                           {
                             "nid": 90,
                             "compnid": 90,
+                            "flags": 1048576,
                             "strtype": "OBJECT/Flags",
                             "InheritedType": 1
                           },
@@ -887,21 +879,21 @@
                             "nid": 130,
                             "compnid": 130,
                             "strtype": "OBJECT/Press_lock",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 140,
                             "compnid": 140,
                             "strtype": "OBJECT/Click_focusable",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 150,
                             "compnid": 150,
                             "strtype": "OBJECT/Adv_hittest",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
@@ -915,14 +907,14 @@
                             "nid": 170,
                             "compnid": 170,
                             "strtype": "OBJECT/Floating",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
                             "nid": 180,
                             "compnid": 180,
                             "strtype": "OBJECT/Overflow_visible",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
@@ -943,19 +935,20 @@
                             "nid": 210,
                             "compnid": 210,
                             "strtype": "OBJECT/Gesture_bubble",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 220,
                             "compnid": 220,
                             "strtype": "OBJECT/Snappable",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 225,
                             "compnid": 225,
+                            "flags": 1048576,
                             "strtype": "OBJECT/Scrolling",
                             "InheritedType": 1
                           },
@@ -1039,6 +1032,7 @@
                           {
                             "nid": 320,
                             "compnid": 320,
+                            "flags": 1048576,
                             "strtype": "OBJECT/States",
                             "InheritedType": 1
                           },
@@ -1108,13 +1102,13 @@
                           {
                             "nid": 1010,
                             "compnid": 1010,
-                            "strtype": "ARC/Arc",
+                            "strtype": "SLIDER/Slider",
                             "InheritedType": 1
                           },
                           {
                             "nid": 1020,
                             "compnid": 1020,
-                            "strtype": "ARC/Range",
+                            "strtype": "SLIDER/Range",
                             "intarray": [
                               0,
                               100
@@ -1124,30 +1118,20 @@
                           {
                             "nid": 1030,
                             "compnid": 1030,
-                            "strtype": "ARC/Value",
-                            "InheritedType": 6
-                          },
-                          {
-                            "nid": 1040,
-                            "compnid": 1040,
-                            "strtype": "ARC/Bg_angles",
-                            "intarray": [
-                              120,
-                              60
-                            ],
-                            "InheritedType": 7
-                          },
-                          {
-                            "nid": 1050,
-                            "compnid": 1050,
-                            "strtype": "ARC/Mode",
+                            "strtype": "SLIDER/Mode",
                             "strval": "NORMAL",
                             "InheritedType": 3
                           },
                           {
-                            "nid": 1060,
-                            "compnid": 1060,
-                            "strtype": "ARC/Rotation",
+                            "nid": 1040,
+                            "compnid": 1040,
+                            "strtype": "SLIDER/Value",
+                            "InheritedType": 6
+                          },
+                          {
+                            "nid": 1050,
+                            "compnid": 1050,
+                            "strtype": "SLIDER/Value_left",
                             "InheritedType": 6
                           },
                           {
@@ -1158,15 +1142,121 @@
                                 "compnid": 10000,
                                 "strtype": "_style/StyleState",
                                 "strval": "DEFAULT",
-                                "childs": [
-                                  {
-                                    "nid": 10320,
-                                    "compnid": 10320,
-                                    "strtype": "_style/Arc_Width",
-                                    "integer": 20,
-                                    "InheritedType": 6
-                                  }
-                                ],
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 20000,
+                                "compnid": 20000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 30000,
+                                "compnid": 30000,
+                                "strtype": "_style/StyleState",
+                                "strval": "PRESSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 40000,
+                                "compnid": 40000,
+                                "strtype": "_style/StyleState",
+                                "strval": "DISABLED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 50000,
+                                "compnid": 50000,
+                                "strtype": "_style/StyleState",
+                                "strval": "EDITED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 60000,
+                                "compnid": 60000,
+                                "strtype": "_style/StyleState",
+                                "strval": "SCROLLED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 70000,
+                                "compnid": 70000,
+                                "strtype": "_style/StyleState",
+                                "strval": "FOCUSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 80000,
+                                "compnid": 80000,
+                                "strtype": "_style/StyleState",
+                                "strval": "FOCUS_KEY",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 90000,
+                                "compnid": 90000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|FOCUSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 100000,
+                                "compnid": 100000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|PRESSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 110000,
+                                "compnid": 110000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|FOCUS_KEY",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 120000,
+                                "compnid": 120000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_1",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 130000,
+                                "compnid": 130000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_2",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 140000,
+                                "compnid": 140000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_3",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 150000,
+                                "compnid": 150000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_4",
+                                "InheritedType": 1
+                              }
+                            ],
+                            "nid": 1060,
+                            "compnid": 1060,
+                            "strtype": "SLIDER/Style_main",
+                            "strval": "lv.PART.MAIN, Rectangle, Pad, Transform",
+                            "InheritedType": 11
+                          },
+                          {
+                            "part": "lv.PART.INDICATOR",
+                            "childs": [
+                              {
+                                "nid": 10000,
+                                "compnid": 10000,
+                                "strtype": "_style/StyleState",
+                                "strval": "DEFAULT",
                                 "InheritedType": 1
                               },
                               {
@@ -1270,132 +1360,8 @@
                             ],
                             "nid": 1070,
                             "compnid": 1070,
-                            "strtype": "ARC/Style_main",
-                            "strval": "lv.PART.MAIN, Rectangle, Pad, Arc, Transform",
-                            "InheritedType": 11
-                          },
-                          {
-                            "part": "lv.PART.INDICATOR",
-                            "childs": [
-                              {
-                                "nid": 10000,
-                                "compnid": 10000,
-                                "strtype": "_style/StyleState",
-                                "strval": "DEFAULT",
-                                "childs": [
-                                  {
-                                    "nid": 10320,
-                                    "compnid": 10320,
-                                    "strtype": "_style/Arc_Width",
-                                    "integer": 20,
-                                    "InheritedType": 6
-                                  }
-                                ],
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 20000,
-                                "compnid": 20000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 30000,
-                                "compnid": 30000,
-                                "strtype": "_style/StyleState",
-                                "strval": "PRESSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 40000,
-                                "compnid": 40000,
-                                "strtype": "_style/StyleState",
-                                "strval": "DISABLED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 50000,
-                                "compnid": 50000,
-                                "strtype": "_style/StyleState",
-                                "strval": "EDITED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 60000,
-                                "compnid": 60000,
-                                "strtype": "_style/StyleState",
-                                "strval": "SCROLLED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 70000,
-                                "compnid": 70000,
-                                "strtype": "_style/StyleState",
-                                "strval": "FOCUSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 80000,
-                                "compnid": 80000,
-                                "strtype": "_style/StyleState",
-                                "strval": "FOCUS_KEY",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 90000,
-                                "compnid": 90000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|FOCUSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 100000,
-                                "compnid": 100000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|PRESSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 110000,
-                                "compnid": 110000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|FOCUS_KEY",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 120000,
-                                "compnid": 120000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_1",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 130000,
-                                "compnid": 130000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_2",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 140000,
-                                "compnid": 140000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_3",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 150000,
-                                "compnid": 150000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_4",
-                                "InheritedType": 1
-                              }
-                            ],
-                            "nid": 1080,
-                            "compnid": 1080,
-                            "strtype": "ARC/Style_indicator",
-                            "strval": "lv.PART.INDICATOR, Rectangle, Pad, Arc",
+                            "strtype": "SLIDER/Style_indicator",
+                            "strval": "lv.PART.INDICATOR, Rectangle",
                             "InheritedType": 11
                           },
                           {
@@ -1507,97 +1473,14 @@
                                 "InheritedType": 1
                               }
                             ],
-                            "nid": 1090,
-                            "compnid": 1090,
-                            "strtype": "ARC/Style_knob",
+                            "nid": 1080,
+                            "compnid": 1080,
+                            "strtype": "SLIDER/Style_knob",
                             "strval": "lv.PART.KNOB, Rectangle, Pad",
                             "InheritedType": 11
-                          },
-                          {
-                            "disabled": false,
-                            "nid": 1000467,
-                            "compnid": 1000467,
-                            "strtype": "_event/EventHandler",
-                            "strval": "VALUE_CHANGED",
-                            "childs": [
-                              {
-                                "nid": 1000468,
-                                "compnid": 1000468,
-                                "strtype": "_event/name",
-                                "strval": "Event5",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000469,
-                                "compnid": 1000469,
-                                "strtype": "_event/condition_C",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000470,
-                                "compnid": 1000470,
-                                "strtype": "_event/condition_P",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000471,
-                                "compnid": 1000471,
-                                "strtype": "_event/action",
-                                "strval": "SET TEXT VALUE FROM ARC",
-                                "childs": [
-                                  {
-                                    "nid": 1000472,
-                                    "compnid": 1000472,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Name",
-                                    "strval": "SET TEXT VALUE FROM ARC",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000473,
-                                    "compnid": 1000473,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Call",
-                                    "strval": "SetTextValueArc( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\")",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000474,
-                                    "compnid": 1000474,
-                                    "strtype": "SET TEXT VALUE FROM ARC/CallC",
-                                    "strval": "_ui_arc_set_text_value( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\");",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000475,
-                                    "compnid": 1000475,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Target",
-                                    "strval": "GUID28051680-856658S1494160",
-                                    "InheritedType": 9
-                                  },
-                                  {
-                                    "nid": 1000476,
-                                    "compnid": 1000476,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Prefix",
-                                    "strval": "",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000477,
-                                    "compnid": 1000477,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Postfix",
-                                    "strval": "%",
-                                    "InheritedType": 10
-                                  }
-                                ],
-                                "InheritedType": 10
-                              }
-                            ],
-                            "InheritedType": 4
                           }
                         ],
-                        "saved_objtypeKey": "ARC",
-                        "tree_closed": true
+                        "saved_objtypeKey": "SLIDER"
                       }
                     ],
                     "dont_export": false,
@@ -2717,13 +2600,13 @@
                     "guid": "GUID99140353-265693S90754164",
                     "cid": "GUID27075031-191919S4014161",
                     "coid": -1562214057,
-                    "cgid": -209663317,
+                    "cgid": -55174855,
                     "deepid": -1529750851,
                     "children": [
                       {
                         "guid": "GUID29099939-265694S90754164",
                         "coid": 1957174148,
-                        "cgid": -209663317,
+                        "cgid": -55174855,
                         "deepid": 1929939622,
                         "dont_export": false,
                         "locked": false,
@@ -3209,28 +3092,18 @@
                         "tree_closed": true
                       },
                       {
-                        "guid": "GUID60124676-265695S90754164",
-                        "coid": -603093129,
-                        "cgid": -209663317,
-                        "deepid": 2109328655,
+                        "guid": "GUID60279169-975522S174914196",
+                        "coid": -1684204683,
+                        "cgid": -55174855,
+                        "deepid": -1270096428,
                         "dont_export": false,
                         "locked": false,
                         "properties": [
                           {
                             "nid": 10,
                             "compnid": 10,
-                            "flags": 65536,
                             "strtype": "OBJECT/Name",
-                            "strval": "singleVolumeSlider",
-                            "childs": [
-                              {
-                                "nid": 15,
-                                "flags": 1048576,
-                                "strtype": "_codename/Codename",
-                                "strval": "singleVolumeSlider",
-                                "InheritedType": 10
-                              }
-                            ],
+                            "strval": "primaryVolumeSlider",
                             "InheritedType": 10
                           },
                           {
@@ -3266,7 +3139,7 @@
                             "strtype": "OBJECT/Position",
                             "intarray": [
                               0,
-                              25
+                              0
                             ],
                             "InheritedType": 7
                           },
@@ -3276,8 +3149,8 @@
                             "flags": 17,
                             "strtype": "OBJECT/Size",
                             "intarray": [
-                              300,
-                              300
+                              150,
+                              10
                             ],
                             "InheritedType": 7
                           },
@@ -3285,12 +3158,13 @@
                             "nid": 70,
                             "compnid": 70,
                             "strtype": "OBJECT/Align",
-                            "strval": "BOTTOM_MID",
+                            "strval": "CENTER",
                             "InheritedType": 3
                           },
                           {
                             "nid": 90,
                             "compnid": 90,
+                            "flags": 1048576,
                             "strtype": "OBJECT/Flags",
                             "InheritedType": 1
                           },
@@ -3319,21 +3193,21 @@
                             "nid": 130,
                             "compnid": 130,
                             "strtype": "OBJECT/Press_lock",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 140,
                             "compnid": 140,
                             "strtype": "OBJECT/Click_focusable",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 150,
                             "compnid": 150,
                             "strtype": "OBJECT/Adv_hittest",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
@@ -3347,14 +3221,14 @@
                             "nid": 170,
                             "compnid": 170,
                             "strtype": "OBJECT/Floating",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
                             "nid": 180,
                             "compnid": 180,
                             "strtype": "OBJECT/Overflow_visible",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
@@ -3375,19 +3249,20 @@
                             "nid": 210,
                             "compnid": 210,
                             "strtype": "OBJECT/Gesture_bubble",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 220,
                             "compnid": 220,
                             "strtype": "OBJECT/Snappable",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 225,
                             "compnid": 225,
+                            "flags": 1048576,
                             "strtype": "OBJECT/Scrolling",
                             "InheritedType": 1
                           },
@@ -3471,6 +3346,7 @@
                           {
                             "nid": 320,
                             "compnid": 320,
+                            "flags": 1048576,
                             "strtype": "OBJECT/States",
                             "InheritedType": 1
                           },
@@ -3540,13 +3416,13 @@
                           {
                             "nid": 1010,
                             "compnid": 1010,
-                            "strtype": "ARC/Arc",
+                            "strtype": "SLIDER/Slider",
                             "InheritedType": 1
                           },
                           {
                             "nid": 1020,
                             "compnid": 1020,
-                            "strtype": "ARC/Range",
+                            "strtype": "SLIDER/Range",
                             "intarray": [
                               0,
                               100
@@ -3556,30 +3432,20 @@
                           {
                             "nid": 1030,
                             "compnid": 1030,
-                            "strtype": "ARC/Value",
-                            "InheritedType": 6
-                          },
-                          {
-                            "nid": 1040,
-                            "compnid": 1040,
-                            "strtype": "ARC/Bg_angles",
-                            "intarray": [
-                              120,
-                              60
-                            ],
-                            "InheritedType": 7
-                          },
-                          {
-                            "nid": 1050,
-                            "compnid": 1050,
-                            "strtype": "ARC/Mode",
+                            "strtype": "SLIDER/Mode",
                             "strval": "NORMAL",
                             "InheritedType": 3
                           },
                           {
-                            "nid": 1060,
-                            "compnid": 1060,
-                            "strtype": "ARC/Rotation",
+                            "nid": 1040,
+                            "compnid": 1040,
+                            "strtype": "SLIDER/Value",
+                            "InheritedType": 6
+                          },
+                          {
+                            "nid": 1050,
+                            "compnid": 1050,
+                            "strtype": "SLIDER/Value_left",
                             "InheritedType": 6
                           },
                           {
@@ -3590,15 +3456,121 @@
                                 "compnid": 10000,
                                 "strtype": "_style/StyleState",
                                 "strval": "DEFAULT",
-                                "childs": [
-                                  {
-                                    "nid": 10320,
-                                    "compnid": 10320,
-                                    "strtype": "_style/Arc_Width",
-                                    "integer": 20,
-                                    "InheritedType": 6
-                                  }
-                                ],
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 20000,
+                                "compnid": 20000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 30000,
+                                "compnid": 30000,
+                                "strtype": "_style/StyleState",
+                                "strval": "PRESSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 40000,
+                                "compnid": 40000,
+                                "strtype": "_style/StyleState",
+                                "strval": "DISABLED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 50000,
+                                "compnid": 50000,
+                                "strtype": "_style/StyleState",
+                                "strval": "EDITED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 60000,
+                                "compnid": 60000,
+                                "strtype": "_style/StyleState",
+                                "strval": "SCROLLED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 70000,
+                                "compnid": 70000,
+                                "strtype": "_style/StyleState",
+                                "strval": "FOCUSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 80000,
+                                "compnid": 80000,
+                                "strtype": "_style/StyleState",
+                                "strval": "FOCUS_KEY",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 90000,
+                                "compnid": 90000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|FOCUSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 100000,
+                                "compnid": 100000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|PRESSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 110000,
+                                "compnid": 110000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|FOCUS_KEY",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 120000,
+                                "compnid": 120000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_1",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 130000,
+                                "compnid": 130000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_2",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 140000,
+                                "compnid": 140000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_3",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 150000,
+                                "compnid": 150000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_4",
+                                "InheritedType": 1
+                              }
+                            ],
+                            "nid": 1060,
+                            "compnid": 1060,
+                            "strtype": "SLIDER/Style_main",
+                            "strval": "lv.PART.MAIN, Rectangle, Pad, Transform",
+                            "InheritedType": 11
+                          },
+                          {
+                            "part": "lv.PART.INDICATOR",
+                            "childs": [
+                              {
+                                "nid": 10000,
+                                "compnid": 10000,
+                                "strtype": "_style/StyleState",
+                                "strval": "DEFAULT",
                                 "InheritedType": 1
                               },
                               {
@@ -3702,132 +3674,8 @@
                             ],
                             "nid": 1070,
                             "compnid": 1070,
-                            "strtype": "ARC/Style_main",
-                            "strval": "lv.PART.MAIN, Rectangle, Pad, Arc, Transform",
-                            "InheritedType": 11
-                          },
-                          {
-                            "part": "lv.PART.INDICATOR",
-                            "childs": [
-                              {
-                                "nid": 10000,
-                                "compnid": 10000,
-                                "strtype": "_style/StyleState",
-                                "strval": "DEFAULT",
-                                "childs": [
-                                  {
-                                    "nid": 10320,
-                                    "compnid": 10320,
-                                    "strtype": "_style/Arc_Width",
-                                    "integer": 20,
-                                    "InheritedType": 6
-                                  }
-                                ],
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 20000,
-                                "compnid": 20000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 30000,
-                                "compnid": 30000,
-                                "strtype": "_style/StyleState",
-                                "strval": "PRESSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 40000,
-                                "compnid": 40000,
-                                "strtype": "_style/StyleState",
-                                "strval": "DISABLED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 50000,
-                                "compnid": 50000,
-                                "strtype": "_style/StyleState",
-                                "strval": "EDITED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 60000,
-                                "compnid": 60000,
-                                "strtype": "_style/StyleState",
-                                "strval": "SCROLLED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 70000,
-                                "compnid": 70000,
-                                "strtype": "_style/StyleState",
-                                "strval": "FOCUSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 80000,
-                                "compnid": 80000,
-                                "strtype": "_style/StyleState",
-                                "strval": "FOCUS_KEY",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 90000,
-                                "compnid": 90000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|FOCUSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 100000,
-                                "compnid": 100000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|PRESSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 110000,
-                                "compnid": 110000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|FOCUS_KEY",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 120000,
-                                "compnid": 120000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_1",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 130000,
-                                "compnid": 130000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_2",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 140000,
-                                "compnid": 140000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_3",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 150000,
-                                "compnid": 150000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_4",
-                                "InheritedType": 1
-                              }
-                            ],
-                            "nid": 1080,
-                            "compnid": 1080,
-                            "strtype": "ARC/Style_indicator",
-                            "strval": "lv.PART.INDICATOR, Rectangle, Pad, Arc",
+                            "strtype": "SLIDER/Style_indicator",
+                            "strval": "lv.PART.INDICATOR, Rectangle",
                             "InheritedType": 11
                           },
                           {
@@ -3939,169 +3787,14 @@
                                 "InheritedType": 1
                               }
                             ],
-                            "nid": 1090,
-                            "compnid": 1090,
-                            "strtype": "ARC/Style_knob",
+                            "nid": 1080,
+                            "compnid": 1080,
+                            "strtype": "SLIDER/Style_knob",
                             "strval": "lv.PART.KNOB, Rectangle, Pad",
                             "InheritedType": 11
-                          },
-                          {
-                            "disabled": false,
-                            "nid": 1000467,
-                            "compnid": 1000467,
-                            "flags": 1048576,
-                            "strtype": "_event/EventHandler",
-                            "strval": "VALUE_CHANGED",
-                            "childs": [
-                              {
-                                "nid": 1000468,
-                                "compnid": 1000468,
-                                "strtype": "_event/name",
-                                "strval": "Event5",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000469,
-                                "compnid": 1000469,
-                                "strtype": "_event/condition_C",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000470,
-                                "compnid": 1000470,
-                                "strtype": "_event/condition_P",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000471,
-                                "compnid": 1000471,
-                                "flags": 1048576,
-                                "strtype": "_event/action",
-                                "strval": "SET TEXT VALUE FROM ARC",
-                                "childs": [
-                                  {
-                                    "nid": 1000472,
-                                    "compnid": 1000472,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Name",
-                                    "strval": "SET TEXT VALUE FROM ARC",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000473,
-                                    "compnid": 1000473,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Call",
-                                    "strval": "SetTextValueArc( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\")",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000474,
-                                    "compnid": 1000474,
-                                    "strtype": "SET TEXT VALUE FROM ARC/CallC",
-                                    "strval": "_ui_arc_set_text_value( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\");",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000475,
-                                    "compnid": 1000475,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Target",
-                                    "strval": "GUID28051680-856658S1494160",
-                                    "InheritedType": 9
-                                  },
-                                  {
-                                    "nid": 1000476,
-                                    "compnid": 1000476,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Prefix",
-                                    "strval": "",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000477,
-                                    "compnid": 1000477,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Postfix",
-                                    "strval": "%",
-                                    "InheritedType": 10
-                                  }
-                                ],
-                                "InheritedType": 10
-                              }
-                            ],
-                            "InheritedType": 4
-                          },
-                          {
-                            "disabled": false,
-                            "nid": 1000478,
-                            "strtype": "_event/EventHandler",
-                            "strval": "VALUE_CHANGED",
-                            "childs": [
-                              {
-                                "nid": 1000479,
-                                "strtype": "_event/name",
-                                "strval": "Event6",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000480,
-                                "strtype": "_event/condition_C",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000481,
-                                "strtype": "_event/condition_P",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000482,
-                                "strtype": "_event/action",
-                                "strval": "SET TEXT VALUE FROM ARC",
-                                "childs": [
-                                  {
-                                    "nid": 1000483,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Name",
-                                    "strval": "SET TEXT VALUE FROM ARC",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000484,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Call",
-                                    "strval": "SetTextValueArc( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\")",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000485,
-                                    "strtype": "SET TEXT VALUE FROM ARC/CallC",
-                                    "strval": "_ui_arc_set_text_value( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\");",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000486,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Target",
-                                    "strval": "GUID29099939-265694S90754164",
-                                    "InheritedType": 9
-                                  },
-                                  {
-                                    "nid": 1000487,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Prefix",
-                                    "strval": "",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000488,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Postfix",
-                                    "strval": "%",
-                                    "InheritedType": 10
-                                  }
-                                ],
-                                "InheritedType": 10
-                              }
-                            ],
-                            "InheritedType": 4
                           }
                         ],
-                        "saved_objtypeKey": "ARC"
+                        "saved_objtypeKey": "SLIDER"
                       }
                     ],
                     "dont_export": false,
@@ -5403,13 +5096,13 @@
                     "guid": "GUID9856955-552111S1894164",
                     "cid": "GUID27075031-191919S4014161",
                     "coid": -1562214057,
-                    "cgid": -1206905372,
+                    "cgid": -1878699649,
                     "deepid": -1529750851,
                     "children": [
                       {
                         "guid": "GUID71424100-552112S1894164",
                         "coid": 1957174148,
-                        "cgid": -1206905372,
+                        "cgid": -1878699649,
                         "deepid": 1929939622,
                         "dont_export": false,
                         "locked": false,
@@ -5895,28 +5588,18 @@
                         "tree_closed": true
                       },
                       {
-                        "guid": "GUID2072341-552113S1894164",
-                        "coid": -603093129,
-                        "cgid": -1206905372,
-                        "deepid": 2109328655,
+                        "guid": "GUID38414277-975524S174934196",
+                        "coid": -1684204683,
+                        "cgid": -1878699649,
+                        "deepid": -1270096428,
                         "dont_export": false,
                         "locked": false,
                         "properties": [
                           {
                             "nid": 10,
                             "compnid": 10,
-                            "flags": 65536,
                             "strtype": "OBJECT/Name",
-                            "strval": "balanceVolumeSlider",
-                            "childs": [
-                              {
-                                "nid": 15,
-                                "flags": 1048576,
-                                "strtype": "_codename/Codename",
-                                "strval": "balanceVolumeSlider",
-                                "InheritedType": 10
-                              }
-                            ],
+                            "strval": "primaryVolumeSlider",
                             "InheritedType": 10
                           },
                           {
@@ -5952,7 +5635,7 @@
                             "strtype": "OBJECT/Position",
                             "intarray": [
                               0,
-                              25
+                              0
                             ],
                             "InheritedType": 7
                           },
@@ -5962,8 +5645,8 @@
                             "flags": 17,
                             "strtype": "OBJECT/Size",
                             "intarray": [
-                              300,
-                              300
+                              150,
+                              10
                             ],
                             "InheritedType": 7
                           },
@@ -5971,12 +5654,13 @@
                             "nid": 70,
                             "compnid": 70,
                             "strtype": "OBJECT/Align",
-                            "strval": "BOTTOM_MID",
+                            "strval": "CENTER",
                             "InheritedType": 3
                           },
                           {
                             "nid": 90,
                             "compnid": 90,
+                            "flags": 1048576,
                             "strtype": "OBJECT/Flags",
                             "InheritedType": 1
                           },
@@ -6005,21 +5689,21 @@
                             "nid": 130,
                             "compnid": 130,
                             "strtype": "OBJECT/Press_lock",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 140,
                             "compnid": 140,
                             "strtype": "OBJECT/Click_focusable",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 150,
                             "compnid": 150,
                             "strtype": "OBJECT/Adv_hittest",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
@@ -6033,14 +5717,14 @@
                             "nid": 170,
                             "compnid": 170,
                             "strtype": "OBJECT/Floating",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
                             "nid": 180,
                             "compnid": 180,
                             "strtype": "OBJECT/Overflow_visible",
-                            "strval": "True",
+                            "strval": "False",
                             "InheritedType": 2
                           },
                           {
@@ -6061,19 +5745,20 @@
                             "nid": 210,
                             "compnid": 210,
                             "strtype": "OBJECT/Gesture_bubble",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 220,
                             "compnid": 220,
                             "strtype": "OBJECT/Snappable",
-                            "strval": "False",
+                            "strval": "True",
                             "InheritedType": 2
                           },
                           {
                             "nid": 225,
                             "compnid": 225,
+                            "flags": 1048576,
                             "strtype": "OBJECT/Scrolling",
                             "InheritedType": 1
                           },
@@ -6157,6 +5842,7 @@
                           {
                             "nid": 320,
                             "compnid": 320,
+                            "flags": 1048576,
                             "strtype": "OBJECT/States",
                             "InheritedType": 1
                           },
@@ -6226,13 +5912,13 @@
                           {
                             "nid": 1010,
                             "compnid": 1010,
-                            "strtype": "ARC/Arc",
+                            "strtype": "SLIDER/Slider",
                             "InheritedType": 1
                           },
                           {
                             "nid": 1020,
                             "compnid": 1020,
-                            "strtype": "ARC/Range",
+                            "strtype": "SLIDER/Range",
                             "intarray": [
                               0,
                               100
@@ -6242,33 +5928,20 @@
                           {
                             "nid": 1030,
                             "compnid": 1030,
-                            "flags": 65536,
-                            "strtype": "ARC/Value",
-                            "integer": 50,
-                            "InheritedType": 6
+                            "strtype": "SLIDER/Mode",
+                            "strval": "NORMAL",
+                            "InheritedType": 3
                           },
                           {
                             "nid": 1040,
                             "compnid": 1040,
-                            "strtype": "ARC/Bg_angles",
-                            "intarray": [
-                              120,
-                              60
-                            ],
-                            "InheritedType": 7
+                            "strtype": "SLIDER/Value",
+                            "InheritedType": 6
                           },
                           {
                             "nid": 1050,
                             "compnid": 1050,
-                            "flags": 65536,
-                            "strtype": "ARC/Mode",
-                            "strval": "SYMMETRICAL",
-                            "InheritedType": 3
-                          },
-                          {
-                            "nid": 1060,
-                            "compnid": 1060,
-                            "strtype": "ARC/Rotation",
+                            "strtype": "SLIDER/Value_left",
                             "InheritedType": 6
                           },
                           {
@@ -6279,15 +5952,121 @@
                                 "compnid": 10000,
                                 "strtype": "_style/StyleState",
                                 "strval": "DEFAULT",
-                                "childs": [
-                                  {
-                                    "nid": 10320,
-                                    "compnid": 10320,
-                                    "strtype": "_style/Arc_Width",
-                                    "integer": 20,
-                                    "InheritedType": 6
-                                  }
-                                ],
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 20000,
+                                "compnid": 20000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 30000,
+                                "compnid": 30000,
+                                "strtype": "_style/StyleState",
+                                "strval": "PRESSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 40000,
+                                "compnid": 40000,
+                                "strtype": "_style/StyleState",
+                                "strval": "DISABLED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 50000,
+                                "compnid": 50000,
+                                "strtype": "_style/StyleState",
+                                "strval": "EDITED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 60000,
+                                "compnid": 60000,
+                                "strtype": "_style/StyleState",
+                                "strval": "SCROLLED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 70000,
+                                "compnid": 70000,
+                                "strtype": "_style/StyleState",
+                                "strval": "FOCUSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 80000,
+                                "compnid": 80000,
+                                "strtype": "_style/StyleState",
+                                "strval": "FOCUS_KEY",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 90000,
+                                "compnid": 90000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|FOCUSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 100000,
+                                "compnid": 100000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|PRESSED",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 110000,
+                                "compnid": 110000,
+                                "strtype": "_style/StyleState",
+                                "strval": "CHECKED|FOCUS_KEY",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 120000,
+                                "compnid": 120000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_1",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 130000,
+                                "compnid": 130000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_2",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 140000,
+                                "compnid": 140000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_3",
+                                "InheritedType": 1
+                              },
+                              {
+                                "nid": 150000,
+                                "compnid": 150000,
+                                "strtype": "_style/StyleState",
+                                "strval": "USER_4",
+                                "InheritedType": 1
+                              }
+                            ],
+                            "nid": 1060,
+                            "compnid": 1060,
+                            "strtype": "SLIDER/Style_main",
+                            "strval": "lv.PART.MAIN, Rectangle, Pad, Transform",
+                            "InheritedType": 11
+                          },
+                          {
+                            "part": "lv.PART.INDICATOR",
+                            "childs": [
+                              {
+                                "nid": 10000,
+                                "compnid": 10000,
+                                "strtype": "_style/StyleState",
+                                "strval": "DEFAULT",
                                 "InheritedType": 1
                               },
                               {
@@ -6391,132 +6170,8 @@
                             ],
                             "nid": 1070,
                             "compnid": 1070,
-                            "strtype": "ARC/Style_main",
-                            "strval": "lv.PART.MAIN, Rectangle, Pad, Arc, Transform",
-                            "InheritedType": 11
-                          },
-                          {
-                            "part": "lv.PART.INDICATOR",
-                            "childs": [
-                              {
-                                "nid": 10000,
-                                "compnid": 10000,
-                                "strtype": "_style/StyleState",
-                                "strval": "DEFAULT",
-                                "childs": [
-                                  {
-                                    "nid": 10320,
-                                    "compnid": 10320,
-                                    "strtype": "_style/Arc_Width",
-                                    "integer": 20,
-                                    "InheritedType": 6
-                                  }
-                                ],
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 20000,
-                                "compnid": 20000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 30000,
-                                "compnid": 30000,
-                                "strtype": "_style/StyleState",
-                                "strval": "PRESSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 40000,
-                                "compnid": 40000,
-                                "strtype": "_style/StyleState",
-                                "strval": "DISABLED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 50000,
-                                "compnid": 50000,
-                                "strtype": "_style/StyleState",
-                                "strval": "EDITED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 60000,
-                                "compnid": 60000,
-                                "strtype": "_style/StyleState",
-                                "strval": "SCROLLED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 70000,
-                                "compnid": 70000,
-                                "strtype": "_style/StyleState",
-                                "strval": "FOCUSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 80000,
-                                "compnid": 80000,
-                                "strtype": "_style/StyleState",
-                                "strval": "FOCUS_KEY",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 90000,
-                                "compnid": 90000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|FOCUSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 100000,
-                                "compnid": 100000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|PRESSED",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 110000,
-                                "compnid": 110000,
-                                "strtype": "_style/StyleState",
-                                "strval": "CHECKED|FOCUS_KEY",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 120000,
-                                "compnid": 120000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_1",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 130000,
-                                "compnid": 130000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_2",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 140000,
-                                "compnid": 140000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_3",
-                                "InheritedType": 1
-                              },
-                              {
-                                "nid": 150000,
-                                "compnid": 150000,
-                                "strtype": "_style/StyleState",
-                                "strval": "USER_4",
-                                "InheritedType": 1
-                              }
-                            ],
-                            "nid": 1080,
-                            "compnid": 1080,
-                            "strtype": "ARC/Style_indicator",
-                            "strval": "lv.PART.INDICATOR, Rectangle, Pad, Arc",
+                            "strtype": "SLIDER/Style_indicator",
+                            "strval": "lv.PART.INDICATOR, Rectangle",
                             "InheritedType": 11
                           },
                           {
@@ -6628,167 +6283,14 @@
                                 "InheritedType": 1
                               }
                             ],
-                            "nid": 1090,
-                            "compnid": 1090,
-                            "strtype": "ARC/Style_knob",
+                            "nid": 1080,
+                            "compnid": 1080,
+                            "strtype": "SLIDER/Style_knob",
                             "strval": "lv.PART.KNOB, Rectangle, Pad",
                             "InheritedType": 11
-                          },
-                          {
-                            "disabled": false,
-                            "nid": 1000467,
-                            "compnid": 1000467,
-                            "strtype": "_event/EventHandler",
-                            "strval": "VALUE_CHANGED",
-                            "childs": [
-                              {
-                                "nid": 1000468,
-                                "compnid": 1000468,
-                                "strtype": "_event/name",
-                                "strval": "Event5",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000469,
-                                "compnid": 1000469,
-                                "strtype": "_event/condition_C",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000470,
-                                "compnid": 1000470,
-                                "strtype": "_event/condition_P",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000471,
-                                "compnid": 1000471,
-                                "strtype": "_event/action",
-                                "strval": "SET TEXT VALUE FROM ARC",
-                                "childs": [
-                                  {
-                                    "nid": 1000472,
-                                    "compnid": 1000472,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Name",
-                                    "strval": "SET TEXT VALUE FROM ARC",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000473,
-                                    "compnid": 1000473,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Call",
-                                    "strval": "SetTextValueArc( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\")",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000474,
-                                    "compnid": 1000474,
-                                    "strtype": "SET TEXT VALUE FROM ARC/CallC",
-                                    "strval": "_ui_arc_set_text_value( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\");",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000475,
-                                    "compnid": 1000475,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Target",
-                                    "strval": "GUID28051680-856658S1494160",
-                                    "InheritedType": 9
-                                  },
-                                  {
-                                    "nid": 1000476,
-                                    "compnid": 1000476,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Prefix",
-                                    "strval": "",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000477,
-                                    "compnid": 1000477,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Postfix",
-                                    "strval": "%",
-                                    "InheritedType": 10
-                                  }
-                                ],
-                                "InheritedType": 10
-                              }
-                            ],
-                            "InheritedType": 4
-                          },
-                          {
-                            "disabled": false,
-                            "nid": 1000489,
-                            "strtype": "_event/EventHandler",
-                            "strval": "VALUE_CHANGED",
-                            "childs": [
-                              {
-                                "nid": 1000490,
-                                "strtype": "_event/name",
-                                "strval": "Event7",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000491,
-                                "strtype": "_event/condition_C",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000492,
-                                "strtype": "_event/condition_P",
-                                "strval": "",
-                                "InheritedType": 10
-                              },
-                              {
-                                "nid": 1000493,
-                                "strtype": "_event/action",
-                                "strval": "SET TEXT VALUE FROM ARC",
-                                "childs": [
-                                  {
-                                    "nid": 1000494,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Name",
-                                    "strval": "SET TEXT VALUE FROM ARC",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000495,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Call",
-                                    "strval": "SetTextValueArc( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\")",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000496,
-                                    "strtype": "SET TEXT VALUE FROM ARC/CallC",
-                                    "strval": "_ui_arc_set_text_value( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\");",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000497,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Target",
-                                    "strval": "GUID71424100-552112S1894164",
-                                    "InheritedType": 9
-                                  },
-                                  {
-                                    "nid": 1000498,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Prefix",
-                                    "strval": "",
-                                    "InheritedType": 10
-                                  },
-                                  {
-                                    "nid": 1000499,
-                                    "strtype": "SET TEXT VALUE FROM ARC/Postfix",
-                                    "strval": "%",
-                                    "InheritedType": 10
-                                  }
-                                ],
-                                "InheritedType": 10
-                              }
-                            ],
-                            "InheritedType": 4
                           }
                         ],
-                        "saved_objtypeKey": "ARC"
+                        "saved_objtypeKey": "SLIDER"
                       }
                     ],
                     "dont_export": false,
@@ -15564,7 +15066,7 @@
     "uiExportFolderPath": "E:\\SharedCo\\UniMixerClient\\src\\ui",
     "projectExportFolderPath": "C:\\Users\\bezal\\OneDrive\\Documents\\Squareline Studio\\esp32",
     "custom_variable_prefix": "ui",
-    "backup_cnt": 290,
+    "backup_cnt": 291,
     "autosave_cnt": 0,
     "group_color_cnt": 1,
     "lvgl_version": "9.1.0",
