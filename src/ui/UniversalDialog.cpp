@@ -160,6 +160,53 @@ lv_obj_t* UniversalDialog::createMessage(lv_obj_t* parent, const String& message
     return messageLabel;
 }
 
+// Static callback registry to avoid memory management issues
+namespace {
+    struct CallbackRegistry {
+        static std::vector<std::function<void()>> callbacks;
+        static std::vector<bool> callbackValid;
+
+        static size_t registerCallback(const std::function<void()>& callback) {
+            // Find an empty slot
+            for (size_t i = 0; i < callbackValid.size(); i++) {
+                if (!callbackValid[i]) {
+                    callbacks[i] = callback;
+                    callbackValid[i] = true;
+                    return i;
+                }
+            }
+
+            // No empty slot, add new one
+            size_t index = callbacks.size();
+            callbacks.push_back(callback);
+            callbackValid.push_back(true);
+            return index;
+        }
+
+        static void unregisterCallback(size_t index) {
+            if (index < callbackValid.size()) {
+                callbackValid[index] = false;
+            }
+        }
+
+        static bool executeCallback(size_t index) {
+            if (index < callbacks.size() && callbackValid[index]) {
+                callbacks[index]();
+                callbackValid[index] = false; // Auto-cleanup after execution
+                return true;
+            }
+            return false;
+        }
+
+        static void cleanup() {
+            std::fill(callbackValid.begin(), callbackValid.end(), false);
+        }
+    };
+
+    std::vector<std::function<void()>> CallbackRegistry::callbacks;
+    std::vector<bool> CallbackRegistry::callbackValid;
+}
+
 lv_obj_t* UniversalDialog::createButtonPanel(lv_obj_t* parent, const std::vector<DialogButton>& buttons) {
     lv_obj_t* panel = lv_obj_create(parent);
     LVGL_SET_SIZE_ALIGN(panel, LV_PCT(100), 60, LV_ALIGN_BOTTOM_MID);
@@ -205,17 +252,14 @@ lv_obj_t* UniversalDialog::createButtonPanel(lv_obj_t* parent, const std::vector
         lv_obj_center(label);
         LVGL_STYLE_LABEL(label, &lv_font_montserrat_14, 0xFFFFFF, LV_TEXT_ALIGN_CENTER);
 
-        // Store callback in user data and add event handler
-        static std::vector<std::function<void()>> callbacks;
-        callbacks.push_back(buttonConfig.callback);
-        lv_obj_set_user_data(btn, &callbacks.back());
+        // Store callback using registry system
+        size_t callbackIndex = CallbackRegistry::registerCallback(buttonConfig.callback);
+        lv_obj_set_user_data(btn, (void*)callbackIndex);
 
         lv_obj_add_event_cb(btn, [](lv_event_t* e) {
             if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                auto* callback = static_cast<std::function<void()>*>(lv_obj_get_user_data((lv_obj_t *)lv_event_get_target(e)));
-                if (callback && *callback) {
-                    (*callback)();
-                }
+                size_t callbackIndex = (size_t)lv_obj_get_user_data((lv_obj_t *)lv_event_get_target(e));
+                CallbackRegistry::executeCallback(callbackIndex);
             } }, LV_EVENT_CLICKED, nullptr);
     }
 
@@ -472,6 +516,28 @@ void UniversalDialog::showQuickSuccess(const String& message) {
     showInfo("Success", message, nullptr, DialogSize::SMALL);
 }
 
+// Helper function to clean up button callbacks
+static void cleanupButtonCallbacks(lv_obj_t* parent) {
+    if (!parent) return;
+
+    // Find all buttons in the parent and unregister their callbacks
+    uint32_t childCount = lv_obj_get_child_cnt(parent);
+    for (uint32_t i = 0; i < childCount; i++) {
+        lv_obj_t* child = lv_obj_get_child(parent, i);
+        if (child) {
+            // Check if this is a button (has user data with callback index)
+            void* userData = lv_obj_get_user_data(child);
+            if (userData) {
+                size_t callbackIndex = (size_t)userData;
+                CallbackRegistry::unregisterCallback(callbackIndex);
+                lv_obj_set_user_data(child, nullptr);
+            }
+            // Recursively clean up children of this child
+            cleanupButtonCallbacks(child);
+        }
+    }
+}
+
 // Dialog management
 bool UniversalDialog::isDialogOpen() {
     return currentDialog != nullptr && lv_obj_is_valid(currentDialog);
@@ -482,7 +548,9 @@ void UniversalDialog::closeDialog(bool animated) {
         return;
     }
 
+    // Clean up button callbacks before deleting the dialog
     if (currentOverlay && lv_obj_is_valid(currentOverlay)) {
+        cleanupButtonCallbacks(currentOverlay);
         lv_obj_del(currentOverlay);
     }
     currentDialog = nullptr;
@@ -497,6 +565,7 @@ void UniversalDialog::closeDialog(bool animated) {
 void UniversalDialog::closeAll() {
     closeDialog(false);
     DialogManager::closeAllDialogs();
+    CallbackRegistry::cleanup(); // Clean up all callbacks when closing all dialogs
 }
 
 // Global settings
