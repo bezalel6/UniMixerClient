@@ -62,5 +62,4 @@ namespace BSODHandler {
         } \
     } while(0)
 
-// Hook for ESP panic handler
-extern "C" void bsod_panic_handler(const char* reason);
+// Note: ESP panic handler integration can be added in the future
