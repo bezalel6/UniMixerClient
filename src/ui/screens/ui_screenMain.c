@@ -36,8 +36,11 @@ lv_obj_t * ui_pnlSettings = NULL;
 lv_obj_t * ui_lblSettingsHeader = NULL;
 lv_obj_t * ui_actionBtns = NULL;
 lv_obj_t * ui_btnGOTOLog = NULL;
+lv_obj_t * ui_btnLbl1 = NULL;
 lv_obj_t * ui_btnGOTOSettings = NULL;
+lv_obj_t * ui_btnLbl2 = NULL;
 lv_obj_t * ui_btnRequestStatus = NULL;
+lv_obj_t * ui_btnLbl3 = NULL;
 lv_obj_t * ui_pnlNetwork = NULL;
 lv_obj_t * ui_wifiContainer = NULL;
 lv_obj_t * ui_lblWifi = NULL;
@@ -103,7 +106,7 @@ void ui_event_pnlSettings(lv_event_t * e)
     }
 }
 
-void ui_event_btnGOTOLog_btn(lv_event_t * e)
+void ui_event_btnGOTOLog(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
@@ -112,7 +115,7 @@ void ui_event_btnGOTOLog_btn(lv_event_t * e)
     }
 }
 
-void ui_event_btnGOTOSettings_btn(lv_event_t * e)
+void ui_event_btnGOTOSettings(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
@@ -329,23 +332,44 @@ void ui_screenMain_screen_init(void)
     lv_obj_remove_flag(ui_actionBtns, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SNAPPABLE |
                        LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_btnGOTOLog = ui_btn_create(ui_actionBtns);
-    lv_obj_set_x(ui_btnGOTOLog, 0);
-    lv_obj_set_y(ui_btnGOTOLog, 0);
+    ui_btnGOTOLog = lv_button_create(ui_actionBtns);
+    lv_obj_set_width(ui_btnGOTOLog, lv_pct(100));
+    lv_obj_set_height(ui_btnGOTOLog, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnGOTOLog, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_btnGOTOLog, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_remove_flag(ui_btnGOTOLog, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    lv_label_set_text(ui_comp_get_child(ui_btnGOTOLog, UI_COMP_BTN_BTNLBL), "Log");
+    ui_btnLbl1 = lv_label_create(ui_btnGOTOLog);
+    lv_obj_set_width(ui_btnLbl1, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_btnLbl1, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnLbl1, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_btnLbl1, "Log");
 
-    ui_btnGOTOSettings = ui_btn_create(ui_actionBtns);
-    lv_obj_set_x(ui_btnGOTOSettings, 0);
-    lv_obj_set_y(ui_btnGOTOSettings, 0);
+    ui_btnGOTOSettings = lv_button_create(ui_actionBtns);
+    lv_obj_set_width(ui_btnGOTOSettings, lv_pct(100));
+    lv_obj_set_height(ui_btnGOTOSettings, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnGOTOSettings, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_btnGOTOSettings, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_remove_flag(ui_btnGOTOSettings, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    lv_label_set_text(ui_comp_get_child(ui_btnGOTOSettings, UI_COMP_BTN_BTNLBL), "System Overview");
+    ui_btnLbl2 = lv_label_create(ui_btnGOTOSettings);
+    lv_obj_set_width(ui_btnLbl2, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_btnLbl2, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnLbl2, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_btnLbl2, "System Overview");
 
-    ui_btnRequestStatus = ui_btn_create(ui_actionBtns);
-    lv_obj_set_x(ui_btnRequestStatus, 0);
-    lv_obj_set_y(ui_btnRequestStatus, 0);
+    ui_btnRequestStatus = lv_button_create(ui_actionBtns);
+    lv_obj_set_width(ui_btnRequestStatus, lv_pct(100));
+    lv_obj_set_height(ui_btnRequestStatus, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnRequestStatus, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_btnRequestStatus, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_remove_flag(ui_btnRequestStatus, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    lv_label_set_text(ui_comp_get_child(ui_btnRequestStatus, UI_COMP_BTN_BTNLBL), "Request Status");
+    ui_btnLbl3 = lv_label_create(ui_btnRequestStatus);
+    lv_obj_set_width(ui_btnLbl3, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_btnLbl3, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnLbl3, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_btnLbl3, "Request Status");
 
     ui_pnlNetwork = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlNetwork, 200);
@@ -501,8 +525,8 @@ void ui_screenMain_screen_init(void)
     lv_obj_add_event_cb(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
                         ui_event_containerBalanceVolumeSlider_containerBalanceVolumeSlider_balanceVolumeSlider, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_statusView, ui_event_statusView, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog_btn, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(ui_btnGOTOSettings, ui_event_btnGOTOSettings_btn, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_btnGOTOSettings, ui_event_btnGOTOSettings, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_pnlSettings, ui_event_pnlSettings, LV_EVENT_ALL, NULL);
     ui_lblPrimaryVolumeSlider = ui_comp_get_child(ui_containerPrimaryVolumeSlider,
                                                   UI_COMP_VOLUMESLIDER_LBLPRIMARYVOLUMESLIDER);
@@ -552,8 +576,11 @@ void ui_screenMain_screen_destroy(void)
     ui_lblSettingsHeader = NULL;
     ui_actionBtns = NULL;
     ui_btnGOTOLog = NULL;
+    ui_btnLbl1 = NULL;
     ui_btnGOTOSettings = NULL;
+    ui_btnLbl2 = NULL;
     ui_btnRequestStatus = NULL;
+    ui_btnLbl3 = NULL;
     ui_pnlNetwork = NULL;
     ui_wifiContainer = NULL;
     ui_lblWifi = NULL;
