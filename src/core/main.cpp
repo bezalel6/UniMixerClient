@@ -2,6 +2,7 @@
 #include "CoreLoggingFilter.h"
 #include "core/AppController.h"
 #include "hardware/DeviceManager.h"
+#include "BSODHandler.h"
 #include <Arduino.h>
 
 /*
@@ -33,7 +34,7 @@ void setup() {
 
   if (!Application::init()) {
     log_e("Failed to initialize application");
-    ESP.restart();
+    CRITICAL_FAILURE("Application initialization failed. Please check system configuration.");
   }
 
   log_i("ESP32-S3 UniMixer Client initialized successfully");

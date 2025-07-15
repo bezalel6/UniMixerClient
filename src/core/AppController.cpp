@@ -14,6 +14,8 @@
 #include "TaskManager.h"
 #include "UIPerformanceOptimizations.h" // EMERGENCY PERFORMANCE FIX
 #include "UiEventHandlers.h"
+#include "BSODHandler.h"        // NEW: BSOD system
+#include "BootProgressScreen.h" // NEW: Boot progress
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 #include <ui/ui.h>
@@ -42,18 +44,30 @@ bool init(void) {
   esp_task_wdt_reset();
 
   // Critical initialization steps
-  INIT_STEP_CRITICAL("Initializing Device Manager", Hardware::Device::init());
+  // First, initialize minimal display for BSOD capability
+  BOOT_STATUS("Initializing hardware...");
+  BootProgress::updateProgress(5);
+  INIT_CRITICAL(Hardware::Device::init(), "Failed to initialize device manager. Hardware initialization failed.");
 
+  // Initialize BSOD handler early
+  INIT_CRITICAL(BSODHandler::init(), "Failed to initialize BSOD handler. Critical error system unavailable.");
+
+  // Initialize display and show boot progress
+  BOOT_STATUS("Initializing display...");
+  BootProgress::updateProgress(10);
+  INIT_CRITICAL(Display::init(), "Display initialization failed. Cannot show user interface.");
+  
+  // Now show boot progress screen
+  INIT_CRITICAL(BootProgress::init(), "Failed to initialize boot progress screen.");
+  
   // Optional initialization steps
-  INIT_STEP_OPTIONAL("Initializing SD Manager",
-                     "SD Manager initialized successfully",
-                     "SD Manager initialization failed - SD card functionality "
-                     "will be unavailable",
-                     Hardware::SD::init());
+  BOOT_STATUS("Checking SD card...");
+  BootProgress::updateProgress(20);
+  INIT_OPTIONAL(Hardware::SD::init(), "SD Manager");
 
-      INIT_STEP_CRITICAL("Initializing Simple Logo Manager", SimpleLogoManager::getInstance().init());
-
-  INIT_STEP_CRITICAL("Initializing Display Manager", Display::init());
+  BOOT_STATUS("Loading logo...");
+  BootProgress::updateProgress(30);
+  INIT_CRITICAL(SimpleLogoManager::getInstance().init(), "Failed to initialize logo manager.");
 
   // Conditional SD filesystem initialization
   INIT_STEP("Checking SD filesystem", {
@@ -68,9 +82,13 @@ bool init(void) {
     }
   });
 
-  INIT_STEP_CRITICAL("Initializing Message System", Messaging::initMessaging());
+  BOOT_STATUS("Initializing messaging system...");
+  BootProgress::updateProgress(40);
+  INIT_CRITICAL(Messaging::initMessaging(), "Failed to initialize messaging system. Communication unavailable.");
 
   // Network-Free Architecture
+  BOOT_STATUS("Configuring network-free architecture...");
+  BootProgress::updateProgress(50);
   INIT_STEP("Configuring Network-Free Architecture", {
     ESP_LOGI(TAG, "[NETWORK-FREE] Network-free architecture enabled");
 
@@ -95,11 +113,11 @@ bool init(void) {
     ESP_LOGI(TAG, "Using BRUTAL messaging system - no abstractions");
 #else
         ESP_LOGE(TAG, "Serial transport requested but disabled in config");
-        return false;
+        CRITICAL_FAILURE("Serial transport requested but disabled in configuration");
 #endif
 #else
         ESP_LOGE(TAG, "Only Serial transport supported in network-free mode");
-        return false;
+        CRITICAL_FAILURE("Only Serial transport is supported in network-free mode");
 #endif
   });
 
@@ -110,13 +128,19 @@ bool init(void) {
   // Brutal logo system is already initialized above - no complex setup needed
 
   // Audio system initialization
-  INIT_STEP_CRITICAL("Initializing Audio System",
-                     Application::Audio::AudioManager::getInstance().init() &&
-                         Application::Audio::AudioUI::getInstance().init());
+  BOOT_STATUS("Initializing audio system...");
+  BootProgress::updateProgress(60);
+  INIT_CRITICAL(Application::Audio::AudioManager::getInstance().init() &&
+                Application::Audio::AudioUI::getInstance().init(),
+                "Failed to initialize audio system. Audio functionality unavailable.");
 
+  BOOT_STATUS("Setting up UI components...");
+  BootProgress::updateProgress(70);
   INIT_STEP("Setting up UI components", { setupUiComponents(); });
 
   // EMERGENCY PERFORMANCE FIX: Apply critical UI optimizations
+  BOOT_STATUS("Optimizing performance...");
+  BootProgress::updateProgress(80);
   INIT_STEP("Applying emergency UI performance optimizations", {
     ui_performance_apply_all_optimizations();
     ESP_LOGI(TAG, "Emergency performance optimizations applied - expect 80-90% "
@@ -124,7 +148,9 @@ bool init(void) {
   });
 
   // Task Manager initialization - Network-free mode for maximum performance
-  INIT_STEP_CRITICAL("Starting Task Manager", Application::TaskManager::init());
+  BOOT_STATUS("Starting task manager...");
+  BootProgress::updateProgress(90);
+  INIT_CRITICAL(Application::TaskManager::init(), "Failed to start task manager. System cannot run tasks.");
 
   // Messaging already running - no need to start anything
 
@@ -144,6 +170,12 @@ bool init(void) {
   // Update build time display
   INIT_STEP("Updating build time display",
             { Application::LVGLMessageHandler::updateBuildTimeDisplay(); });
+
+  // Hide boot progress screen
+  BOOT_STATUS("System ready!");
+  BootProgress::updateProgress(100);
+  vTaskDelay(pdMS_TO_TICKS(500)); // Brief moment to show 100%
+  BootProgress::hide();
 
   // Cleanup watchdog timer
   ESP_LOGI(TAG, "De-initializing startup watchdog timer.");
