@@ -19,9 +19,8 @@ bool init() {
     // Mark as ready - we'll create the screen on-demand when needed
     bsodReady = true;
     
-    // Install custom panic handler
-    extern void esp_panic_handler_reconfigure(void);
-    esp_panic_handler_reconfigure();
+    // Note: ESP panic handler integration can be added later if needed
+    // For now, the BSOD system works through our macros
     
     return true;
 }
@@ -128,20 +127,13 @@ void show(const char* message, const char* file, int line) {
     lv_scr_load(bsodScreen);
     
     // Force LVGL to process and render immediately
-    lv_task_handler();
+    lv_timer_handler();
     
     // Infinite loop - system is halted
     while(1) {
-        lv_task_handler();
+        lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
 } // namespace BSODHandler
-
-// ESP panic handler hook
-extern "C" void bsod_panic_handler(const char* reason) {
-    if (BSODHandler::isReady()) {
-        BSODHandler::show(reason ? reason : "System panic", nullptr, 0);
-    }
-}

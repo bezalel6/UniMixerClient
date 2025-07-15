@@ -67,7 +67,7 @@ bool init() {
     screenVisible = true;
     
     // Force immediate render
-    lv_task_handler();
+    lv_timer_handler();
     
     ESP_LOGI(TAG, "Boot progress screen initialized");
     return true;
@@ -80,7 +80,7 @@ void updateStatus(const char* status) {
     lv_label_set_text(statusLabel, status);
     
     // Force immediate update
-    lv_task_handler();
+    lv_timer_handler();
 }
 
 void updateProgress(int percentage) {
@@ -93,7 +93,7 @@ void updateProgress(int percentage) {
     lv_bar_set_value(progressBar, percentage, LV_ANIM_OFF);
     
     // Force immediate update
-    lv_task_handler();
+    lv_timer_handler();
 }
 
 void hide() {
