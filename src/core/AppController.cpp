@@ -8,17 +8,18 @@
 #include "../logo/SimpleLogoManager.h"
 #include "../messaging/Message.h"
 #include "../messaging/MessagingInit.h"
+#include "BSODHandler.h"        // NEW: BSOD system
+#include "BootProgressScreen.h" // NEW: Boot progress
 #include "BuildInfo.h"
 #include "ManagerMacros.h"
 #include "MessagingConfig.h"
 #include "TaskManager.h"
 #include "UIPerformanceOptimizations.h" // EMERGENCY PERFORMANCE FIX
 #include "UiEventHandlers.h"
-#include "BSODHandler.h"        // NEW: BSOD system
-#include "BootProgressScreen.h" // NEW: Boot progress
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 #include <ui/ui.h>
+
 
 // Private variables
 static const char *TAG = "AppController";
@@ -47,19 +48,25 @@ bool init(void) {
   // First, initialize minimal display for BSOD capability
   BOOT_STATUS("Initializing hardware...");
   BootProgress::updateProgress(5);
-  INIT_CRITICAL(Hardware::Device::init(), "Failed to initialize device manager. Hardware initialization failed.");
+  INIT_CRITICAL(
+      Hardware::Device::init(),
+      "Failed to initialize device manager. Hardware initialization failed.");
 
   // Initialize BSOD handler early
-  INIT_CRITICAL(BSODHandler::init(), "Failed to initialize BSOD handler. Critical error system unavailable.");
+  INIT_CRITICAL(
+      BSODHandler::init(),
+      "Failed to initialize BSOD handler. Critical error system unavailable.");
 
   // Initialize display and show boot progress
   BOOT_STATUS("Initializing display...");
   BootProgress::updateProgress(10);
-  INIT_CRITICAL(Display::init(), "Display initialization failed. Cannot show user interface.");
-  
+  INIT_CRITICAL(Display::init(),
+                "Display initialization failed. Cannot show user interface.");
+
   // Now show boot progress screen
-  INIT_CRITICAL(BootProgress::init(), "Failed to initialize boot progress screen.");
-  
+  INIT_CRITICAL(BootProgress::init(),
+                "Failed to initialize boot progress screen.");
+
   // Optional initialization steps
   BOOT_STATUS("Checking SD card...");
   BootProgress::updateProgress(20);
@@ -67,7 +74,8 @@ bool init(void) {
 
   BOOT_STATUS("Loading logo...");
   BootProgress::updateProgress(30);
-  INIT_CRITICAL(SimpleLogoManager::getInstance().init(), "Failed to initialize logo manager.");
+  INIT_CRITICAL(SimpleLogoManager::getInstance().init(),
+                "Failed to initialize logo manager.");
 
   // Conditional SD filesystem initialization
   INIT_STEP("Checking SD filesystem", {
@@ -84,7 +92,9 @@ bool init(void) {
 
   BOOT_STATUS("Initializing messaging system...");
   BootProgress::updateProgress(40);
-  INIT_CRITICAL(Messaging::initMessaging(), "Failed to initialize messaging system. Communication unavailable.");
+  INIT_CRITICAL(
+      Messaging::initMessaging(),
+      "Failed to initialize messaging system. Communication unavailable.");
 
   // Network-Free Architecture
   BOOT_STATUS("Configuring network-free architecture...");
@@ -130,9 +140,10 @@ bool init(void) {
   // Audio system initialization
   BOOT_STATUS("Initializing audio system...");
   BootProgress::updateProgress(60);
-  INIT_CRITICAL(Application::Audio::AudioManager::getInstance().init() &&
-                Application::Audio::AudioUI::getInstance().init(),
-                "Failed to initialize audio system. Audio functionality unavailable.");
+  INIT_CRITICAL(
+      Application::Audio::AudioManager::getInstance().init() &&
+          Application::Audio::AudioUI::getInstance().init(),
+      "Failed to initialize audio system. Audio functionality unavailable.");
 
   BOOT_STATUS("Setting up UI components...");
   BootProgress::updateProgress(70);
@@ -150,7 +161,8 @@ bool init(void) {
   // Task Manager initialization - Network-free mode for maximum performance
   BOOT_STATUS("Starting task manager...");
   BootProgress::updateProgress(90);
-  INIT_CRITICAL(Application::TaskManager::init(), "Failed to start task manager. System cannot run tasks.");
+  INIT_CRITICAL(Application::TaskManager::init(),
+                "Failed to start task manager. System cannot run tasks.");
 
   // Messaging already running - no need to start anything
 
