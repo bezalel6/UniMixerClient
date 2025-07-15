@@ -25,24 +25,13 @@ bool SimpleLogoManager::init() {
     if (!Hardware::SD::isMounted()) {
         ESP_LOGE(TAG, "SD card not mounted - triggering SD card specific BSOD");
 
-        // Get SD card status for more specific error information
+        // Get SD card status for details
         const char *sdStatus = Hardware::SD::getStatusString();
         char errorMessage[256];
 
-        // Create specific error message based on SD status
-        if (strcmp(sdStatus, "Mount Failed") == 0) {
-            snprintf(errorMessage, sizeof(errorMessage),
-                     "SD card detected but failed to mount. The card may be corrupted or using an unsupported format.");
-        } else if (strcmp(sdStatus, "Card Removed") == 0) {
-            snprintf(errorMessage, sizeof(errorMessage),
-                     "SD card was removed during operation. Please insert a properly formatted SD card.");
-        } else if (strcmp(sdStatus, "Error") == 0) {
-            snprintf(errorMessage, sizeof(errorMessage),
-                     "SD card hardware error detected. Check connections and try a different SD card.");
-        } else {
-            snprintf(errorMessage, sizeof(errorMessage),
-                     "SD card not detected. Logo system requires an SD card. Status: %s", sdStatus);
-        }
+        // Simple error message with status details
+        snprintf(errorMessage, sizeof(errorMessage),
+                 "SD card required for operation but not detected.\n\nTo resolve:\n1. Disconnect power completely\n2. Insert a properly formatted SD card\n3. Reconnect power\n\nStatus: %s", sdStatus);
 
         // Trigger BSOD with detailed message
         CRITICAL_FAILURE(errorMessage);
