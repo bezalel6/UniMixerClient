@@ -112,10 +112,8 @@ static const char* getBuildTimestampNum() {{
     with open(BUILD_INFO_GENERATED_PATH, "w", encoding="utf-8") as f:
         f.write(header_content)
 
-    print(f"Generated build info: {BUILD_INFO_GENERATED_PATH}")
-    print(f"  Commit: {commit_hash}")
-    print(f"  Branch: {branch}")
-    print(f"  Timestamp: {timestamp}")
+    # Script executed by PlatformIO build - suppress output to avoid linker issues
+    # The build info is now available in include/BuildInfoGenerated.h
 
 
 if __name__ == "__main__":
