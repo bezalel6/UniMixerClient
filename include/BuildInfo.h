@@ -2,6 +2,9 @@
 
 #include <stdio.h>
 
+// Include auto-generated build information
+#include "BuildInfoGenerated.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -12,6 +15,9 @@ extern "C" {
  *
  * This header provides build time, date, and version information
  * that can be accessed throughout the codebase.
+ *
+ * Auto-generated information (git hash, branch, timestamp) is included
+ * from BuildInfoGenerated.h which is created by scripts/get_build_info.py
  */
 
 // =============================================================================
@@ -34,7 +40,7 @@ extern "C" {
 #define BUILD_TIMESTAMP BUILD_DATE " " BUILD_TIME
 
 /**
- * Build year as integer
+ * Build year as string
  */
 #define BUILD_YEAR_STR (__DATE__ + 7)
 
@@ -65,9 +71,8 @@ extern "C" {
 #define FIRMWARE_VERSION "1.0.0"
 #endif
 
-#ifndef FIRMWARE_BUILD_NUMBER
-#define FIRMWARE_BUILD_NUMBER "dev"
-#endif
+// Note: FIRMWARE_BUILD_NUMBER, GIT_BRANCH, and BUILD_TIMESTAMP_NUM
+// are now provided by BuildInfoGenerated.h
 
 // =============================================================================
 // CONVENIENCE FUNCTIONS
