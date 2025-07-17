@@ -1,4 +1,5 @@
 #include "CoreLoggingFilter.h"
+#include "../messaging/SimplifiedSerialEngine.h"
 
 // Static member definitions
 bool CoreLoggingFilter::initialized_ = false;
@@ -61,14 +62,30 @@ int CoreLoggingFilter::coreFilterVprintf(const char* format, va_list args) {
     BaseType_t coreId = xPortGetCoreID();
 
     if (!filterActive_) {
-        // Filter disabled - allow all cores to log
-        return originalVprintf_(format, args);
+        // Filter disabled - allow all cores to log with mutex protection
+        SemaphoreHandle_t serialMutex = Messaging::SerialEngine::getSerialMutex();
+        if (serialMutex && xSemaphoreTake(serialMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            int result = originalVprintf_(format, args);
+            xSemaphoreGive(serialMutex);
+            return result;
+        } else {
+            // Fallback without mutex if unavailable (early init)
+            return originalVprintf_(format, args);
+        }
     }
 
     if (coreId == 1) {
-        // Core 1 - allow logging
+        // Core 1 - allow logging with mutex protection
         core1AllowedCount_++;
-        return originalVprintf_(format, args);
+        SemaphoreHandle_t serialMutex = Messaging::SerialEngine::getSerialMutex();
+        if (serialMutex && xSemaphoreTake(serialMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            int result = originalVprintf_(format, args);
+            xSemaphoreGive(serialMutex);
+            return result;
+        } else {
+            // Fallback without mutex if unavailable (early init)
+            return originalVprintf_(format, args);
+        }
     } else {
         // Core 0 - filter out logging
         core0FilteredCount_++;

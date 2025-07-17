@@ -2,1287 +2,322 @@
 #include "../application/audio/AudioUI.h"
 #include "../application/ui/LVGLMessageHandler.h"
 #include "../display/DisplayManager.h"
-#include "../hardware/DeviceManager.h"
-#include "../hardware/SDManager.h"
 #include "../logo/SimpleLogoManager.h"
-#include "../messaging/Message.h"
-#include "../messaging/MessagingInit.h"
 #include "../messaging/SimplifiedSerialEngine.h"
-#include "AppController.h"
-#include "DebugUtils.h"
-#include "MessagingConfig.h"
-#include "UiEventHandlers.h"
-#include <driver/gpio.h>
 #include <esp_log.h>
-#include <esp_task_wdt.h>
-#include <esp_timer.h>
-#include <functional>
 #include <ui/ui.h>
 
 static const char *TAG = "TaskManager";
-
-// =============================================================================
-// TASK MANAGEMENT MACROS - Eliminate repetitiveness
-// =============================================================================
-
-#define TASK_CREATE_PINNED(task_func, task_name, stack_size, priority, handle, \
-                           core)                                               \
-  do {                                                                         \
-    ESP_LOGI(TAG, "[INIT] Creating %s on Core %d with priority %d...",         \
-             task_name, core, priority);                                       \
-    BaseType_t result = xTaskCreatePinnedToCore(                               \
-        task_func, task_name, stack_size, NULL, priority, &handle, core);      \
-    if (result != pdPASS) {                                                    \
-      ESP_LOGE(TAG, "[INIT] CRITICAL: Failed to create %s - result: %d",       \
-               task_name, result);                                             \
-      return false;                                                            \
-    }                                                                          \
-    ESP_LOGI(TAG, "[INIT] %s created successfully", task_name);                \
-  } while (0)
-
-#define TASK_DELETE_SAFE(handle, task_name)                                    \
-  do {                                                                         \
-    if (handle) {                                                              \
-      ESP_LOGI(TAG, "[DEINIT] Deleting %s", task_name);                        \
-      vTaskDelete(handle);                                                     \
-      handle = NULL;                                                           \
-    }                                                                          \
-  } while (0)
-
-#define TASK_SET_PRIORITY_SAFE(handle, priority, task_name)                    \
-  do {                                                                         \
-    if (handle) {                                                              \
-      vTaskPrioritySet(handle, priority);                                      \
-      ESP_LOGD(TAG, "[DYNAMIC] Set %s priority to %d", task_name, priority);   \
-    }                                                                          \
-  } while (0)
-
-#define TASK_SUSPEND_SAFE(handle, task_name)                                   \
-  do {                                                                         \
-    if (handle && eTaskGetState(handle) != eSuspended) {                       \
-      ESP_LOGI(TAG, "[OTA] Suspending %s...", task_name);                      \
-      vTaskSuspend(handle);                                                    \
-    }                                                                          \
-  } while (0)
-
-#define TASK_RESUME_SAFE(handle, task_name)                                    \
-  do {                                                                         \
-    if (handle && eTaskGetState(handle) == eSuspended) {                       \
-      ESP_LOGI(TAG, "[OTA] Resuming %s...", task_name);                        \
-      vTaskResume(handle);                                                     \
-    }                                                                          \
-  } while (0)
-
-#define MUTEX_CREATE_SAFE(mutex, mutex_name)                                   \
-  do {                                                                         \
-    ESP_LOGI(TAG, "[INIT] Creating %s...", mutex_name);                        \
-    mutex = xSemaphoreCreateRecursiveMutex();                                  \
-    if (mutex == NULL) {                                                       \
-      ESP_LOGE(TAG, "[INIT] CRITICAL: Failed to create %s", mutex_name);       \
-      return false;                                                            \
-    }                                                                          \
-    ESP_LOGI(TAG, "[INIT] %s created successfully", mutex_name);               \
-  } while (0)
-
-#define MUTEX_DELETE_SAFE(mutex, mutex_name)                                   \
-  do {                                                                         \
-    if (mutex) {                                                               \
-      ESP_LOGI(TAG, "[DEINIT] Deleting %s", mutex_name);                       \
-      vSemaphoreDelete(mutex);                                                 \
-      mutex = NULL;                                                            \
-    }                                                                          \
-  } while (0)
-
-#define QUEUE_CREATE_SAFE(queue, size, item_size, queue_name)                  \
-  do {                                                                         \
-    ESP_LOGI(TAG, "[INIT] Creating %s...", queue_name);                        \
-    queue = xQueueCreate(size, item_size);                                     \
-    if (queue == NULL) {                                                       \
-      ESP_LOGE(TAG, "[INIT] CRITICAL: Failed to create %s", queue_name);       \
-      return false;                                                            \
-    }                                                                          \
-    ESP_LOGI(TAG, "[INIT] %s created successfully", queue_name);               \
-  } while (0)
-
-#define QUEUE_DELETE_SAFE(queue, queue_name)                                   \
-  do {                                                                         \
-    if (queue) {                                                               \
-      ESP_LOGI(TAG, "[DEINIT] Deleting %s", queue_name);                       \
-      vQueueDelete(queue);                                                     \
-      queue = NULL;                                                            \
-    }                                                                          \
-  } while (0)
-
-#define LOG_TASK_CONFIG(task_name, core, priority, stack_size)                 \
-  ESP_LOGI(TAG, "[STATS] %s: Core %d, Priority %d, Stack %d bytes", task_name, \
-           core, priority, stack_size)
-
-#define LOG_TASK_CONFIG_WITH_INTERVAL(task_name, core, priority, stack_size,   \
-                                      interval)                                \
-  ESP_LOGI(                                                                    \
-      TAG,                                                                     \
-      "[STATS] %s: Core %d, Priority %d, Stack %d bytes (Interval: %ums)",     \
-      task_name, core, priority, stack_size, interval)
 
 namespace Application {
 namespace TaskManager {
 
 // =============================================================================
-// NETWORK-FREE ARCHITECTURE: Task System State
+// SIMPLIFIED TASK MANAGEMENT
 // =============================================================================
 
-// Task handles (Core 0 only - Core 1 managed by InterruptMessagingEngine)
+// Task handles
 TaskHandle_t lvglTaskHandle = NULL;
 TaskHandle_t audioTaskHandle = NULL;
 
-// Synchronization objects
+// Synchronization
 SemaphoreHandle_t lvglMutex = NULL;
-QueueHandle_t otaProgressQueue = NULL;
 
-// Task system configuration (simplified for network-free mode)
-TaskSystemConfig_t taskSystemConfig = {.currentState = TASK_STATE_NORMAL,
-                                       .otaState = OTA_STATE_IDLE,
-                                       .messageLoad = 0,
-                                       .lastStateChange = 0,
-                                       .emergencyMode = false,
-                                       .taskLoadMetrics = {0}};
-SemaphoreHandle_t taskConfigMutex = NULL;
-
-// Task state variables
+// Simple state tracking
 static bool tasksRunning = false;
-
-// OTA progress tracking
-static OTAProgressData_t currentOTAProgress = {0, false, false, "Ready"};
-
-// Message load tracking (simplified for network-free mode)
 static uint32_t messageCount = 0;
 static uint32_t lastMessageCountReset = 0;
-static uint32_t currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
 
 // =============================================================================
-// INTERNAL SHARED INITIALIZATION FUNCTIONS
+// LIFECYCLE FUNCTIONS
 // =============================================================================
 
-bool initializeSharedComponents(bool networkFreeMode) {
-  ESP_LOGI(
-      TAG,
-      "[SHARED-INIT] Initializing shared components for network-free mode");
-
-  tasksRunning = true;
-
-  // Create synchronization objects
-  MUTEX_CREATE_SAFE(taskConfigMutex, "task configuration mutex");
-  MUTEX_CREATE_SAFE(lvglMutex, "LVGL mutex");
-
-  // Initialize task system configuration
-  taskSystemConfig.currentState = TASK_STATE_NORMAL;
-  taskSystemConfig.otaState = OTA_STATE_IDLE;
-  // taskSystemConfig.taskMode = TASK_MODE_NETWORK_FREE;  // Always network-free
-  taskSystemConfig.messageLoad = 0;
-  taskSystemConfig.lastStateChange = millis();
-  taskSystemConfig.emergencyMode = false;
-  // taskSystemConfig.networkTasksActive = false;  // Never active in normal
-  // mode
-
-  // Initialize LVGL Message Handler - required for UI
-  ESP_LOGI(TAG, "[SHARED-INIT] Initializing LVGL Message Handler...");
-  if (!LVGLMessageHandler::init()) {
-    ESP_LOGE(
-        TAG,
-        "[SHARED-INIT] CRITICAL: Failed to initialize LVGL Message Handler");
-    return false;
-  }
-  ESP_LOGI(TAG, "[SHARED-INIT] LVGL Message Handler initialized successfully");
-
-  ESP_LOGI(
-      TAG,
-      "[SHARED-INIT] Shared components initialization completed successfully");
-  return true;
-}
-
-void printInitializationSummary(bool networkFreeMode) {
-  ESP_LOGI(TAG, "[INIT] SUCCESS: Network-free task system initialized");
-  ESP_LOGI(TAG, "[INIT] Core 0: LVGL + Audio (maximum performance)");
-  ESP_LOGI(TAG,
-           "[INIT] Core 1: InterruptMessagingEngine (dedicated messaging)");
-  ESP_LOGI(TAG, "[INIT] Network tasks: Only in OTA boot mode");
-  ESP_LOGI(
-      TAG,
-      "[INIT] Network-Free Task Manager initialization completed successfully");
-}
-
-// Update createEssentialTasks to only create LVGL and Audio
-bool createEssentialTasks(bool networkFreeMode) {
-  ESP_LOGI(TAG,
-           "[ESSENTIAL-TASKS] Creating essential tasks (network-free mode)");
-
-  // Create only UI and Audio tasks - Core 1 messaging handled separately
-  TASK_CREATE_PINNED(lvglTask, "LVGL_Task", LVGL_TASK_STACK_SIZE,
-                     LVGL_TASK_PRIORITY_HIGH, lvglTaskHandle, LVGL_TASK_CORE);
-
-  // Audio task gets maximum resources in network-free mode
-  UBaseType_t audioPriority = AUDIO_TASK_PRIORITY_NORMAL + 1; // Boost priority
-  size_t audioStackSize = AUDIO_TASK_STACK_SIZE; // Use full 16KB stack
-
-  TASK_CREATE_PINNED(audioTask, "Audio_Task", audioStackSize, audioPriority,
-                     audioTaskHandle, AUDIO_TASK_CORE);
-
-  ESP_LOGI(TAG, "[ESSENTIAL-TASKS] Essential tasks created successfully");
-  ESP_LOGI(TAG, "[NETWORK-FREE] Core 1 dedicated to InterruptMessagingEngine");
-  return true;
-}
-
-// Update init() for network-free mode
 bool init(void) {
-  ESP_LOGI(TAG,
-           "[INIT] Starting Network-Free Task Manager for ESP32-S3 dual-core");
+    ESP_LOGI(TAG, "Initializing simplified TaskManager");
 
-  // Initialize shared components for network-free mode
-  if (!initializeSharedComponents(true)) { // true = network-free
-    return false;
-  }
+    tasksRunning = true;
 
-  // Create only essential tasks (LVGL + Audio)
-  if (!createEssentialTasks(true)) { // true = network-free
-    return false;
-  }
+    // Create LVGL mutex
+    lvglMutex = xSemaphoreCreateRecursiveMutex();
+    if (lvglMutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create LVGL mutex");
+        return false;
+    }
 
-  // Create OTA progress queue
-  otaProgressQueue = xQueueCreate(1, sizeof(OTAProgressData_t));
-  if (!otaProgressQueue) {
-    ESP_LOGE(TAG, "Failed to create OTA progress queue");
-    return false;
-  }
+    // Initialize LVGL Message Handler
+    if (!LVGLMessageHandler::init()) {
+        ESP_LOGE(TAG, "Failed to initialize LVGL Message Handler");
+        return false;
+    }
 
-  printInitializationSummary(true); // true = network-free mode
+    // Create LVGL task
+    BaseType_t lvglResult = xTaskCreatePinnedToCore(
+        lvglTask, "LVGL_Task", LVGL_TASK_STACK_SIZE, NULL,
+        LVGL_TASK_PRIORITY, &lvglTaskHandle, LVGL_TASK_CORE);
 
-  return true;
+    if (lvglResult != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create LVGL task");
+        return false;
+    }
+
+    // Create Audio task
+    BaseType_t audioResult = xTaskCreatePinnedToCore(
+        audioTask, "Audio_Task", AUDIO_TASK_STACK_SIZE, NULL,
+        AUDIO_TASK_PRIORITY, &audioTaskHandle, AUDIO_TASK_CORE);
+
+    if (audioResult != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create Audio task");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "TaskManager initialized successfully");
+    ESP_LOGI(TAG, "Core 0: LVGL + Audio tasks");
+    ESP_LOGI(TAG, "Core 1: SimplifiedSerialEngine");
+
+    return true;
 }
 
-// Update deinit() to only handle essential tasks
 void deinit(void) {
-  ESP_LOGI(TAG, "[DEINIT] Starting Network-Free Task Manager deinitialization");
+    ESP_LOGI(TAG, "Deinitializing TaskManager");
 
-  tasksRunning = false;
+    tasksRunning = false;
+    vTaskDelay(pdMS_TO_TICKS(100));  // Wait for tasks to finish
 
-  // Wait a bit for tasks to finish their current operations
-  vTaskDelay(pdMS_TO_TICKS(100));
+    // Delete tasks
+    if (lvglTaskHandle) {
+        vTaskDelete(lvglTaskHandle);
+        lvglTaskHandle = NULL;
+    }
 
-  // Delete only the tasks we created
-  TASK_DELETE_SAFE(lvglTaskHandle, "LVGL task");
-  TASK_DELETE_SAFE(audioTaskHandle, "Audio task");
+    if (audioTaskHandle) {
+        vTaskDelete(audioTaskHandle);
+        audioTaskHandle = NULL;
+    }
 
-  // Clean up synchronization objects
-  MUTEX_DELETE_SAFE(lvglMutex, "LVGL mutex");
-  MUTEX_DELETE_SAFE(taskConfigMutex, "task configuration mutex");
-  QUEUE_DELETE_SAFE(otaProgressQueue, "OTA progress queue");
+    // Clean up mutex
+    if (lvglMutex) {
+        vSemaphoreDelete(lvglMutex);
+        lvglMutex = NULL;
+    }
 
-  ESP_LOGI(TAG,
-           "[DEINIT] Network-Free Task Manager deinitialization completed");
+    ESP_LOGI(TAG, "TaskManager deinitialization complete");
 }
 
 void suspend(void) {
-  if (tasksRunning) {
-    TASK_SUSPEND_SAFE(lvglTaskHandle, "LVGL task");
-    TASK_SUSPEND_SAFE(audioTaskHandle, "Audio task");
-  }
+    if (tasksRunning) {
+        if (lvglTaskHandle && eTaskGetState(lvglTaskHandle) != eSuspended) {
+            vTaskSuspend(lvglTaskHandle);
+        }
+        if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
+            vTaskSuspend(audioTaskHandle);
+        }
+    }
 }
 
 void resume(void) {
-  if (tasksRunning) {
-    TASK_RESUME_SAFE(lvglTaskHandle, "LVGL task");
-    TASK_RESUME_SAFE(audioTaskHandle, "Audio task");
-  }
+    if (tasksRunning) {
+        if (lvglTaskHandle && eTaskGetState(lvglTaskHandle) == eSuspended) {
+            vTaskResume(lvglTaskHandle);
+        }
+        if (audioTaskHandle && eTaskGetState(audioTaskHandle) == eSuspended) {
+            vTaskResume(audioTaskHandle);
+        }
+    }
 }
 
-void suspendForOTA(void) {
-  if (tasksRunning) {
-    ESP_LOGI(TAG, "[OTA] Suspending non-essential tasks for OTA update...");
-    // Keep network, OTA, and LVGL tasks running for OTA process and UI feedback
-    TASK_SUSPEND_SAFE(audioTaskHandle, "Audio_Task");
-    ESP_LOGI(TAG, "[OTA] Finished suspending tasks for OTA.");
-  } else {
-    ESP_LOGW(TAG, "[OTA] Cannot suspend tasks - tasks not running");
-  }
-}
-
-void resumeFromOTA(void) {
-  if (tasksRunning) {
-    ESP_LOGI(TAG, "[OTA] Resuming tasks after OTA update...");
-    TASK_RESUME_SAFE(audioTaskHandle, "Audio_Task");
-    ESP_LOGI(TAG, "[OTA] Finished resuming tasks after OTA.");
-  } else {
-    ESP_LOGW(TAG, "[OTA] Cannot resume tasks - tasks not running");
-  }
-}
+// =============================================================================
+// LVGL THREAD SAFETY
+// =============================================================================
 
 void lvglLock(void) {
-  if (lvglMutex) {
-    if (xSemaphoreTakeRecursive(lvglMutex, portMAX_DELAY) != pdTRUE) {
-      ESP_LOGE(TAG, "[MUTEX] CRITICAL: Failed to acquire LVGL mutex");
+    if (lvglMutex) {
+        xSemaphoreTakeRecursive(lvglMutex, portMAX_DELAY);
     }
-  } else {
-    ESP_LOGE(TAG, "[MUTEX] CRITICAL: LVGL mutex is NULL");
-  }
 }
 
 void lvglUnlock(void) {
-  if (lvglMutex) {
-    if (xSemaphoreGiveRecursive(lvglMutex) != pdTRUE) {
-      ESP_LOGE(TAG, "[MUTEX] CRITICAL: Failed to release LVGL mutex");
+    if (lvglMutex) {
+        xSemaphoreGiveRecursive(lvglMutex);
     }
-  } else {
-    ESP_LOGE(TAG, "[MUTEX] CRITICAL: LVGL mutex is NULL during unlock");
-  }
 }
 
 bool lvglTryLock(uint32_t timeoutMs) {
-  if (lvglMutex) {
-    bool result =
-        xSemaphoreTakeRecursive(lvglMutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
-    if (!result) {
-      ESP_LOGE(TAG,
-               "[MUTEX] WARNING: Failed to acquire LVGL mutex within %d ms",
-               timeoutMs);
+    if (lvglMutex) {
+        return xSemaphoreTakeRecursive(lvglMutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
     }
-    return result;
-  }
-  ESP_LOGE(TAG, "[MUTEX] CRITICAL: LVGL mutex is NULL during tryLock");
-  return false;
-}
-
-void updateOTAProgress(uint8_t progress, bool inProgress, bool success,
-                       const char *message) {
-  if (!otaProgressQueue) {
-    ESP_LOGE(TAG, "[OTA] CRITICAL: OTA progress queue is NULL");
-    return;
-  }
-
-  OTAProgressData_t data;
-  data.progress = progress;
-  data.inProgress = inProgress;
-  data.success = success;
-  strncpy(data.message, message ? message : "", sizeof(data.message) - 1);
-  data.message[sizeof(data.message) - 1] = '\0';
-
-  // Update current progress (non-blocking)
-  currentOTAProgress = data;
-
-  // Send to queue (non-blocking)
-  if (xQueueOverwrite(otaProgressQueue, &data) != pdTRUE) {
-    ESP_LOGE(TAG, "[OTA] WARNING: Failed to update OTA progress queue");
-  }
-}
-
-bool getOTAProgress(OTAProgressData_t *data) {
-  if (data == NULL) {
-    ESP_LOGE(TAG, "[OTA] CRITICAL: NULL data pointer passed to getOTAProgress");
     return false;
-  }
-
-  if (!otaProgressQueue) {
-    ESP_LOGE(TAG, "[OTA] CRITICAL: OTA progress queue is NULL");
-    *data = currentOTAProgress;
-    return true;
-  }
-
-  // Try to get latest from queue
-  if (xQueuePeek(otaProgressQueue, data, 0) == pdTRUE) {
-    return true;
-  }
-
-  // Fall back to current progress
-  *data = currentOTAProgress;
-  return true;
 }
 
-// LVGL Task - Core 0, Highest Priority
-void lvglTask(void *parameter) {
-  ESP_LOGI(TAG, "[LVGL_TASK] LVGL Task started on Core %d", xPortGetCoreID());
-
-  // OPTIMIZED: Reduced stabilization time from 350ms to 100ms
-  ESP_LOGI(TAG, "[LVGL_TASK] Waiting for display hardware stabilization...");
-  vTaskDelay(pdMS_TO_TICKS(100));
-
-  // LVGL SD filesystem is now managed by SDManager and will be initialized
-  // automatically
-  ESP_LOGI(TAG, "[LVGL_TASK] LVGL SD filesystem will be managed by SDManager");
-
-  ESP_LOGI(TAG, "[LVGL_TASK] Starting event-driven LVGL operations loop");
-
-  static unsigned long lastDisplayUpdate = 0;
-  static unsigned long lastLedUpdate = 0;
-  static uint32_t lastLvglActivity = 0;
-  static uint32_t lastForceUpdate = 0;
-  static bool startupPhase = true;
-  static uint32_t startupStartTime = millis();
-
-  while (tasksRunning) {
-    // Update LVGL tick system first (critical for animations)
-    Display::tickUpdate();
-
-    uint32_t currentTime = millis();
-    uint32_t lvgl_start = currentTime;
-
-    // Check if we're still in startup phase (first 10 seconds)
-    if (startupPhase && (currentTime - startupStartTime > 10000)) {
-      startupPhase = false;
-      ESP_LOGI(
-          TAG,
-          "[LVGL_TASK] Exiting startup phase - switching to normal operation");
-    }
-
-    // Check if LVGL actually has pending work
-    lv_disp_t *disp = lv_disp_get_default();
-    bool hasMessages = false;
-    bool hasInvalidations = false;
-    bool forceUpdate = false;
-    bool shouldProcessTimers = false;
-
-    if (disp) {
-      // Check for pending invalidations/redraws (most reliable indicator)
-      hasInvalidations = disp->inv_p != 0;
-
-      // Check for recent message activity (shorter window for responsiveness)
-      hasMessages =
-          (currentTime - lastLvglActivity < (startupPhase ? 100 : 25));
-
-      // Process timers more convatively - more frequent during startup
-      shouldProcessTimers =
-          (currentTime - lastLvglActivity > (startupPhase ? 5 : 20));
-
-      // Force periodic update to ensure system stays responsive
-      forceUpdate =
-          (currentTime - lastForceUpdate > (startupPhase ? 100 : 500));
-    }
-
-    // Determine if we need to process LVGL - more aggressive during startup
-    bool lvglNeedsUpdate =
-        hasInvalidations || hasMessages || shouldProcessTimers || forceUpdate;
-
-    if (!lvglNeedsUpdate) {
-      // No immediate work - use different delays for startup vs normal
-      ESP_LOGV(TAG, "[LVGL_TASK] No UI work pending - sleeping");
-
-      // OPTIMIZED: Non-critical operations when UI is idle
-      uint32_t displayUpdateInterval =
-          startupPhase ? 5000 : 2000; // Less frequent during startup
-      if (currentTime - lastDisplayUpdate >= displayUpdateInterval) {
-        Display::update();
-        lastDisplayUpdate = currentTime;
-      }
-
-#ifdef BOARD_HAS_RGB_LED
-      uint32_t ledUpdateInterval =
-          startupPhase ? 10000 : 3000; // Much less frequent during startup
-      if (currentTime - lastLedUpdate >= ledUpdateInterval) {
-        Hardware::Device::ledCycleColors();
-        lastLedUpdate = currentTime;
-      }
-#endif
-
-      // PERFORMANCE: Optimized sleep during startup to handle heavy UI
-      // initialization
-      uint32_t idleSleep =
-          startupPhase ? 10 : 50; // PERFORMANCE: 10ms during startup, 50ms
-                                  // normal (reduced from 20/100)
-      vTaskDelay(pdMS_TO_TICKS(idleSleep));
-      continue;
-    }
-
-    // Process LVGL work
-    bool workDone = false;
-
-    // Acquire mutex with different timeout for startup vs normal
-    uint32_t mutexTimeout =
-        startupPhase ? 50 : 15; // Longer timeout during startup
-    if (lvglTryLock(mutexTimeout)) {
-      uint32_t processing_start = millis();
-      uint32_t processed = 0;
-
-      // Process LVGL timers and rendering
-      if (hasInvalidations || shouldProcessTimers || forceUpdate) {
-        // During startup, use chunked processing to prevent long blocks
-        if (startupPhase) {
-          // Process in smaller chunks during startup
-          uint32_t chunkStart = millis();
-          processed = lv_timer_handler();
-          uint32_t chunkDuration = millis() - chunkStart;
-
-          // If processing took too long, yield briefly to other tasks
-          if (chunkDuration > 30) {
-            lvglUnlock();
-            vTaskDelay(pdMS_TO_TICKS(1)); // 1ms yield
-            if (!lvglTryLock(mutexTimeout)) {
-              ESP_LOGD(TAG, "[LVGL_TASK] Startup chunked processing - mutex "
-                            "timeout on re-acquire");
-              goto skip_processing;
-            }
-          }
-        } else {
-          processed = lv_timer_handler();
-        }
-
-        lastLvglActivity = millis();
-        workDone = true;
-
-        if (forceUpdate) {
-          lastForceUpdate = currentTime;
-        }
-      }
-
-      uint32_t single_call_duration = millis() - processing_start;
-
-      // Track rendering completion
-      if (disp && !disp->rendering_in_progress) {
-        Display::onLvglRenderComplete();
-      }
-
-      lvglUnlock();
-
-      ESP_LOGV(TAG, "[LVGL_TASK] Processed %u timers in %ums", processed,
-               single_call_duration);
-    } else {
-      ESP_LOGD(TAG, "[LVGL_TASK] Skipped update - mutex timeout");
-    }
-
-  skip_processing:
-
-    uint32_t lvgl_duration = millis() - lvgl_start;
-
-    // Performance monitoring with different thresholds for startup vs normal
-    // operation
-    if (startupPhase) {
-      // More lenient thresholds during startup - UI initialization is expected
-      // to be heavy
-      if (lvgl_duration > LVGL_DURATION_CRITICAL_STARTUP) {
-        ESP_LOGE(TAG,
-                 "[LVGL_TASK] STARTUP: CRITICAL processing time %ums (>%ums)",
-                 lvgl_duration, LVGL_DURATION_CRITICAL_STARTUP);
-      } else if (lvgl_duration > LVGL_DURATION_WARNING_STARTUP) {
-        ESP_LOGW(TAG, "[LVGL_TASK] STARTUP: Long processing time %ums (>%ums)",
-                 lvgl_duration, LVGL_DURATION_WARNING_STARTUP);
-      } else if (lvgl_duration > LVGL_DURATION_INFO_STARTUP) {
-        ESP_LOGI(TAG,
-                 "[LVGL_TASK] STARTUP: Heavy processing %ums (expected during "
-                 "UI init)",
-                 lvgl_duration);
-      } else if (lvgl_duration > 0 && workDone) {
-        ESP_LOGV(TAG, "[LVGL_TASK] STARTUP: Processing %ums", lvgl_duration);
-      }
-    } else {
-      // Normal operation thresholds
-      if (lvgl_duration > LVGL_DURATION_CRITICAL_NORMAL) {
-        ESP_LOGE(TAG, "[LVGL_TASK] CRITICAL: LVGL processing took %ums (>%ums)",
-                 lvgl_duration, LVGL_DURATION_CRITICAL_NORMAL);
-      } else if (lvgl_duration > LVGL_DURATION_WARNING_NORMAL) {
-        ESP_LOGW(TAG, "[LVGL_TASK] LVGL processing took %ums (>%ums)",
-                 lvgl_duration, LVGL_DURATION_WARNING_NORMAL);
-      } else if (lvgl_duration > 0 && workDone) {
-        ESP_LOGV(TAG, "[LVGL_TASK] LVGL processing: %ums", lvgl_duration);
-      }
-    }
-
-    // More frequent non-critical operations when UI is active
-    if (workDone) {
-      if (currentTime - lastDisplayUpdate >= 1000) { // Every 1s when active
-        Display::update();
-        lastDisplayUpdate = currentTime;
-      }
-
-#ifdef BOARD_HAS_RGB_LED
-      if (currentTime - lastLedUpdate >= 2000) { // Every 2s when active
-        Hardware::Device::ledCycleColors();
-        lastLedUpdate = currentTime;
-      }
-#endif
-    }
-
-    // PERFORMANCE: Dynamic delay based on work done and system state -
-    // optimized intervals
-    uint32_t delay_ms;
-    if (startupPhase) {
-      // Startup phase - more aggressive processing
-      if (hasInvalidations) {
-        delay_ms = 1; // Immediate redraw
-      } else if (shouldProcessTimers || forceUpdate) {
-        delay_ms = 2; // Very short delay for rapid UI setup
-      } else if (hasMessages) {
-        delay_ms = 5; // Short delay for startup activity
-      } else {
-        delay_ms = 8; // PERFORMANCE: Reduced from 10ms for faster startup
-      }
-    } else {
-      // PERFORMANCE: Normal operation - optimized for responsiveness
-      if (hasInvalidations) {
-        delay_ms = 1; // Immediate redraw needed
-      } else if (shouldProcessTimers) {
-        delay_ms = 8; // PERFORMANCE: Reduced from 10ms for smoother updates
-      } else if (hasMessages) {
-        delay_ms =
-            20; // PERFORMANCE: Reduced from 25ms for better responsiveness
-      } else {
-        delay_ms =
-            40; // PERFORMANCE: Reduced from 50ms for more responsive idle state
-      }
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(delay_ms));
-  }
-
-  ESP_LOGI(TAG, "[LVGL_TASK] LVGL Task ended");
-  vTaskDelete(NULL);
-}
-void updateMessagingEngineIntegration();
-// Audio Task - Core 0, Improved Priority with Adaptive Intervals
-void audioTask(void *parameter) {
-  ESP_LOGI(TAG,
-           "[AUDIO_TASK] Audio Task started on Core %d with improved priority "
-           "management",
-           xPortGetCoreID());
-
-  // Log initial stack usage for debugging
-  ESP_LOGI(TAG, "[AUDIO_TASK] Initial stack high water mark: %d bytes",
-           uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
-
-  TickType_t lastWakeTime = xTaskGetTickCount();
-  static unsigned long lastFpsUpdate = 0;
-
-  // CRITICAL: State-based UI updates - only refresh when audio state changes
-  static unsigned long lastAudioUpdate = 0;
-  static unsigned long lastSuccessfulUpdate = 0;
-  static int consecutiveFailures = 0;
-  static bool emergencyMode = false;
-
-  // Track audio state changes to avoid unnecessary UI updates
-  static uint32_t lastAudioStateHash = 0;
-  static unsigned long lastForceUpdate = 0;
-
-  while (tasksRunning) {
-    // Check if task is suspended due to emergency/OTA mode
-    if (taskSystemConfig.currentState == TASK_STATE_OTA_ACTIVE) {
-      // Minimal operations during critical states
-      vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(5000)); // 5 second intervals
-      continue;
-    }
-
-    // STACK OVERFLOW FIX: Process volume change requests from LVGL task
-    // This runs in Audio task context with more stack space for JSON
-    // serialization
-
-    // Update FPS display less frequently for monitoring
-    unsigned long currentTime = millis();
-    if (currentTime - lastFpsUpdate >=
-        10000) { // Every 10 seconds (reduced frequency)
-      // Get actual FPS from display manager
-      float currentFps = Display::getFPS();
-      LVGLMessageHandler::updateFpsDisplay(currentFps);
-      lastFpsUpdate = currentTime;
-    }
-
-    // CRITICAL: Only update UI when audio state actually changes
-    bool shouldUpdateUI = false;
-    uint32_t currentAudioStateHash = 0;
-
-    // Calculate a simple hash of the current audio state
-    try {
-      const auto &audioState =
-          Application::Audio::AudioManager::getInstance().getState();
-      std::hash<std::string> hasher;
-
-      // Create a simple hash based on key audio state values
-      currentAudioStateHash = 0;
-      if (audioState.selectedDevice1) {
-        currentAudioStateHash += audioState.selectedDevice1->volume;
-        currentAudioStateHash += audioState.selectedDevice1->isMuted ? 1000 : 0;
-        currentAudioStateHash +=
-            hasher(audioState.selectedDevice1->processName.c_str()) % 10000;
-      }
-      if (audioState.selectedDevice2) {
-        currentAudioStateHash +=
-            audioState.selectedDevice2->volume * 13; // Different multiplier
-        currentAudioStateHash += audioState.selectedDevice2->isMuted ? 2000 : 0;
-        currentAudioStateHash +=
-            hasher(audioState.selectedDevice2->processName.c_str()) % 20000;
-      }
-
-      // Check if state has changed
-      shouldUpdateUI = (currentAudioStateHash != lastAudioStateHash);
-
-    } catch (...) {
-      ESP_LOGW(TAG, "[AUDIO_TASK] Exception while checking audio state");
-      shouldUpdateUI = false;
-    }
-
-    // Force periodic updates even if state hasn't changed (every 30 seconds)
-    if (currentTime - lastForceUpdate > 30000) {
-      shouldUpdateUI = true;
-      lastForceUpdate = currentTime;
-      ESP_LOGD(TAG, "[AUDIO_TASK] Force UI update after 30s");
-    }
-
-    // Emergency mode: Force update if we haven't updated in too long
-    if (currentTime - lastSuccessfulUpdate > 60000) { // 60s
-      shouldUpdateUI = true;
-      if (!emergencyMode) {
-        ESP_LOGW(TAG,
-                 "[AUDIO_TASK] Entering emergency mode (60s without update)");
-        emergencyMode = true;
-        consecutiveFailures = 0;
-      }
-    }
-
-    if (shouldUpdateUI) {
-      // Reset watchdog before potentially long-running UI operation
-#ifdef CONFIG_ESP_TASK_WDT_EN
-      esp_task_wdt_reset();
-#endif
-
-      // CRITICAL: Ultra-short timeout to prevent blocking LVGL
-      uint32_t timeout = emergencyMode ? 2 : (consecutiveFailures > 3) ? 5 : 10;
-
-      // Use LVGL mutex protection for thread-safe UI updates
-      if (lvglTryLock(timeout)) {
-        // CRITICAL: Only do full refresh when state has changed
-        try {
-          Application::Audio::AudioUI::getInstance().refreshAllUI();
-          consecutiveFailures = 0;
-          lastSuccessfulUpdate = currentTime;
-          lastAudioStateHash =
-              currentAudioStateHash; // Update our state tracking
-          emergencyMode = false;
-          ESP_LOGV(TAG,
-                   "[AUDIO_TASK] UI updated due to state change (hash: %u)",
-                   currentAudioStateHash);
-        } catch (...) {
-          ESP_LOGD(TAG, "[AUDIO_TASK] Exception during UI update");
-          consecutiveFailures++;
-        }
-        lvglUnlock();
-      } else {
-        consecutiveFailures++;
-        ESP_LOGV(TAG,
-                 "[AUDIO_TASK] Skipped UI update (mutex timeout: %dms, "
-                 "failures: %d)",
-                 timeout, consecutiveFailures);
-      }
-
-      // Exit emergency mode on successful update
-      if (emergencyMode && (currentTime - lastSuccessfulUpdate < 10000)) {
-        ESP_LOGI(TAG,
-                 "[AUDIO_TASK] Exiting emergency mode (successful update)");
-        emergencyMode = false;
-        consecutiveFailures = 0;
-      }
-
-      // Reset watchdog after UI operation
-#ifdef CONFIG_ESP_TASK_WDT_EN
-      esp_task_wdt_reset();
-#endif
-    }
-
-    // Update brutal logo manager for timeout handling
-    SimpleLogoManager::getInstance().update();
-
-    // OPTIMIZED: Determine sleep interval based on system state and performance
-    uint32_t sleepInterval;
-    if (emergencyMode) {
-      sleepInterval = 2000; // 2s during emergency
-    } else if (consecutiveFailures > 3) {
-      sleepInterval = 1500; // 1.5s when struggling
-    } else {
-      sleepInterval = currentAudioInterval; // Normal adaptive interval
-    }
-
-    vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(sleepInterval));
-
-    // OPTIMIZED: Heartbeat logging reduced frequency + InterruptMessagingEngine
-    // integration
-    static int heartbeat = 0;
-    if (++heartbeat % 50 == 0) { // Reduced from every 10 to every 50
-      ESP_LOGD(TAG, "[AUDIO_TASK] Heartbeat: %d (failures: %d, emergency: %s)",
-               heartbeat, consecutiveFailures, emergencyMode ? "YES" : "NO");
-
-      // Update InterruptMessagingEngine integration every ~50 cycles (every ~50
-      // seconds)
-      if (heartbeat % 200 == 0) { // Every ~200 cycles = ~3-4 minutes
-        updateMessagingEngineIntegration();
-      }
-    }
-  }
-
-  ESP_LOGI(TAG, "[AUDIO_TASK] Audio Task ended");
-  vTaskDelete(NULL);
-}
+// =============================================================================
+// BASIC MONITORING
+// =============================================================================
 
 void printTaskStats(void) {
-  ESP_LOGI(TAG, "[STATS] === Dynamic Task Configuration ===");
-  ESP_LOGI(TAG, "[STATS] System State: %d, OTA State: %d, Emergency Mode: %s",
-           taskSystemConfig.currentState, taskSystemConfig.otaState,
-           taskSystemConfig.emergencyMode ? "YES" : "NO");
-  ESP_LOGI(TAG, "[STATS] Message Load: %u msg/s, Last State Change: %u ms ago",
-           taskSystemConfig.messageLoad,
-           millis() - taskSystemConfig.lastStateChange);
-  LOG_TASK_CONFIG("LVGL Task", LVGL_TASK_CORE, LVGL_TASK_PRIORITY_HIGH,
-                  LVGL_TASK_STACK_SIZE);
-  LOG_TASK_CONFIG("Audio Task", AUDIO_TASK_CORE, AUDIO_TASK_PRIORITY_NORMAL,
-                  AUDIO_TASK_STACK_SIZE);
-  ESP_LOGI(TAG, "[STATS] Core 1: InterruptMessagingEngine (dedicated)");
-  ESP_LOGI(TAG, "[STATS] =========================");
-}
-
-void printTaskLoadAnalysis(void) {
-  ESP_LOGI(TAG, "[ANALYSIS] === Task Performance Analysis ===");
-
-  // Task priority analysis
-  if (lvglTaskHandle) {
-    UBaseType_t currentPriority = uxTaskPriorityGet(lvglTaskHandle);
-    ESP_LOGI(TAG,
-             "[ANALYSIS] LVGL Task: Current Priority %d, Stack HWM: %d bytes",
-             currentPriority,
-             uxTaskGetStackHighWaterMark(lvglTaskHandle) * sizeof(StackType_t));
-  }
-
-  if (audioTaskHandle) {
-    UBaseType_t currentPriority = uxTaskPriorityGet(audioTaskHandle);
-    eTaskState taskState = eTaskGetState(audioTaskHandle);
-    const char *stateStr = (taskState == eReady)       ? "Ready"
-                           : (taskState == eRunning)   ? "Running"
-                           : (taskState == eBlocked)   ? "Blocked"
-                           : (taskState == eSuspended) ? "Suspended"
-                                                       : "Unknown";
-    ESP_LOGI(TAG,
-             "[ANALYSIS] Audio Task: Current Priority %d, State: %s, Stack "
-             "HWM: %d bytes",
-             currentPriority, stateStr,
-             uxTaskGetStackHighWaterMark(audioTaskHandle) *
-                 sizeof(StackType_t));
-  }
-
-  // System resource analysis
-  ESP_LOGI(TAG,
-           "[ANALYSIS] Free Heap: %d bytes, Free Stack (this task): %d bytes",
-           esp_get_free_heap_size(),
-           uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
-
-  // Performance optimization summary - Network-free mode eliminates OTA polling
-  uint32_t otaEfficiencyGain =
-      100; // 100% improvement - no OTA polling in normal mode
-  ESP_LOGI(TAG,
-           "[ANALYSIS] OTA Efficiency Gain: %u%% (OTA polling eliminated in "
-           "network-free mode)",
-           otaEfficiencyGain);
-
-  ESP_LOGI(TAG, "[ANALYSIS] Core Load Distribution:");
-  ESP_LOGI(TAG,
-           "[ANALYSIS]   Core 0: LVGL (Priority %d), Audio (Priority %d-%d "
-           "adaptive)",
-           LVGL_TASK_PRIORITY_HIGH, AUDIO_TASK_PRIORITY_NORMAL);
-
-  ESP_LOGI(TAG, "[ANALYSIS] =====================================");
-}
-
-uint32_t getTaskCPUUsage(TaskHandle_t taskHandle) {
-  if (taskHandle == NULL) {
-    return 0;
-  }
-
-#if (configGENERATE_RUN_TIME_STATS == 1)
-  TaskStatus_t taskStatus;
-  vTaskGetInfo(taskHandle, &taskStatus, pdTRUE, eInvalid);
-  return taskStatus.ulRunTimeCounter;
-#else
-  return 0;
-#endif
+    ESP_LOGI(TAG, "=== Task Statistics ===");
+    ESP_LOGI(TAG, "LVGL Task: Core %d, Priority %d, Stack: %d bytes",
+             LVGL_TASK_CORE, LVGL_TASK_PRIORITY, LVGL_TASK_STACK_SIZE);
+    ESP_LOGI(TAG, "Audio Task: Core %d, Priority %d, Stack: %d bytes",
+             AUDIO_TASK_CORE, AUDIO_TASK_PRIORITY, AUDIO_TASK_STACK_SIZE);
+    ESP_LOGI(TAG, "Message Load: %u msg/s", getMessageLoadPerSecond());
+    ESP_LOGI(TAG, "Free Heap: %d bytes", esp_get_free_heap_size());
 }
 
 uint32_t getLvglTaskHighWaterMark(void) {
-  if (lvglTaskHandle) {
-    return uxTaskGetStackHighWaterMark(lvglTaskHandle);
-  }
-  return 0;
+    return lvglTaskHandle ? uxTaskGetStackHighWaterMark(lvglTaskHandle) : 0;
 }
 
 uint32_t getAudioTaskHighWaterMark(void) {
-  if (audioTaskHandle) {
-    return uxTaskGetStackHighWaterMark(audioTaskHandle);
-  }
-  return 0;
+    return audioTaskHandle ? uxTaskGetStackHighWaterMark(audioTaskHandle) : 0;
 }
 
 // =============================================================================
-// DYNAMIC TASK MANAGEMENT FUNCTIONS
+// SIMPLE MESSAGING INTEGRATION
 // =============================================================================
 
-void setTaskSystemState(TaskSystemState_t newState) {
-  if (taskConfigMutex &&
-      xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    if (taskSystemConfig.currentState != newState) {
-      ESP_LOGI(TAG, "[DYNAMIC] Task system state change: %d -> %d",
-               taskSystemConfig.currentState, newState);
-      taskSystemConfig.currentState = newState;
-      taskSystemConfig.lastStateChange = millis();
-
-      // Trigger immediate optimization
-      optimizeTaskPriorities();
-      adjustTaskIntervals();
-    }
-    xSemaphoreGiveRecursive(taskConfigMutex);
-  }
-}
-
-void setOTAState(OTAState_t newState) {
-  if (taskConfigMutex &&
-      xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    if (taskSystemConfig.otaState != newState) {
-      ESP_LOGI(TAG, "[DYNAMIC] OTA state change: %d -> %d",
-               taskSystemConfig.otaState, newState);
-      OTAState_t oldState = taskSystemConfig.otaState;
-      taskSystemConfig.otaState = newState;
-
-      // Update task system state based on OTA state
-      switch (newState) {
-      case OTA_STATE_IDLE:
-        if (taskSystemConfig.currentState == TASK_STATE_OTA_ACTIVE) {
-          setTaskSystemState(TASK_STATE_NORMAL);
-        }
-        break;
-      case OTA_STATE_CHECKING:
-      case OTA_STATE_DOWNLOADING:
-      case OTA_STATE_INSTALLING:
-        setTaskSystemState(TASK_STATE_OTA_ACTIVE);
-        break;
-      case OTA_STATE_COMPLETE:
-      case OTA_STATE_ERROR:
-        // Will transition back to normal after a delay
-        break;
-      }
-
-      // Immediate priority adjustment for critical OTA states
-      if (newState == OTA_STATE_DOWNLOADING ||
-          newState == OTA_STATE_INSTALLING) {
-        configureForOTADownload();
-      } else if (oldState == OTA_STATE_DOWNLOADING ||
-                 oldState == OTA_STATE_INSTALLING) {
-        // Restore normal operation
-        optimizeTaskPriorities();
-        adjustTaskIntervals();
-      }
-    }
-    xSemaphoreGiveRecursive(taskConfigMutex);
-  }
-}
-
-void optimizeTaskPriorities(void) {
-  if (!tasksRunning)
-    return;
-
-  ESP_LOGD(TAG,
-           "[DYNAMIC] Optimizing task priorities for state %d, OTA state %d",
-           taskSystemConfig.currentState, taskSystemConfig.otaState);
-
-  switch (taskSystemConfig.currentState) {
-  case TASK_STATE_NORMAL:
-    // Standard operating priorities
-    TASK_SET_PRIORITY_SAFE(lvglTaskHandle, LVGL_TASK_PRIORITY_HIGH,
-                           "LVGL task");
-    TASK_SET_PRIORITY_SAFE(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL,
-                           "Audio task");
-    break;
-
-  case TASK_STATE_OTA_ACTIVE:
-    // Boost OTA priority, maintain UI responsiveness
-    TASK_SET_PRIORITY_SAFE(audioTaskHandle, AUDIO_TASK_PRIORITY_SUSPENDED,
-                           "Audio task");
-    break;
-
-  case TASK_STATE_HIGH_LOAD:
-    // Boost messaging for high message load
-    TASK_SET_PRIORITY_SAFE(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL,
-                           "Audio task");
-    break;
-
-  default:
-    break;
-  }
-}
-
-void adjustTaskIntervals(void) {
-  // Update interval variables based on current state
-  switch (taskSystemConfig.currentState) {
-  case TASK_STATE_NORMAL:
-    currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
-    break;
-
-  case TASK_STATE_OTA_ACTIVE:
-    currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED;
-    break;
-
-  case TASK_STATE_HIGH_LOAD:
-    currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
-    break;
-
-  default:
-    break;
-  }
-
-  ESP_LOGD(TAG, "[DYNAMIC] Adjusted intervals - Audio: %ums",
-           currentAudioInterval);
-}
-
-bool enterEmergencyMode(uint32_t durationMs) {
-  if (taskConfigMutex &&
-      xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    ESP_LOGW(TAG, "[EMERGENCY] Entering emergency mode for %u ms", durationMs);
-    taskSystemConfig.emergencyMode = true;
-    // setTaskSystemState(TASK_STATE_EMERGENCY);
-
-    // Set up timer to exit emergency mode (simplified - in production use
-    // FreeRTOS timer) For now, tasks will check and exit after duration
-    xSemaphoreGiveRecursive(taskConfigMutex);
-    return true;
-  }
-  return false;
-}
-
-void exitEmergencyMode(void) {
-  if (taskConfigMutex &&
-      xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    if (taskSystemConfig.emergencyMode) {
-      ESP_LOGI(TAG, "[EMERGENCY] Exiting emergency mode");
-      taskSystemConfig.emergencyMode = false;
-
-      // Resume suspended tasks
-      if (audioTaskHandle && eTaskGetState(audioTaskHandle) == eSuspended) {
-        vTaskResume(audioTaskHandle);
-      }
-
-      setTaskSystemState(TASK_STATE_NORMAL);
-    }
-    xSemaphoreGiveRecursive(taskConfigMutex);
-  }
-}
-
-void configureForOTADownload(void) {
-  ESP_LOGI(TAG, "[OTA] Configuring high-performance mode for OTA download");
-
-  // Suspend non-essential tasks during critical OTA operations
-  if (tasksRunning) {
-    if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
-      ESP_LOGI(TAG, "[OTA] Suspending Audio task for OTA download");
-      vTaskSuspend(audioTaskHandle);
-    }
-  }
-}
-
-void configureForOTAInstall(void) {
-  ESP_LOGI(TAG,
-           "[OTA] Configuring minimal interruption mode for OTA installation");
-
-  // During installation, minimize all non-critical operations
-  if (tasksRunning) {
-    // Keep only LVGL for user feedback and OTA task for installation
-    if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
-      ESP_LOGI(TAG, "[OTA] Suspending Audio task for OTA installation");
-      vTaskSuspend(audioTaskHandle);
-    }
-  }
-}
-
-// Message load monitoring
 void reportMessageActivity(void) {
-  messageCount++;
-
-  // Update load statistics every second
-  uint32_t now = millis();
-  if (now - lastMessageCountReset >= 1000) {
-    if (taskConfigMutex &&
-        xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      taskSystemConfig.messageLoad = messageCount;
-      messageCount = 0;
-      lastMessageCountReset = now;
-
-      // Adjust system state based on message load
-      if (taskSystemConfig.messageLoad > 20 &&
-          taskSystemConfig.currentState == TASK_STATE_NORMAL) {
-        ESP_LOGI(
-            TAG,
-            "[DYNAMIC] High message load detected (%u/s), adjusting priorities",
-            taskSystemConfig.messageLoad);
-        setTaskSystemState(TASK_STATE_HIGH_LOAD);
-      } else if (taskSystemConfig.messageLoad < 5 &&
-                 taskSystemConfig.currentState == TASK_STATE_HIGH_LOAD) {
-        ESP_LOGI(TAG,
-                 "[DYNAMIC] Message load normalized (%u/s), returning to "
-                 "normal state",
-                 taskSystemConfig.messageLoad);
-        setTaskSystemState(TASK_STATE_NORMAL);
-      }
-
-      xSemaphoreGiveRecursive(taskConfigMutex);
-    }
-  }
+    messageCount++;
 }
 
-uint32_t getMessageLoadPerSecond(void) { return taskSystemConfig.messageLoad; }
-
-// =============================================================================
-// MESSAGING ENGINE INTEGRATION FUNCTIONS
-// =============================================================================
-
-void reportCore1MessagingStats(uint32_t messagesReceived, uint32_t messagesSent,
-                               uint32_t bufferOverruns) {
-  // Update task load metrics with Core 1 messaging statistics
-  if (taskConfigMutex &&
-      xSemaphoreTakeRecursive(taskConfigMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    taskSystemConfig.taskLoadMetrics[0] = messagesReceived;
-    taskSystemConfig.taskLoadMetrics[1] = messagesSent;
-    taskSystemConfig.taskLoadMetrics[2] = bufferOverruns;
-    taskSystemConfig.taskLoadMetrics[3] = millis(); // timestamp
-
-    ESP_LOGD(TAG, "[CORE1] Messaging stats - RX: %u, TX: %u, Overruns: %u",
-             messagesReceived, messagesSent, bufferOverruns);
-
-    xSemaphoreGiveRecursive(taskConfigMutex);
-  }
-}
-
-/**
- * Complete InterruptMessagingEngine Integration
- * This function should be called periodically (every 5-10 seconds) to:
- * 1. Get statistics from InterruptMessagingEngine
- * 2. Update TaskManager's dynamic priority system
- * 3. Adjust Core 0 task priorities based on Core 1 messaging load
- */
-void updateMessagingEngineIntegration(void) {
-  // Get messaging status
-  String messagingStatus = Messaging::getMessagingStatus();
-
-  // Extract some basic stats (this is simpler than parsing)
-  const auto &stats = Messaging::SerialEngine::getInstance().getStats();
-
-  // Update TaskManager statistics
-  reportCore1MessagingStats(stats.messagesReceived, stats.messagesSent,
-                            stats.framingErrors);
-
-  // Dynamic priority adjustment based on messaging load
-  if (stats.framingErrors > 0) {
-    ESP_LOGW(TAG,
-             "[MESSAGING-INTEGRATION] Framing errors detected (%u), optimizing "
-             "priorities",
-             stats.framingErrors);
-    // Give Core 1 more breathing room by slightly reducing Core 0 task
-    // frequency
-    if (audioTaskHandle) {
-      // Temporarily reduce audio task priority to reduce Core 0 load
-      vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL - 1);
+uint32_t getMessageLoadPerSecond(void) {
+    uint32_t now = millis();
+    if (now - lastMessageCountReset >= 1000) {
+        uint32_t load = messageCount;
+        messageCount = 0;
+        lastMessageCountReset = now;
+        return load;
     }
-  } else if (stats.messagesReceived > 50) {
-    ESP_LOGI(TAG,
-             "[MESSAGING-INTEGRATION] High message throughput (%u/period), "
-             "maintaining high performance",
-             stats.messagesReceived);
-    // Ensure optimal performance for high message loads
-    if (audioTaskHandle) {
-      vTaskPrioritySet(audioTaskHandle, AUDIO_TASK_PRIORITY_NORMAL);
-    }
-  }
-
-  ESP_LOGD(TAG, "[MESSAGING-INTEGRATION] Total RX: %u, TX: %u",
-           stats.messagesReceived, stats.messagesSent);
+    return messageCount;  // Approximation for current second
 }
 
 // =============================================================================
-// PHASE 4: OTA PERFORMANCE OPTIMIZATION
+// TASK IMPLEMENTATIONS
 // =============================================================================
 
-/**
- * ULTRA-MINIMAL OTA BOOT MODE CONFIGURATION
- * Eliminates ALL non-essential operations during OTA boot mode
- */
-void configureUltraMinimalOTAMode(void) {
-  ESP_LOGI(TAG, "[PHASE4-OTA] Configuring ultra-minimal OTA boot mode");
+void lvglTask(void *parameter) {
+    ESP_LOGI(TAG, "LVGL Task started on Core %d", xPortGetCoreID());
 
-  // Suspend ALL non-essential tasks immediately
-  if (tasksRunning) {
-    if (audioTaskHandle && eTaskGetState(audioTaskHandle) != eSuspended) {
-      ESP_LOGI(TAG, "[PHASE4-OTA] Suspending Audio task for minimal OTA mode");
-      vTaskSuspend(audioTaskHandle);
+    // Brief stabilization delay
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    unsigned long lastDisplayUpdate = 0;
+    unsigned long lastLedUpdate = 0;
+
+    while (tasksRunning) {
+        uint32_t lvgl_start = millis();
+
+        // Update LVGL tick system
+        Display::tickUpdate();
+
+        // ✅ CRITICAL FIX: Always call lv_timer_handler() to process touch events
+        // Touch events don't cause display invalidations, so we must process LVGL
+        // timers regularly regardless of display update needs
+        if (lvglTryLock(20)) {
+            uint32_t processed = lv_timer_handler();
+            lvglUnlock();
+
+            // Check if display was updated during processing
+            lv_disp_t *disp = lv_disp_get_default();
+            if (disp && !disp->rendering_in_progress) {
+                Display::onLvglRenderComplete();
+            }
+        }
+
+        uint32_t lvgl_duration = millis() - lvgl_start;
+
+        // Performance monitoring
+        if (lvgl_duration > LVGL_DURATION_CRITICAL) {
+            ESP_LOGW(TAG, "LVGL processing took %ums (>%ums)",
+                     lvgl_duration, LVGL_DURATION_CRITICAL);
+        } else if (lvgl_duration > LVGL_DURATION_WARNING) {
+            ESP_LOGD(TAG, "LVGL processing: %ums", lvgl_duration);
+        }
+
+        // Periodic operations
+        uint32_t currentTime = millis();
+        if (currentTime - lastDisplayUpdate >= 2000) {
+            Display::update();
+            lastDisplayUpdate = currentTime;
+        }
+
+#ifdef BOARD_HAS_RGB_LED
+        if (currentTime - lastLedUpdate >= 5000) {
+            Hardware::Device::ledCycleColors();
+            lastLedUpdate = currentTime;
+        }
+#endif
+
+        // Fixed delay for consistent touch responsiveness
+        // Touch processing requires regular LVGL timer handling
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-  }
 
-  // Set ultra-conservative intervals for remaining operations
-  currentAudioInterval = 30000; // 30 seconds (effectively disabled)
-
-  // Disable all periodic operations
-  taskSystemConfig.otaState = OTA_STATE_ULTRA_MINIMAL;
-  taskSystemConfig.currentState = TASK_STATE_OTA_ACTIVE;
-  taskSystemConfig.emergencyMode = false; // Ensure no emergency processing
-
-  ESP_LOGI(TAG, "[PHASE4-OTA] Ultra-minimal OTA mode configured - maximum "
-                "performance for OTA download");
+    ESP_LOGI(TAG, "LVGL Task ended");
+    vTaskDelete(NULL);
 }
 
-/**
- * NORMAL MODE BACKGROUND TASK OPTIMIZATION
- * Eliminates unnecessary background operations during normal operation
- */
-void optimizeNormalModePerformance(void) {
-  ESP_LOGI(TAG,
-           "[PHASE4-NORMAL] Optimizing normal mode for maximum performance");
+void audioTask(void *parameter) {
+    ESP_LOGI(TAG, "Audio Task started on Core %d", xPortGetCoreID());
 
-  // Extend all background operation intervals significantly
-  taskSystemConfig.backgroundOperationsDisabled = true;
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    unsigned long lastFpsUpdate = 0;
 
-  // Configure ultra-efficient task intervals
-  currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL; // Keep audio responsive
+    // ✅ Wait for all dependencies to be initialized before starting work
+    while (tasksRunning) {
+        // Check if all required systems are initialized
+        bool audioManagerReady = Application::Audio::AudioManager::getInstance().isInitialized();
+        bool audioUIReady = Application::Audio::AudioUI::getInstance().isInitialized();
 
-  // Disable non-critical periodic operations
-  taskSystemConfig.logoCheckingDisabled = true;
-  taskSystemConfig.debugStatisticsDisabled = true;
-  taskSystemConfig.nonEssentialUpdatesDisabled = true;
+        if (audioManagerReady && audioUIReady) {
+            ESP_LOGI(TAG, "Audio Task: All dependencies ready, starting normal operation");
+            break;
+        }
 
-  ESP_LOGI(
-      TAG,
-      "[PHASE4-NORMAL] Normal mode optimized - background tasks minimized");
+        // Log waiting status periodically
+        static unsigned long lastWaitLog = 0;
+        unsigned long currentTime = millis();
+        if (currentTime - lastWaitLog >= 5000) {  // Every 5 seconds
+            ESP_LOGI(TAG, "Audio Task waiting for dependencies: AudioManager=%s, AudioUI=%s",
+                     audioManagerReady ? "ready" : "waiting",
+                     audioUIReady ? "ready" : "waiting");
+            lastWaitLog = currentTime;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100));  // Check every 100ms
+    }
+
+    while (tasksRunning) {
+        unsigned long currentTime = millis();
+
+        // Update FPS display periodically
+        if (currentTime - lastFpsUpdate >= 10000) {
+            float currentFps = Display::getFPS();
+            LVGLMessageHandler::updateFpsDisplay(currentFps);
+            lastFpsUpdate = currentTime;
+        }
+
+        // Update audio UI (with mutex protection and additional safety check)
+        if (lvglTryLock(10)) {
+            try {
+                // ✅ Double-check initialization before calling
+                if (Application::Audio::AudioUI::getInstance().isInitialized()) {
+                    Application::Audio::AudioUI::getInstance().refreshAllUI();
+                }
+            } catch (...) {
+                ESP_LOGW(TAG, "Exception during audio UI update");
+            }
+            lvglUnlock();
+        }
+
+        // Update logo manager (with safety check)
+        SimpleLogoManager::getInstance().update();
+
+        // Sleep for 1 second
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
+    }
+
+    ESP_LOGI(TAG, "Audio Task ended");
+    vTaskDelete(NULL);
 }
 
-/**
- * ADAPTIVE PERFORMANCE MANAGEMENT
- * Dynamically adjusts performance based on system load and OTA state
- */
-void updateAdaptivePerformanceSettings(void) {
-  static unsigned long lastOptimizationCheck = 0;
-  unsigned long currentTime = millis();
-
-  // Only check every 10 seconds to avoid overhead
-  if (currentTime - lastOptimizationCheck < 10000) {
-    return;
-  }
-  lastOptimizationCheck = currentTime;
-
-  // Get current system load
-  uint32_t messageLoad = getMessageLoadPerSecond();
-  uint32_t freeHeap = esp_get_free_heap_size();
-
-  // Adaptive interval adjustment based on system resources
-  if (freeHeap < 50000) { // Low memory - reduce background operations
-    currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED * 2;
-    ESP_LOGW(TAG,
-             "[PHASE4-ADAPTIVE] Low memory detected (%u bytes), reducing "
-             "background operations",
-             freeHeap);
-  } else if (messageLoad > 25) { // High message load - prioritize messaging
-    currentAudioInterval = AUDIO_UPDATE_INTERVAL_REDUCED;
-    ESP_LOGI(TAG,
-             "[PHASE4-ADAPTIVE] High message load (%u/s), prioritizing "
-             "messaging performance",
-             messageLoad);
-  } else {
-    // Normal operation - standard intervals
-    currentAudioInterval = AUDIO_UPDATE_INTERVAL_NORMAL;
-  }
-}
-
-} // namespace TaskManager
-} // namespace Application
+}  // namespace TaskManager
+}  // namespace Application

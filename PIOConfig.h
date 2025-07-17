@@ -9,7 +9,7 @@
 #define ui_imgset_ (NULL)
 #endif
 #ifndef CORE_DEBUG_LEVEL
-#define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_WARN
+#define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_ERROR
 #endif
 
 #ifndef BOARD_HAS_PSRAM
@@ -164,8 +164,8 @@
 #endif
 
 // >>> AUTO-GENERATED BUILD INFO BEGIN
-#define FIRMWARE_BUILD_NUMBER "2c8e85f"
-#define GIT_BRANCH "cursor/streamline-logo-asset-management-a93c"
-#define BUILD_TIMESTAMP_NUM "20250715_152316"
+#define FIRMWARE_BUILD_NUMBER "5b9c012"
+#define GIT_BRANCH "feature/lvgl-wrapper-system"
+#define BUILD_TIMESTAMP_NUM "20250717_130744"
 // <<< AUTO-GENERATED BUILD INFO END
 #endif

@@ -32,7 +32,7 @@ uint32_t readLightSensorMv(void);
 unsigned long getMillis(void);
 void delay(unsigned long ms);
 
-// NOTE: Serial/UART interface is now managed by InterruptMessagingEngine
+// NOTE: Serial/UART interface is now managed by SimplifiedSerialEngine
 // to avoid driver conflicts between Arduino Serial and ESP-IDF UART drivers
 
 }  // namespace Device

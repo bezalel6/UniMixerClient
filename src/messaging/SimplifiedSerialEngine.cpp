@@ -5,7 +5,8 @@ static const char* TAG = "SerialEngine";
 
 namespace Messaging {
 
-// Static member definition
-SerialEngine *SerialEngine::instance = nullptr;
+// Static member definitions
+SerialEngine* SerialEngine::instance = nullptr;
+SemaphoreHandle_t SerialEngine::serialMutex = nullptr;
 
-} // namespace Messaging
+}  // namespace Messaging

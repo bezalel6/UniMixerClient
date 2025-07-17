@@ -12,7 +12,7 @@ bool init(void) {
     delay(2000);  // Wait for USB CDC to be ready (logging only)
 #endif
 
-    // NOTE: Serial/UART initialization is now handled by InterruptMessagingEngine
+    // NOTE: Serial/UART initialization is now handled by SimplifiedSerialEngine
     // to avoid conflicts between Arduino Serial and ESP-IDF UART drivers
     ESP_LOGI(TAG, "DeviceManager initialized - Serial/UART handled by MessagingEngine");
 
@@ -23,7 +23,7 @@ bool init(void) {
 }
 
 // NOTE: initSerial() function removed - Serial/UART initialization is now handled
-// by InterruptMessagingEngine to avoid driver conflicts between Arduino Serial
+// by SimplifiedSerialEngine to avoid driver conflicts between Arduino Serial
 // and ESP-IDF UART drivers
 
 void deinit(void) {
