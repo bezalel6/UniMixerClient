@@ -52,14 +52,12 @@ This is a **dual-core embedded system** with specific core responsibilities:
 - **TaskManager**: Multi-core task coordination and management
 - **main.cpp**: Clean entry point with dual-core logging filter
 
-#### 2. LVGL Wrapper System (`src/ui/wrapper/`)
-Modern C++ wrapper around LVGL using **CRTP (Curiously Recurring Template Pattern)**:
+#### 2. LVGL Wrapper System (`src/ui/wrapper/`) - DEPRECATED
+**⚠️ DO NOT USE THE LVGL WRAPPER - IT IS DEPRECATED AND WILL BE REMOVED**
 
-- **Type-safe widgets**: Container, Label, Button, ProgressBar, Dialog, etc.
-- **Fluent API**: Method chaining for clean configuration
-- **Event handling**: Template-based callback system
-- **Modern styling**: Card, glass effects, shadows, and presets
-- **Safety macros**: `SAFE_WIDGET_OP`, `FLUENT_SETTER`, `LVGL_EVENT_BIND`
+- **Status**: Deprecated, scheduled for removal
+- **Alternative**: Use SquareLine Studio for UI design and direct LVGL calls
+- **Migration**: See migration guide below
 
 #### 3. Type-Safe Messaging System (`src/messaging/`)
 **"Brutally simplified"** messaging system with tagged union approach:
@@ -140,10 +138,36 @@ container.init()
 ## Common Development Patterns
 
 ### Adding New UI Components
-1. Use LVGL wrapper classes from `src/ui/wrapper/`
-2. Create in AppController initialization
-3. Use fluent API for configuration
-4. Register event handlers via wrapper system
+1. **Use SquareLine Studio** for visual UI design
+2. **Use direct LVGL calls** for dynamic elements
+3. **DO NOT use the deprecated wrapper** from `src/ui/wrapper/`
+4. Place dynamic UI code in appropriate handlers
+
+### LVGLWrapper Migration Guide
+**The LVGLWrapper is deprecated. Here's how to migrate:**
+
+#### Instead of wrapper classes:
+```cpp
+// ❌ OLD (deprecated wrapper)
+auto container = new UI::Wrapper::Container("my_container");
+container->init(parent);
+container->setSize(320, 240)->setCardStyle(true);
+
+// ✅ NEW (direct LVGL)
+lv_obj_t* container = lv_obj_create(parent);
+lv_obj_set_size(container, 320, 240);
+// Apply styling directly or use helper functions
+```
+
+#### For common patterns:
+```cpp
+// ❌ OLD (wrapper)
+label->setHeadingStyle()->setText("Title");
+
+// ✅ NEW (direct)
+lv_label_set_text(label, "Title");
+lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
+```
 
 ### Adding New Message Types
 1. Extend `Message` struct union in `src/messaging/Message.h`

@@ -3,7 +3,7 @@
 #include "BootProgressScreen.h"
 #include "BuildInfo.h"
 #include "CoreLoggingFilter.h"
-#include "ui/wrapper/LVGLWrapper.h"
+// #include "ui/wrapper/LVGLWrapper.h" // REMOVED - using direct LVGL
 #include "TaskManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
@@ -54,15 +54,15 @@ struct BSODDebugData {
     String taskStatuses;
 } static bsodDebugData;
 
-// Simple BSOD widgets
-static UI::Wrapper::Container* mainContainer = nullptr;
-static UI::Wrapper::Label* sadFaceLabel = nullptr;
-static UI::Wrapper::Label* titleLabel = nullptr;
-static UI::Wrapper::Label* messageLabel = nullptr;
-static UI::Wrapper::Label* errorCodeLabel = nullptr;
-static UI::Wrapper::Label* instructionsLabel = nullptr;
-static UI::Wrapper::Label* buildInfoLabel = nullptr;
-static UI::Wrapper::Label* cpuDiagLabel = nullptr;
+// Simple BSOD widgets - now using direct LVGL
+static lv_obj_t* mainContainer = nullptr;
+static lv_obj_t* sadFaceLabel = nullptr;
+static lv_obj_t* titleLabel = nullptr;
+static lv_obj_t* messageLabel = nullptr;
+static lv_obj_t* errorCodeLabel = nullptr;
+static lv_obj_t* instructionsLabel = nullptr;
+static lv_obj_t* buildInfoLabel = nullptr;
+static lv_obj_t* cpuDiagLabel = nullptr;
 
 // Utility functions
 static std::string generateErrorCode(const char* message, const char* file, int line) {
@@ -207,7 +207,7 @@ void bsodDebugTask(void* parameter) {
                 cpuDiag << "Tasks: " << bsodDebugData.taskStatuses.c_str();
 
                 // Update the label with real-time data from Core 1
-                cpuDiagLabel->setText(cpuDiag.str().c_str());
+                lv_label_set_text(cpuDiagLabel, cpuDiag.str().c_str());
                 lastUIUpdate = currentTime;
 
                 xSemaphoreGive(bsodDataMutex);
@@ -298,79 +298,79 @@ void createBSODScreen(const BSODConfig& config) {
 
 void createMainContainer() {
     // Create main container with proper flex layout
-    mainContainer = new UI::Wrapper::Container("bsod_main");
-    mainContainer->init(bsodScreen);
-    mainContainer->setSize(LV_PCT(100), LV_PCT(100))
-        .setFlexFlow(LV_FLEX_FLOW_COLUMN)
-        .setFlexAlign(LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER)
-        .setPadding(30);
+    mainContainer = lv_obj_create(bsodScreen);
+    lv_obj_set_size(mainContainer, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_layout(mainContainer, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(mainContainer, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(mainContainer, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(mainContainer, 30, 0);
 }
 
 void createBSODContent(const BSODConfig& config) {
     // Sad face
     if (config.showSadFace) {
-        sadFaceLabel = new UI::Wrapper::Label("bsod_sad_face", ":-(");
-        sadFaceLabel->init(mainContainer->getWidget());
-        sadFaceLabel->setTextColor(lv_color_hex(0xFFFFFF))
-            .setPadding(10);
+        sadFaceLabel = lv_label_create(mainContainer);
+        lv_label_set_text(sadFaceLabel, ":-(");
+        lv_obj_set_style_text_color(sadFaceLabel, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_pad_all(sadFaceLabel, 10, 0);
 
         // Make sad face larger
-        lv_obj_set_style_text_font(sadFaceLabel->getWidget(), &lv_font_montserrat_48, 0);
+        lv_obj_set_style_text_font(sadFaceLabel, &lv_font_montserrat_48, 0);
     }
 
     // Title
     if (config.showTitle) {
-        titleLabel = new UI::Wrapper::Label("bsod_title", config.title.c_str());
-        titleLabel->init(mainContainer->getWidget());
-        titleLabel->setTextColor(lv_color_hex(0xFFFFFF))
-            .setPadding(20);
+        titleLabel = lv_label_create(mainContainer);
+        lv_label_set_text(titleLabel, config.title.c_str());
+        lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_pad_all(titleLabel, 20, 0);
 
         // Make title larger
-        lv_obj_set_style_text_font(titleLabel->getWidget(), &lv_font_montserrat_24, 0);
+        lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, 0);
     }
 
     // Main error message
     if (config.showMessage) {
-        messageLabel = new UI::Wrapper::Label("bsod_message", config.message.c_str());
-        messageLabel->init(mainContainer->getWidget());
-        messageLabel->setTextColor(lv_color_hex(0xFFFFFF))
-            .setPadding(15);
+        messageLabel = lv_label_create(mainContainer);
+        lv_label_set_text(messageLabel, config.message.c_str());
+        lv_obj_set_style_text_color(messageLabel, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_pad_all(messageLabel, 15, 0);
 
         // Enable text wrapping for long messages
-        lv_obj_set_width(messageLabel->getWidget(), LV_PCT(90));
-        lv_label_set_long_mode(messageLabel->getWidget(), LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(messageLabel, LV_PCT(90));
+        lv_label_set_long_mode(messageLabel, LV_LABEL_LONG_WRAP);
     }
 
     // Error code
     if (config.showErrorCode && !config.errorCode.empty()) {
         std::string errorText = "Error Code: " + config.errorCode;
-        errorCodeLabel = new UI::Wrapper::Label("bsod_error_code", errorText.c_str());
-        errorCodeLabel->init(mainContainer->getWidget());
-        errorCodeLabel->setTextColor(lv_color_hex(0xFFFFFF))
-            .setPadding(10);
+        errorCodeLabel = lv_label_create(mainContainer);
+        lv_label_set_text(errorCodeLabel, errorText.c_str());
+        lv_obj_set_style_text_color(errorCodeLabel, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_pad_all(errorCodeLabel, 10, 0);
     }
 
     // Technical details (if enabled)
     if (config.showTechnicalDetails && !config.technicalDetails.empty()) {
-        UI::Wrapper::Label* techLabel = new UI::Wrapper::Label("bsod_tech", config.technicalDetails.c_str());
-        techLabel->init(mainContainer->getWidget());
-        techLabel->setTextColor(lv_color_hex(0xCCCCCC))
-            .setPadding(10);
+        lv_obj_t* techLabel = lv_label_create(mainContainer);
+        lv_label_set_text(techLabel, config.technicalDetails.c_str());
+        lv_obj_set_style_text_color(techLabel, lv_color_hex(0xCCCCCC), 0);
+        lv_obj_set_style_pad_all(techLabel, 10, 0);
 
         // Make technical details smaller
-        lv_obj_set_style_text_font(techLabel->getWidget(), &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(techLabel, &lv_font_montserrat_12, 0);
     }
 
     // Restart instructions
     if (config.showRestartInstruction) {
-        instructionsLabel = new UI::Wrapper::Label("bsod_instructions", config.restartInstruction.c_str());
-        instructionsLabel->init(mainContainer->getWidget());
-        instructionsLabel->setTextColor(lv_color_hex(0xFFFFFF))
-            .setPadding(20);
+        instructionsLabel = lv_label_create(mainContainer);
+        lv_label_set_text(instructionsLabel, config.restartInstruction.c_str());
+        lv_obj_set_style_text_color(instructionsLabel, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_pad_all(instructionsLabel, 20, 0);
 
         // Enable text wrapping for instructions
-        lv_obj_set_width(instructionsLabel->getWidget(), LV_PCT(80));
-        lv_label_set_long_mode(instructionsLabel->getWidget(), LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(instructionsLabel, LV_PCT(80));
+        lv_label_set_long_mode(instructionsLabel, LV_LABEL_LONG_WRAP);
     }
 
     // CPU Diagnostics section (real-time updated)
@@ -383,27 +383,27 @@ void createBSODContent(const BSODConfig& config) {
         cpuDiag << "Core 0: LVGL processing\n";
         cpuDiag << "Core 1: Debug data collection";
 
-        cpuDiagLabel = new UI::Wrapper::Label("bsod_cpu", cpuDiag.str().c_str());
-        cpuDiagLabel->init(mainContainer->getWidget());
-        cpuDiagLabel->setTextColor(lv_color_hex(0x00FFFF))  // Cyan for diagnostics
-            .setPadding(15);
+        cpuDiagLabel = lv_label_create(mainContainer);
+        lv_label_set_text(cpuDiagLabel, cpuDiag.str().c_str());
+        lv_obj_set_style_text_color(cpuDiagLabel, lv_color_hex(0x00FFFF), 0);  // Cyan for diagnostics
+        lv_obj_set_style_pad_all(cpuDiagLabel, 15, 0);
 
         // Enable text wrapping and make it monospace-like
-        lv_obj_set_width(cpuDiagLabel->getWidget(), LV_PCT(95));
-        lv_label_set_long_mode(cpuDiagLabel->getWidget(), LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_font(cpuDiagLabel->getWidget(), &lv_font_montserrat_12, 0);
+        lv_obj_set_width(cpuDiagLabel, LV_PCT(95));
+        lv_label_set_long_mode(cpuDiagLabel, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(cpuDiagLabel, &lv_font_montserrat_12, 0);
     }
 
     // Build info (at bottom)
     if (config.showBuildInfo) {
         std::string buildInfo = config.buildInfo.empty() ? getBuildInfo() : config.buildInfo;
-        buildInfoLabel = new UI::Wrapper::Label("bsod_build", buildInfo.c_str());
-        buildInfoLabel->init(mainContainer->getWidget());
-        buildInfoLabel->setTextColor(lv_color_hex(0x888888))
-            .setPadding(5);
+        buildInfoLabel = lv_label_create(mainContainer);
+        lv_label_set_text(buildInfoLabel, buildInfo.c_str());
+        lv_obj_set_style_text_color(buildInfoLabel, lv_color_hex(0x888888), 0);
+        lv_obj_set_style_pad_all(buildInfoLabel, 5, 0);
 
         // Make build info smaller
-        lv_obj_set_style_text_font(buildInfoLabel->getWidget(), &lv_font_montserrat_10, 0);
+        lv_obj_set_style_text_font(buildInfoLabel, &lv_font_montserrat_10, 0);
     }
 }
 

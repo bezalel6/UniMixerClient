@@ -9,14 +9,7 @@
 #include <esp_system.h>
 #include <esp_task.h>
 
-// Forward declarations
-namespace UI {
-namespace Wrapper {
-template <typename Derived>
-class WidgetBase;
-}
-}  // namespace UI
-#define TEMPLATE void*
+// Forward declarations removed - no longer using wrapper
 
 // BSOD Configuration Structure
 typedef struct {
@@ -29,14 +22,14 @@ typedef struct {
     std::string restartInstruction = "Please restart your device";
     std::string sadFace = ":(";
 
-    // Optional custom widgets for each section
-    UI::Wrapper::WidgetBase<TEMPLATE>* customTitleWidget = nullptr;
-    UI::Wrapper::WidgetBase<TEMPLATE>* customMessageWidget = nullptr;
-    UI::Wrapper::WidgetBase<TEMPLATE>* customTechnicalWidget = nullptr;
-    UI::Wrapper::WidgetBase<TEMPLATE>* customProgressWidget = nullptr;
-    UI::Wrapper::WidgetBase<TEMPLATE>* customBuildInfoWidget = nullptr;
-    UI::Wrapper::WidgetBase<TEMPLATE>* customRestartWidget = nullptr;
-    UI::Wrapper::WidgetBase<TEMPLATE>* customSadFaceWidget = nullptr;
+    // Optional custom widgets for each section - now using direct LVGL
+    lv_obj_t* customTitleWidget = nullptr;
+    lv_obj_t* customMessageWidget = nullptr;
+    lv_obj_t* customTechnicalWidget = nullptr;
+    lv_obj_t* customProgressWidget = nullptr;
+    lv_obj_t* customBuildInfoWidget = nullptr;
+    lv_obj_t* customRestartWidget = nullptr;
+    lv_obj_t* customSadFaceWidget = nullptr;
 
     // Section visibility flags
     bool showSadFace = true;
