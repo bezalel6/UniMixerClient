@@ -13,6 +13,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include <esp_log.h>
 
 // Configuration: Choose which widget type to use for volume controls
 // Change this to switch between arc and slider widgets globally
@@ -22,13 +23,30 @@
 // Current widget type selection (change this to switch widget types)
 #define VOLUME_WIDGET_TYPE VOLUME_WIDGET_TYPE_SLIDER
 
+// Tag for volume widget logging
+static const char* VOLUME_WIDGET_TAG = "VolumeWidget";
+
 // Widget-agnostic macros that automatically use the correct API
 #if VOLUME_WIDGET_TYPE == VOLUME_WIDGET_TYPE_ARC
 
 // Arc-specific implementations
 #define VOLUME_WIDGET_CREATE(parent) lv_arc_create(parent)
-#define VOLUME_WIDGET_SET_VALUE(widget, value) lv_arc_set_value(widget, value)
-#define VOLUME_WIDGET_GET_VALUE(widget) lv_arc_get_value(widget)
+
+#define VOLUME_WIDGET_SET_VALUE(widget, value) \
+    do { \
+        if (!(widget)) { \
+            ESP_LOGE(VOLUME_WIDGET_TAG, "SET_VALUE failed: NULL widget pointer"); \
+        } else if ((value) < 0 || (value) > 100) { \
+            ESP_LOGE(VOLUME_WIDGET_TAG, "SET_VALUE failed: Invalid value %d (must be 0-100)", (int)(value)); \
+        } else { \
+            lv_arc_set_value(widget, value); \
+            ESP_LOGD(VOLUME_WIDGET_TAG, "Arc value set to %d", (int)(value)); \
+        } \
+    } while(0)
+
+#define VOLUME_WIDGET_GET_VALUE(widget) \
+    ((widget) ? lv_arc_get_value(widget) : \
+     (ESP_LOGE(VOLUME_WIDGET_TAG, "GET_VALUE failed: NULL widget pointer"), 0))
 #define VOLUME_WIDGET_SET_RANGE(widget, min, max) lv_arc_set_range(widget, min, max)
 #define VOLUME_WIDGET_SET_MODE(widget, mode) lv_arc_set_mode(widget, mode)
 
@@ -48,8 +66,22 @@
 
 // Slider-specific implementations
 #define VOLUME_WIDGET_CREATE(parent) lv_slider_create(parent)
-#define VOLUME_WIDGET_SET_VALUE(widget, value) lv_slider_set_value(widget, value, LV_ANIM_OFF)
-#define VOLUME_WIDGET_GET_VALUE(widget) lv_slider_get_value(widget)
+
+#define VOLUME_WIDGET_SET_VALUE(widget, value) \
+    do { \
+        if (!(widget)) { \
+            ESP_LOGE(VOLUME_WIDGET_TAG, "SET_VALUE failed: NULL widget pointer"); \
+        } else if ((value) < 0 || (value) > 100) { \
+            ESP_LOGE(VOLUME_WIDGET_TAG, "SET_VALUE failed: Invalid value %d (must be 0-100)", (int)(value)); \
+        } else { \
+            lv_slider_set_value(widget, value, LV_ANIM_OFF); \
+            ESP_LOGD(VOLUME_WIDGET_TAG, "Slider value set to %d", (int)(value)); \
+        } \
+    } while(0)
+
+#define VOLUME_WIDGET_GET_VALUE(widget) \
+    ((widget) ? lv_slider_get_value(widget) : \
+     (ESP_LOGE(VOLUME_WIDGET_TAG, "GET_VALUE failed: NULL widget pointer"), 0))
 #define VOLUME_WIDGET_SET_RANGE(widget, min, max) lv_slider_set_range(widget, min, max)
 #define VOLUME_WIDGET_SET_MODE(widget, mode) lv_slider_set_mode(widget, mode)
 
@@ -72,11 +104,19 @@
 // Common helper macros that work for both widget types
 #define VOLUME_WIDGET_SET_VALUE_WITH_ANIM(widget, value)    \
     do {                                                    \
-        if (VOLUME_WIDGET_TYPE == VOLUME_WIDGET_TYPE_ARC) { \
-            lv_arc_set_value(widget, value);                \
-        } else {                                            \
-            lv_slider_set_value(widget, value, LV_ANIM_ON); \
-        }                                                   \
+        if (!(widget)) { \
+            ESP_LOGE(VOLUME_WIDGET_TAG, "SET_VALUE_WITH_ANIM failed: NULL widget pointer"); \
+        } else if ((value) < 0 || (value) > 100) { \
+            ESP_LOGE(VOLUME_WIDGET_TAG, "SET_VALUE_WITH_ANIM failed: Invalid value %d (must be 0-100)", (int)(value)); \
+        } else { \
+            if (VOLUME_WIDGET_TYPE == VOLUME_WIDGET_TYPE_ARC) { \
+                lv_arc_set_value(widget, value);                \
+                ESP_LOGD(VOLUME_WIDGET_TAG, "Arc value set to %d (animated)", (int)(value)); \
+            } else {                                            \
+                lv_slider_set_value(widget, value, LV_ANIM_ON); \
+                ESP_LOGD(VOLUME_WIDGET_TAG, "Slider value set to %d (animated)", (int)(value)); \
+            }                                                   \
+        } \
     } while (0)
 
 // Event types that are common to both widgets
