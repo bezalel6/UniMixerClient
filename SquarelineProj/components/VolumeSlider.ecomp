@@ -60,7 +60,7 @@
         {
           "nid": 70,
           "strtype": "OBJECT/Align",
-          "strval": "CENTER",
+          "strval": "TOP_MID",
           "InheritedType": 3
         },
         {
@@ -330,8 +330,8 @@
       "tree_closed": true
     },
     {
-      "guid": "GUID72604394-856665S3894160",
-      "deepid": 2109328655,
+      "guid": "GUID33713560-570233S5624199",
+      "deepid": -1483893444,
       "dont_export": false,
       "locked": false,
       "properties": [
@@ -370,28 +370,29 @@
           "strtype": "OBJECT/Position",
           "intarray": [
             0,
-            25
+            0
           ],
           "InheritedType": 7
         },
         {
           "nid": 60,
-          "flags": 17,
+          "flags": 18,
           "strtype": "OBJECT/Size",
           "intarray": [
-            300,
-            300
+            95,
+            10
           ],
           "InheritedType": 7
         },
         {
           "nid": 70,
           "strtype": "OBJECT/Align",
-          "strval": "BOTTOM_MID",
+          "strval": "CENTER",
           "InheritedType": 3
         },
         {
           "nid": 90,
+          "flags": 1048576,
           "strtype": "OBJECT/Flags",
           "InheritedType": 1
         },
@@ -416,19 +417,19 @@
         {
           "nid": 130,
           "strtype": "OBJECT/Press_lock",
-          "strval": "False",
+          "strval": "True",
           "InheritedType": 2
         },
         {
           "nid": 140,
           "strtype": "OBJECT/Click_focusable",
-          "strval": "False",
+          "strval": "True",
           "InheritedType": 2
         },
         {
           "nid": 150,
           "strtype": "OBJECT/Adv_hittest",
-          "strval": "True",
+          "strval": "False",
           "InheritedType": 2
         },
         {
@@ -440,13 +441,13 @@
         {
           "nid": 170,
           "strtype": "OBJECT/Floating",
-          "strval": "True",
+          "strval": "False",
           "InheritedType": 2
         },
         {
           "nid": 180,
           "strtype": "OBJECT/Overflow_visible",
-          "strval": "True",
+          "strval": "False",
           "InheritedType": 2
         },
         {
@@ -464,17 +465,18 @@
         {
           "nid": 210,
           "strtype": "OBJECT/Gesture_bubble",
-          "strval": "False",
+          "strval": "True",
           "InheritedType": 2
         },
         {
           "nid": 220,
           "strtype": "OBJECT/Snappable",
-          "strval": "False",
+          "strval": "True",
           "InheritedType": 2
         },
         {
           "nid": 225,
+          "flags": 1048576,
           "strtype": "OBJECT/Scrolling",
           "InheritedType": 1
         },
@@ -546,6 +548,7 @@
         },
         {
           "nid": 320,
+          "flags": 1048576,
           "strtype": "OBJECT/States",
           "InheritedType": 1
         },
@@ -605,12 +608,12 @@
         },
         {
           "nid": 1010,
-          "strtype": "ARC/Arc",
+          "strtype": "SLIDER/Slider",
           "InheritedType": 1
         },
         {
           "nid": 1020,
-          "strtype": "ARC/Range",
+          "strtype": "SLIDER/Range",
           "intarray": [
             0,
             100
@@ -619,157 +622,46 @@
         },
         {
           "nid": 1030,
-          "strtype": "ARC/Value",
-          "InheritedType": 6
-        },
-        {
-          "nid": 1040,
-          "strtype": "ARC/Bg_angles",
-          "intarray": [
-            120,
-            60
-          ],
-          "InheritedType": 7
-        },
-        {
-          "nid": 1050,
-          "strtype": "ARC/Mode",
+          "strtype": "SLIDER/Mode",
           "strval": "NORMAL",
           "InheritedType": 3
         },
         {
-          "nid": 1060,
-          "strtype": "ARC/Rotation",
+          "nid": 1040,
+          "strtype": "SLIDER/Value",
+          "InheritedType": 6
+        },
+        {
+          "nid": 1050,
+          "strtype": "SLIDER/Value_left",
           "InheritedType": 6
         },
         {
           "part": "lv.PART.MAIN",
-          "childs": [
-            {
-              "nid": 10000,
-              "strtype": "_style/StyleState",
-              "strval": "DEFAULT",
-              "childs": [
-                {
-                  "nid": 10320,
-                  "strtype": "_style/Arc_Width",
-                  "integer": 20,
-                  "InheritedType": 6
-                }
-              ],
-              "InheritedType": 1
-            }
-          ],
-          "nid": 1070,
-          "strtype": "ARC/Style_main",
-          "strval": "lv.PART.MAIN, Rectangle, Pad, Arc, Transform",
+          "childs": [],
+          "nid": 1060,
+          "strtype": "SLIDER/Style_main",
+          "strval": "lv.PART.MAIN, Rectangle, Pad, Transform",
           "InheritedType": 11
         },
         {
           "part": "lv.PART.INDICATOR",
-          "childs": [
-            {
-              "nid": 10000,
-              "strtype": "_style/StyleState",
-              "strval": "DEFAULT",
-              "childs": [
-                {
-                  "nid": 10320,
-                  "strtype": "_style/Arc_Width",
-                  "integer": 20,
-                  "InheritedType": 6
-                }
-              ],
-              "InheritedType": 1
-            }
-          ],
-          "nid": 1080,
-          "strtype": "ARC/Style_indicator",
-          "strval": "lv.PART.INDICATOR, Rectangle, Pad, Arc",
+          "childs": [],
+          "nid": 1070,
+          "strtype": "SLIDER/Style_indicator",
+          "strval": "lv.PART.INDICATOR, Rectangle",
           "InheritedType": 11
         },
         {
           "part": "lv.PART.KNOB",
           "childs": [],
-          "nid": 1090,
-          "strtype": "ARC/Style_knob",
+          "nid": 1080,
+          "strtype": "SLIDER/Style_knob",
           "strval": "lv.PART.KNOB, Rectangle, Pad",
           "InheritedType": 11
-        },
-        {
-          "disabled": false,
-          "nid": 1000467,
-          "strtype": "_event/EventHandler",
-          "strval": "VALUE_CHANGED",
-          "childs": [
-            {
-              "nid": 1000468,
-              "strtype": "_event/name",
-              "strval": "Event5",
-              "InheritedType": 10
-            },
-            {
-              "nid": 1000469,
-              "strtype": "_event/condition_C",
-              "strval": "",
-              "InheritedType": 10
-            },
-            {
-              "nid": 1000470,
-              "strtype": "_event/condition_P",
-              "strval": "",
-              "InheritedType": 10
-            },
-            {
-              "nid": 1000471,
-              "strtype": "_event/action",
-              "strval": "SET TEXT VALUE FROM ARC",
-              "childs": [
-                {
-                  "nid": 1000472,
-                  "strtype": "SET TEXT VALUE FROM ARC/Name",
-                  "strval": "SET TEXT VALUE FROM ARC",
-                  "InheritedType": 10
-                },
-                {
-                  "nid": 1000473,
-                  "strtype": "SET TEXT VALUE FROM ARC/Call",
-                  "strval": "SetTextValueArc( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\")",
-                  "InheritedType": 10
-                },
-                {
-                  "nid": 1000474,
-                  "strtype": "SET TEXT VALUE FROM ARC/CallC",
-                  "strval": "_ui_arc_set_text_value( <{Target}>, target, \"<{Prefix}>\", \"<{Postfix}>\");",
-                  "InheritedType": 10
-                },
-                {
-                  "nid": 1000475,
-                  "strtype": "SET TEXT VALUE FROM ARC/Target",
-                  "strval": "GUID28051680-856658S1494160",
-                  "InheritedType": 9
-                },
-                {
-                  "nid": 1000476,
-                  "strtype": "SET TEXT VALUE FROM ARC/Prefix",
-                  "strval": "",
-                  "InheritedType": 10
-                },
-                {
-                  "nid": 1000477,
-                  "strtype": "SET TEXT VALUE FROM ARC/Postfix",
-                  "strval": "%",
-                  "InheritedType": 10
-                }
-              ],
-              "InheritedType": 10
-            }
-          ],
-          "InheritedType": 4
         }
       ],
-      "saved_objtypeKey": "ARC",
-      "tree_closed": true
+      "saved_objtypeKey": "SLIDER"
     }
   ],
   "dont_export": false,
@@ -819,15 +711,15 @@
       "flags": 17,
       "strtype": "OBJECT/Size",
       "intarray": [
-        300,
-        300
+        450,
+        100
       ],
       "InheritedType": 7
     },
     {
       "nid": 70,
       "strtype": "OBJECT/Align",
-      "strval": "TOP_MID",
+      "strval": "CENTER",
       "InheritedType": 3
     },
     {
