@@ -9,7 +9,7 @@
 #define ui_imgset_ (NULL)
 #endif
 #ifndef CORE_DEBUG_LEVEL
-#define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_WARN
+#define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_ERROR
 #endif
 
 #ifndef BOARD_HAS_PSRAM
