@@ -199,7 +199,7 @@ class SerialEngine {
         // Start consolidated RXTX Task
         BaseType_t rxtxResult = xTaskCreatePinnedToCore(
             rxtxTaskWrapper, "SerialRxTx",
-            16384,  // 16KB for RX/TX processing (increased from 12KB)
+            16384 * 2,  // 16*2=32KB for RX/TX processing (increased from 12KB)
             this,
             5,  // Priority
             &rxtxTaskHandle,
