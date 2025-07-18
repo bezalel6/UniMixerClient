@@ -48,6 +48,7 @@ public:
   void updateDeviceSelectors();
   void updateDefaultDeviceLabel();
   void updateMuteButtons();
+  void initializeVolumeSliders(); // Initialize sliders to prevent garbage values
 
 private:
   AudioUI() = default;

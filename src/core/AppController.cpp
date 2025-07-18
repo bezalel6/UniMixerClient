@@ -295,6 +295,9 @@ void setupUiComponents(void) {
     ESP_LOGI(TAG, "Initialized tab state to index: %d (%s)", activeTabIndex,
              Events::UI::getTabName(Events::UI::getCurrentTab()));
 
+    // Initialize volume sliders to prevent garbage values
+    Application::Audio::AudioUI::getInstance().initializeVolumeSliders();
+
     // =========================================================================
     // NETWORK-FREE ARCHITECTURE: OTA UI SETUP
     // =========================================================================
