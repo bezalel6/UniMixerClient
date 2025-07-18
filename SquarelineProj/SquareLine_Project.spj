@@ -788,8 +788,18 @@
                           {
                             "nid": 10,
                             "compnid": 10,
+                            "flags": 65536,
                             "strtype": "OBJECT/Name",
                             "strval": "primaryVolumeSlider",
+                            "childs": [
+                              {
+                                "nid": 15,
+                                "flags": 1048576,
+                                "strtype": "_codename/Codename",
+                                "strval": "primaryVolumeSlider",
+                                "InheritedType": 10
+                              }
+                            ],
                             "InheritedType": 10
                           },
                           {
@@ -1562,7 +1572,15 @@
                         "compnid": 10,
                         "flags": 131072,
                         "strtype": "OBJECT/Name",
-                        "strval": "primaryVolumeSlider",
+                        "strval": "primaryContainer",
+                        "childs": [
+                          {
+                            "nid": 15,
+                            "strtype": "_codename/Codename",
+                            "strval": "primaryContainer",
+                            "InheritedType": 10
+                          }
+                        ],
                         "InheritedType": 10
                       },
                       {
@@ -15325,7 +15343,7 @@
     "uiExportFolderPath": "E:\\SharedCo\\UniMixerClient\\src\\ui",
     "projectExportFolderPath": "C:\\Users\\bezal\\OneDrive\\Documents\\Squareline Studio\\esp32",
     "custom_variable_prefix": "ui",
-    "backup_cnt": 303,
+    "backup_cnt": 304,
     "autosave_cnt": 0,
     "group_color_cnt": 1,
     "lvgl_version": "9.1.0",

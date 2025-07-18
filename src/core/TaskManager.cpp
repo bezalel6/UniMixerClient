@@ -295,18 +295,19 @@ void audioTask(void *parameter) {
             lastFpsUpdate = currentTime;
         }
 
-        // Update audio UI (with mutex protection and additional safety check)
-        if (lvglTryLock(10)) {
-            try {
-                // ✅ Double-check initialization before calling
-                if (Application::Audio::AudioUI::getInstance().isInitialized()) {
-                    Application::Audio::AudioUI::getInstance().refreshAllUI();
-                }
-            } catch (...) {
-                ESP_LOGW(TAG, "Exception during audio UI update");
-            }
-            lvglUnlock();
-        }
+        // Commented out insanely spammy FULL UI updates
+        // // Update audio UI (with mutex protection and additional safety check)
+        // if (lvglTryLock(10)) {
+        //     try {
+        //         // ✅ Double-check initialization before calling
+        //         if (Application::Audio::AudioUI::getInstance().isInitialized()) {
+        //             Application::Audio::AudioUI::getInstance().refreshAllUI();
+        //         }
+        //     } catch (...) {
+        //         ESP_LOGW(TAG, "Exception during audio UI update");
+        //     }
+        //     lvglUnlock();
+        // }
 
         // Update logo manager (with safety check)
         SimpleLogoManager::getInstance().update();

@@ -661,7 +661,8 @@
           "InheritedType": 11
         }
       ],
-      "saved_objtypeKey": "SLIDER"
+      "saved_objtypeKey": "SLIDER",
+      "tree_closed": true
     }
   ],
   "dont_export": false,

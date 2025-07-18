@@ -22,12 +22,10 @@ void AudioUI::initializeVolumeSliders() {
     // This prevents garbage values from being displayed before real data arrives
     
     if (ui_primaryVolumeSlider) {
-        lv_obj_t* slider = ui_comp_get_child(ui_primaryVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER);
-        if (slider) {
-            VOLUME_WIDGET_SET_RANGE(slider, 0, 100);
-            VOLUME_WIDGET_SET_VALUE(slider, 0);
-            ESP_LOGI(TAG, "Primary volume slider initialized");
-        }
+        // ui_primaryVolumeSlider now points directly to the slider widget
+        VOLUME_WIDGET_SET_RANGE(ui_primaryVolumeSlider, 0, 100);
+        VOLUME_WIDGET_SET_VALUE(ui_primaryVolumeSlider, 0);
+        ESP_LOGI(TAG, "Primary volume slider initialized");
     }
     
     if (ui_containerSingleVolumeSlider) {
