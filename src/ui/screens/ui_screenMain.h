@@ -18,7 +18,8 @@ extern lv_obj_t * ui_tabsModeSwitch;
 extern lv_obj_t * ui_Master;
 extern lv_obj_t * ui_pnlPrimaryAudioDevice;
 extern lv_obj_t * ui_lblPrimaryAudioDeviceValue;
-extern lv_obj_t * ui_containerPrimaryVolumeSlider;
+extern lv_obj_t * ui_primaryVolumeSlider;
+extern void ui_event_primaryVolumeSlider_primaryVolumeSlider(lv_event_t * e);
 extern lv_obj_t * ui_Single;
 extern lv_obj_t * ui_pnlSingleSelectAudioDevice;
 extern lv_obj_t * ui_selectAudioDevice;
@@ -72,7 +73,6 @@ extern lv_obj_t * ui_lblFPS;
 extern lv_obj_t * ui_img;
 // CUSTOM VARIABLES
 extern lv_obj_t * ui_lblPrimaryVolumeSlider;
-extern lv_obj_t * ui_primaryVolumeSlider;
 extern lv_obj_t * ui_lblSingleVolumeSlider;
 extern lv_obj_t * ui_singleVolumeSlider;
 extern lv_obj_t * ui_lblBalanceVolumeSlider;
