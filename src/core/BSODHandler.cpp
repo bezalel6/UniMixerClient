@@ -20,6 +20,61 @@
 static const char* TAG = "BSODHandler";
 
 // =============================================================================
+// MODERN BSOD DESIGN SYSTEM
+// =============================================================================
+
+// Design tokens for consistent visual language
+namespace BSODDesign {
+    // Modern color palette (inspired by modern OS error screens)
+    const lv_color_t COLOR_BACKGROUND = lv_color_hex(0x1E3A5F);      // Deep blue-gray
+    const lv_color_t COLOR_CARD_BG = lv_color_hex(0x2B4C7E);        // Lighter blue-gray
+    const lv_color_t COLOR_PRIMARY = lv_color_hex(0xFFFFFF);        // White
+    const lv_color_t COLOR_SECONDARY = lv_color_hex(0xB8D4F1);      // Light blue
+    const lv_color_t COLOR_ACCENT = lv_color_hex(0x4A90E2);         // Bright blue
+    const lv_color_t COLOR_ERROR = lv_color_hex(0xFF6B6B);          // Soft red
+    const lv_color_t COLOR_WARNING = lv_color_hex(0xFFD93D);        // Yellow
+    const lv_color_t COLOR_SUCCESS = lv_color_hex(0x4ECDC4);        // Teal
+    const lv_color_t COLOR_INFO = lv_color_hex(0x6C5CE7);           // Purple
+    
+    // Typography scale
+    const lv_font_t* FONT_HEADING_LG = &lv_font_montserrat_32;
+    const lv_font_t* FONT_HEADING_MD = &lv_font_montserrat_24;
+    const lv_font_t* FONT_HEADING_SM = &lv_font_montserrat_18;
+    const lv_font_t* FONT_BODY = &lv_font_montserrat_14;
+    const lv_font_t* FONT_CAPTION = &lv_font_montserrat_12;
+    const lv_font_t* FONT_MONO = &lv_font_montserrat_12;  // Simulated mono
+    
+    // Spacing system (8px grid)
+    const int SPACE_XS = 4;
+    const int SPACE_SM = 8;
+    const int SPACE_MD = 16;
+    const int SPACE_LG = 24;
+    const int SPACE_XL = 32;
+    const int SPACE_XXL = 48;
+    
+    // Layout constants
+    const int CARD_RADIUS = 12;
+    const int CARD_SHADOW = 20;
+    const int MAX_CONTENT_WIDTH = 600;  // For readability
+}
+
+// =============================================================================
+// ICON SYSTEM FOR VISUAL CLARITY
+// =============================================================================
+
+namespace BSODIcons {
+    // Unicode symbols for different error types
+    const char* ICON_ERROR = "⚠";        // Warning triangle
+    const char* ICON_CRITICAL = "❌";     // X mark
+    const char* ICON_INFO = "ℹ";         // Info
+    const char* ICON_SYSTEM = "⚙";       // Gear
+    const char* ICON_MEMORY = "💾";      // Floppy disk  
+    const char* ICON_NETWORK = "🌐";     // Globe
+    const char* ICON_RESTART = "↺";      // Reload
+    const char* ICON_DEBUG = "🐞";       // Bug
+}
+
+// =============================================================================
 // DUAL-CORE BSOD ARCHITECTURE GLOBALS
 // =============================================================================
 
@@ -54,15 +109,34 @@ struct BSODDebugData {
     String taskStatuses;
 } static bsodDebugData;
 
-// Simple BSOD widgets - now using direct LVGL
-static lv_obj_t* mainContainer = nullptr;
-static lv_obj_t* sadFaceLabel = nullptr;
-static lv_obj_t* titleLabel = nullptr;
-static lv_obj_t* messageLabel = nullptr;
-static lv_obj_t* errorCodeLabel = nullptr;
-static lv_obj_t* instructionsLabel = nullptr;
-static lv_obj_t* buildInfoLabel = nullptr;
-static lv_obj_t* cpuDiagLabel = nullptr;
+// UI Elements with better organization
+static struct {
+    lv_obj_t* mainContainer;
+    lv_obj_t* headerCard;
+    lv_obj_t* errorIcon;
+    lv_obj_t* titleLabel;
+    lv_obj_t* subtitleLabel;
+    
+    lv_obj_t* messageCard;
+    lv_obj_t* messageText;
+    lv_obj_t* errorCodeChip;
+    
+    lv_obj_t* detailsCard;
+    lv_obj_t* detailsText;
+    
+    lv_obj_t* diagnosticsCard;
+    lv_obj_t* cpuStatusBar;
+    lv_obj_t* memoryStatusBar;
+    lv_obj_t* diagnosticsText;
+    
+    lv_obj_t* actionCard;
+    lv_obj_t* instructionText;
+    lv_obj_t* progressBar;
+    
+    lv_obj_t* footerContainer;
+    lv_obj_t* buildInfoText;
+    lv_obj_t* timestampText;
+} ui;
 
 // Utility functions
 static std::string generateErrorCode(const char* message, const char* file, int line) {
@@ -82,6 +156,82 @@ static std::string generateErrorCode(const char* message, const char* file, int 
     char errorCode[16];
     snprintf(errorCode, sizeof(errorCode), "ERR_%08X", hash);
     return std::string(errorCode);
+}
+
+// =============================================================================
+// HELPER FUNCTIONS FOR MODERN UI
+// =============================================================================
+
+static lv_obj_t* createCard(lv_obj_t* parent, bool isTransparent = false) {
+    lv_obj_t* card = lv_obj_create(parent);
+    
+    if (isTransparent) {
+        lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(card, 0, 0);
+    } else {
+        lv_obj_set_style_bg_color(card, BSODDesign::COLOR_CARD_BG, 0);
+        lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(card, BSODDesign::CARD_RADIUS, 0);
+        
+        // Subtle shadow for depth
+        lv_obj_set_style_shadow_width(card, BSODDesign::CARD_SHADOW, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+        lv_obj_set_style_shadow_spread(card, 2, 0);
+        
+        // Border for definition
+        lv_obj_set_style_border_width(card, 1, 0);
+        lv_obj_set_style_border_color(card, BSODDesign::COLOR_ACCENT, 0);
+        lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
+    }
+    
+    lv_obj_set_style_pad_all(card, BSODDesign::SPACE_MD, 0);
+    return card;
+}
+
+static lv_obj_t* createChip(lv_obj_t* parent, const char* text, lv_color_t bgColor) {
+    lv_obj_t* chip = lv_obj_create(parent);
+    lv_obj_set_height(chip, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(chip, bgColor, 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(chip, 16, 0);
+    lv_obj_set_style_pad_hor(chip, 12, 0);
+    lv_obj_set_style_pad_ver(chip, 4, 0);
+    
+    lv_obj_t* label = lv_label_create(chip);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, BSODDesign::COLOR_PRIMARY, 0);
+    lv_obj_set_style_text_font(label, BSODDesign::FONT_CAPTION, 0);
+    
+    return chip;
+}
+
+static lv_obj_t* createStatusBar(lv_obj_t* parent, const char* label, int value, lv_color_t color) {
+    lv_obj_t* container = lv_obj_create(parent);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_style_pad_all(container, 0, 0);
+    lv_obj_set_height(container, LV_SIZE_CONTENT);
+    lv_obj_set_width(container, LV_PCT(100));
+    lv_obj_set_layout(container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    
+    // Label
+    lv_obj_t* labelObj = lv_label_create(container);
+    lv_label_set_text(labelObj, label);
+    lv_obj_set_style_text_color(labelObj, BSODDesign::COLOR_SECONDARY, 0);
+    lv_obj_set_style_text_font(labelObj, BSODDesign::FONT_CAPTION, 0);
+    
+    // Progress bar
+    lv_obj_t* bar = lv_bar_create(container);
+    lv_obj_set_size(bar, LV_PCT(100), 6);
+    lv_bar_set_value(bar, value, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0x1A2332), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(bar, color, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(bar, 3, 0);
+    
+    return container;
 }
 
 namespace BSODHandler {
@@ -207,7 +357,20 @@ void bsodDebugTask(void* parameter) {
                 cpuDiag << "Tasks: " << bsodDebugData.taskStatuses.c_str();
 
                 // Update the label with real-time data from Core 1
-                lv_label_set_text(cpuDiagLabel, cpuDiag.str().c_str());
+                if (ui.diagnosticsText) {
+                    lv_label_set_text(ui.diagnosticsText, cpuDiag.str().c_str());
+                }
+                
+                // Update status bars if they exist
+                if (ui.cpuStatusBar) {
+                    int cpuUsage = 100 - (bsodDebugData.freeStack * 100 / 8192);
+                    lv_bar_set_value(lv_obj_get_child(ui.cpuStatusBar, 1), cpuUsage, LV_ANIM_ON);
+                }
+                
+                if (ui.memoryStatusBar) {
+                    int memUsage = 100 - (bsodDebugData.freeHeap * 100 / bsodDebugData.minHeap);
+                    lv_bar_set_value(lv_obj_get_child(ui.memoryStatusBar, 1), memUsage, LV_ANIM_ON);
+                }
                 lastUIUpdate = currentTime;
 
                 xSemaphoreGive(bsodDataMutex);
@@ -289,123 +452,45 @@ void prepareSystemForBSOD(const BSODConfig& config) {
 }
 
 void createBSODScreen(const BSODConfig& config) {
-    // Create BSOD screen with blue background
+    // Create base screen with gradient-like background
     bsodScreen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(bsodScreen, lv_color_hex(0x0000AA), 0);    // Blue background
-    lv_obj_set_style_text_color(bsodScreen, lv_color_hex(0xFFFFFF), 0);  // White text
-    lv_obj_set_style_pad_all(bsodScreen, 20, 0);
+    lv_obj_set_style_bg_color(bsodScreen, BSODDesign::COLOR_BACKGROUND, 0);
+    lv_obj_set_style_bg_grad_color(bsodScreen, lv_color_hex(0x0F1E2E), 0);
+    lv_obj_set_style_bg_grad_dir(bsodScreen, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_pad_all(bsodScreen, BSODDesign::SPACE_LG, 0);
 }
 
 void createMainContainer() {
-    // Create main container with proper flex layout
-    mainContainer = lv_obj_create(bsodScreen);
-    lv_obj_set_size(mainContainer, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_layout(mainContainer, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(mainContainer, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(mainContainer, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(mainContainer, 30, 0);
+    // Create scrollable main container
+    ui.mainContainer = lv_obj_create(bsodScreen);
+    lv_obj_set_size(ui.mainContainer, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(ui.mainContainer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ui.mainContainer, 0, 0);
+    lv_obj_set_scrollbar_mode(ui.mainContainer, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_layout(ui.mainContainer, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui.mainContainer, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(ui.mainContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(ui.mainContainer, BSODDesign::SPACE_MD, 0);
 }
+
+// Forward declarations for new section functions
+static void createHeaderSection(const BSODConfig& config);
+static void createMessageSection(const BSODConfig& config);
+static void createDetailsSection(const BSODConfig& config);
+static void createDiagnosticsSection(const BSODConfig& config);
+static void createActionSection(const BSODConfig& config);
+static void createFooterSection(const BSODConfig& config);
 
 void createBSODContent(const BSODConfig& config) {
-    // Sad face
-    if (config.showSadFace) {
-        sadFaceLabel = lv_label_create(mainContainer);
-        lv_label_set_text(sadFaceLabel, ":-(");
-        lv_obj_set_style_text_color(sadFaceLabel, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_pad_all(sadFaceLabel, 10, 0);
-
-        // Make sad face larger
-        lv_obj_set_style_text_font(sadFaceLabel, &lv_font_montserrat_48, 0);
-    }
-
-    // Title
-    if (config.showTitle) {
-        titleLabel = lv_label_create(mainContainer);
-        lv_label_set_text(titleLabel, config.title.c_str());
-        lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_pad_all(titleLabel, 20, 0);
-
-        // Make title larger
-        lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, 0);
-    }
-
-    // Main error message
-    if (config.showMessage) {
-        messageLabel = lv_label_create(mainContainer);
-        lv_label_set_text(messageLabel, config.message.c_str());
-        lv_obj_set_style_text_color(messageLabel, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_pad_all(messageLabel, 15, 0);
-
-        // Enable text wrapping for long messages
-        lv_obj_set_width(messageLabel, LV_PCT(90));
-        lv_label_set_long_mode(messageLabel, LV_LABEL_LONG_WRAP);
-    }
-
-    // Error code
-    if (config.showErrorCode && !config.errorCode.empty()) {
-        std::string errorText = "Error Code: " + config.errorCode;
-        errorCodeLabel = lv_label_create(mainContainer);
-        lv_label_set_text(errorCodeLabel, errorText.c_str());
-        lv_obj_set_style_text_color(errorCodeLabel, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_pad_all(errorCodeLabel, 10, 0);
-    }
-
-    // Technical details (if enabled)
-    if (config.showTechnicalDetails && !config.technicalDetails.empty()) {
-        lv_obj_t* techLabel = lv_label_create(mainContainer);
-        lv_label_set_text(techLabel, config.technicalDetails.c_str());
-        lv_obj_set_style_text_color(techLabel, lv_color_hex(0xCCCCCC), 0);
-        lv_obj_set_style_pad_all(techLabel, 10, 0);
-
-        // Make technical details smaller
-        lv_obj_set_style_text_font(techLabel, &lv_font_montserrat_12, 0);
-    }
-
-    // Restart instructions
-    if (config.showRestartInstruction) {
-        instructionsLabel = lv_label_create(mainContainer);
-        lv_label_set_text(instructionsLabel, config.restartInstruction.c_str());
-        lv_obj_set_style_text_color(instructionsLabel, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_pad_all(instructionsLabel, 20, 0);
-
-        // Enable text wrapping for instructions
-        lv_obj_set_width(instructionsLabel, LV_PCT(80));
-        lv_label_set_long_mode(instructionsLabel, LV_LABEL_LONG_WRAP);
-    }
-
-    // CPU Diagnostics section (real-time updated)
-    if (config.showCpuStatus) {
-        // Create initial CPU diagnostics (will be updated by Core 0 task)
-        std::ostringstream cpuDiag;
-        cpuDiag << "=== INITIALIZING CPU DIAGNOSTICS ===\n";
-        cpuDiag << "Waiting for real-time data from Core 1...\n";
-        cpuDiag << "Dual-core BSOD architecture active\n";
-        cpuDiag << "Core 0: LVGL processing\n";
-        cpuDiag << "Core 1: Debug data collection";
-
-        cpuDiagLabel = lv_label_create(mainContainer);
-        lv_label_set_text(cpuDiagLabel, cpuDiag.str().c_str());
-        lv_obj_set_style_text_color(cpuDiagLabel, lv_color_hex(0x00FFFF), 0);  // Cyan for diagnostics
-        lv_obj_set_style_pad_all(cpuDiagLabel, 15, 0);
-
-        // Enable text wrapping and make it monospace-like
-        lv_obj_set_width(cpuDiagLabel, LV_PCT(95));
-        lv_label_set_long_mode(cpuDiagLabel, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_font(cpuDiagLabel, &lv_font_montserrat_12, 0);
-    }
-
-    // Build info (at bottom)
-    if (config.showBuildInfo) {
-        std::string buildInfo = config.buildInfo.empty() ? getBuildInfo() : config.buildInfo;
-        buildInfoLabel = lv_label_create(mainContainer);
-        lv_label_set_text(buildInfoLabel, buildInfo.c_str());
-        lv_obj_set_style_text_color(buildInfoLabel, lv_color_hex(0x888888), 0);
-        lv_obj_set_style_pad_all(buildInfoLabel, 5, 0);
-
-        // Make build info smaller
-        lv_obj_set_style_text_font(buildInfoLabel, &lv_font_montserrat_10, 0);
-    }
+    // Create sections in order
+    createHeaderSection(config);
+    createMessageSection(config);
+    createDetailsSection(config);
+    createDiagnosticsSection(config);
+    createActionSection(config);
+    createFooterSection(config);
 }
+
 
 void launchDualCoreBSOD(const BSODConfig& config) {
     ESP_LOGI(TAG, "BSOD: Launching dual-core BSOD architecture");
@@ -498,6 +583,202 @@ void launchDualCoreBSOD(const BSODConfig& config) {
         lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
+}
+
+// =============================================================================
+// MODERN BSOD SECTION IMPLEMENTATIONS
+// =============================================================================
+
+static void createHeaderSection(const BSODConfig& config) {
+    // Header card with icon and title
+    ui.headerCard = createCard(ui.mainContainer, true);
+    lv_obj_set_width(ui.headerCard, LV_PCT(100));
+    lv_obj_set_style_max_width(ui.headerCard, BSODDesign::MAX_CONTENT_WIDTH, 0);
+    lv_obj_set_layout(ui.headerCard, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui.headerCard, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ui.headerCard, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(ui.headerCard, BSODDesign::SPACE_MD, 0);
+    
+    // Error icon with animation
+    ui.errorIcon = lv_label_create(ui.headerCard);
+    lv_label_set_text(ui.errorIcon, BSODIcons::ICON_ERROR);
+    lv_obj_set_style_text_font(ui.errorIcon, BSODDesign::FONT_HEADING_LG, 0);
+    lv_obj_set_style_text_color(ui.errorIcon, BSODDesign::COLOR_WARNING, 0);
+    
+    // Title container
+    lv_obj_t* titleContainer = lv_obj_create(ui.headerCard);
+    lv_obj_set_style_bg_opa(titleContainer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(titleContainer, 0, 0);
+    lv_obj_set_style_pad_all(titleContainer, 0, 0);
+    lv_obj_set_layout(titleContainer, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(titleContainer, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_grow(titleContainer, 1);
+    
+    // Title
+    ui.titleLabel = lv_label_create(titleContainer);
+    lv_label_set_text(ui.titleLabel, config.title.c_str());
+    lv_obj_set_style_text_font(ui.titleLabel, BSODDesign::FONT_HEADING_MD, 0);
+    lv_obj_set_style_text_color(ui.titleLabel, BSODDesign::COLOR_PRIMARY, 0);
+    
+    // Subtitle with timestamp
+    ui.subtitleLabel = lv_label_create(titleContainer);
+    char timeStr[32];
+    snprintf(timeStr, sizeof(timeStr), "Occurred at %02d:%02d:%02d", 
+             (millis() / 3600000) % 24, (millis() / 60000) % 60, (millis() / 1000) % 60);
+    lv_label_set_text(ui.subtitleLabel, timeStr);
+    lv_obj_set_style_text_font(ui.subtitleLabel, BSODDesign::FONT_CAPTION, 0);
+    lv_obj_set_style_text_color(ui.subtitleLabel, BSODDesign::COLOR_SECONDARY, 0);
+}
+
+static void createMessageSection(const BSODConfig& config) {
+    if (!config.showMessage) return;
+    
+    // Message card
+    ui.messageCard = createCard(ui.mainContainer);
+    lv_obj_set_width(ui.messageCard, LV_PCT(100));
+    lv_obj_set_style_max_width(ui.messageCard, BSODDesign::MAX_CONTENT_WIDTH, 0);
+    lv_obj_set_layout(ui.messageCard, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui.messageCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(ui.messageCard, BSODDesign::SPACE_SM, 0);
+    
+    // Error message
+    ui.messageText = lv_label_create(ui.messageCard);
+    lv_label_set_text(ui.messageText, config.message.c_str());
+    lv_obj_set_style_text_font(ui.messageText, BSODDesign::FONT_BODY, 0);
+    lv_obj_set_style_text_color(ui.messageText, BSODDesign::COLOR_PRIMARY, 0);
+    lv_obj_set_width(ui.messageText, LV_PCT(100));
+    lv_label_set_long_mode(ui.messageText, LV_LABEL_LONG_WRAP);
+    
+    // Error code chip
+    if (config.showErrorCode && !config.errorCode.empty()) {
+        ui.errorCodeChip = createChip(ui.messageCard, config.errorCode.c_str(), BSODDesign::COLOR_ERROR);
+    }
+}
+
+static void createDetailsSection(const BSODConfig& config) {
+    if (!config.showTechnicalDetails || config.technicalDetails.empty()) return;
+    
+    // Collapsible details card
+    ui.detailsCard = createCard(ui.mainContainer);
+    lv_obj_set_width(ui.detailsCard, LV_PCT(100));
+    lv_obj_set_style_max_width(ui.detailsCard, BSODDesign::MAX_CONTENT_WIDTH, 0);
+    lv_obj_set_style_bg_color(ui.detailsCard, lv_color_hex(0x1A2E4A), 0);
+    
+    // Details header
+    lv_obj_t* detailsHeader = lv_label_create(ui.detailsCard);
+    lv_label_set_text(detailsHeader, "Technical Details");
+    lv_obj_set_style_text_font(detailsHeader, BSODDesign::FONT_HEADING_SM, 0);
+    lv_obj_set_style_text_color(detailsHeader, BSODDesign::COLOR_ACCENT, 0);
+    
+    // Details text with monospace style
+    ui.detailsText = lv_label_create(ui.detailsCard);
+    lv_label_set_text(ui.detailsText, config.technicalDetails.c_str());
+    lv_obj_set_style_text_font(ui.detailsText, BSODDesign::FONT_MONO, 0);
+    lv_obj_set_style_text_color(ui.detailsText, BSODDesign::COLOR_SECONDARY, 0);
+    lv_obj_set_style_bg_color(ui.detailsText, lv_color_hex(0x0F1A2A), 0);
+    lv_obj_set_style_bg_opa(ui.detailsText, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(ui.detailsText, BSODDesign::SPACE_SM, 0);
+    lv_obj_set_style_radius(ui.detailsText, 4, 0);
+    lv_obj_set_width(ui.detailsText, LV_PCT(100));
+    lv_label_set_long_mode(ui.detailsText, LV_LABEL_LONG_WRAP);
+}
+
+static void createDiagnosticsSection(const BSODConfig& config) {
+    if (!config.showCpuStatus) return;
+    
+    // Diagnostics card
+    ui.diagnosticsCard = createCard(ui.mainContainer);
+    lv_obj_set_width(ui.diagnosticsCard, LV_PCT(100));
+    lv_obj_set_style_max_width(ui.diagnosticsCard, BSODDesign::MAX_CONTENT_WIDTH, 0);
+    lv_obj_set_layout(ui.diagnosticsCard, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui.diagnosticsCard, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(ui.diagnosticsCard, BSODDesign::SPACE_MD, 0);
+    
+    // Header
+    lv_obj_t* diagHeader = lv_label_create(ui.diagnosticsCard);
+    lv_label_set_text(diagHeader, "System Diagnostics");
+    lv_obj_set_style_text_font(diagHeader, BSODDesign::FONT_HEADING_SM, 0);
+    lv_obj_set_style_text_color(diagHeader, BSODDesign::COLOR_ACCENT, 0);
+    
+    // Status bars
+    ui.cpuStatusBar = createStatusBar(ui.diagnosticsCard, "CPU Usage", 0, BSODDesign::COLOR_INFO);
+    ui.memoryStatusBar = createStatusBar(ui.diagnosticsCard, "Memory Usage", 0, BSODDesign::COLOR_WARNING);
+    
+    // Diagnostic text
+    ui.diagnosticsText = lv_label_create(ui.diagnosticsCard);
+    lv_label_set_text(ui.diagnosticsText, "Initializing diagnostics...");
+    lv_obj_set_style_text_font(ui.diagnosticsText, BSODDesign::FONT_CAPTION, 0);
+    lv_obj_set_style_text_color(ui.diagnosticsText, BSODDesign::COLOR_SECONDARY, 0);
+    lv_obj_set_style_bg_color(ui.diagnosticsText, lv_color_hex(0x0F1A2A), 0);
+    lv_obj_set_style_bg_opa(ui.diagnosticsText, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(ui.diagnosticsText, BSODDesign::SPACE_SM, 0);
+    lv_obj_set_style_radius(ui.diagnosticsText, 4, 0);
+    lv_obj_set_width(ui.diagnosticsText, LV_PCT(100));
+    lv_label_set_long_mode(ui.diagnosticsText, LV_LABEL_LONG_WRAP);
+}
+
+static void createActionSection(const BSODConfig& config) {
+    if (!config.showRestartInstruction) return;
+    
+    // Action card
+    ui.actionCard = createCard(ui.mainContainer);
+    lv_obj_set_width(ui.actionCard, LV_PCT(100));
+    lv_obj_set_style_max_width(ui.actionCard, BSODDesign::MAX_CONTENT_WIDTH, 0);
+    lv_obj_set_style_bg_color(ui.actionCard, BSODDesign::COLOR_ACCENT, 0);
+    lv_obj_set_style_bg_opa(ui.actionCard, LV_OPA_10, 0);
+    lv_obj_set_style_border_color(ui.actionCard, BSODDesign::COLOR_ACCENT, 0);
+    lv_obj_set_style_border_opa(ui.actionCard, LV_OPA_50, 0);
+    
+    // Instruction text
+    ui.instructionText = lv_label_create(ui.actionCard);
+    lv_label_set_text(ui.instructionText, config.restartInstruction.c_str());
+    lv_obj_set_style_text_font(ui.instructionText, BSODDesign::FONT_BODY, 0);
+    lv_obj_set_style_text_color(ui.instructionText, BSODDesign::COLOR_PRIMARY, 0);
+    lv_obj_set_width(ui.instructionText, LV_PCT(100));
+    lv_label_set_long_mode(ui.instructionText, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(ui.instructionText, LV_TEXT_ALIGN_CENTER, 0);
+    
+    // Progress bar (if showing progress)
+    if (config.showProgress) {
+        ui.progressBar = lv_bar_create(ui.actionCard);
+        lv_obj_set_size(ui.progressBar, LV_PCT(100), 4);
+        lv_bar_set_value(ui.progressBar, 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(ui.progressBar, lv_color_hex(0x1A2332), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(ui.progressBar, BSODDesign::COLOR_ACCENT, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(ui.progressBar, 2, 0);
+    }
+}
+
+static void createFooterSection(const BSODConfig& config) {
+    // Footer container
+    ui.footerContainer = lv_obj_create(ui.mainContainer);
+    lv_obj_set_width(ui.footerContainer, LV_PCT(100));
+    lv_obj_set_style_max_width(ui.footerContainer, BSODDesign::MAX_CONTENT_WIDTH, 0);
+    lv_obj_set_style_bg_opa(ui.footerContainer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ui.footerContainer, 0, 0);
+    lv_obj_set_style_pad_all(ui.footerContainer, 0, 0);
+    lv_obj_set_layout(ui.footerContainer, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui.footerContainer, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ui.footerContainer, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    
+    // Build info
+    if (config.showBuildInfo) {
+        ui.buildInfoText = lv_label_create(ui.footerContainer);
+        std::string buildInfo = config.buildInfo.empty() ? getBuildInfo() : config.buildInfo;
+        lv_label_set_text(ui.buildInfoText, buildInfo.c_str());
+        lv_obj_set_style_text_font(ui.buildInfoText, BSODDesign::FONT_CAPTION, 0);
+        lv_obj_set_style_text_color(ui.buildInfoText, BSODDesign::COLOR_SECONDARY, 0);
+        lv_obj_set_style_text_opa(ui.buildInfoText, LV_OPA_60, 0);
+    }
+    
+    // Timestamp
+    ui.timestampText = lv_label_create(ui.footerContainer);
+    char timestamp[64];
+    snprintf(timestamp, sizeof(timestamp), "System uptime: %d seconds", millis() / 1000);
+    lv_label_set_text(ui.timestampText, timestamp);
+    lv_obj_set_style_text_font(ui.timestampText, BSODDesign::FONT_CAPTION, 0);
+    lv_obj_set_style_text_color(ui.timestampText, BSODDesign::COLOR_SECONDARY, 0);
+    lv_obj_set_style_text_opa(ui.timestampText, LV_OPA_60, 0);
 }
 
 }  // anonymous namespace

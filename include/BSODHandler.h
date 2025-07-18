@@ -57,6 +57,95 @@ typedef struct {
 } BSODConfig;
 
 namespace BSODHandler {
+
+// =============================================================================
+// PREDEFINED BSOD TEMPLATES FOR COMMON ERROR TYPES
+// =============================================================================
+
+// Memory error template
+inline BSODConfig createMemoryErrorConfig(const char* details = nullptr) {
+    BSODConfig config;
+    config.title = "OUT OF MEMORY";
+    config.message = "The system has run out of available memory and cannot continue.";
+    config.errorCode = "ERR_NO_MEMORY";
+    config.showCpuStatus = true;
+    config.showTechnicalDetails = true;
+    config.technicalDetails = details ? details : "Heap exhausted. Consider reducing memory usage.";
+    config.restartInstruction = "Please restart the device to free up memory.";
+    config.backgroundColor = lv_color_hex(0x8B0000);  // Dark red
+    return config;
+}
+
+// Network error template
+inline BSODConfig createNetworkErrorConfig(const char* details = nullptr) {
+    BSODConfig config;
+    config.title = "NETWORK FAILURE";
+    config.message = "Critical network communication error occurred.";
+    config.errorCode = "ERR_NETWORK";
+    config.showCpuStatus = false;
+    config.showTechnicalDetails = true;
+    config.technicalDetails = details ? details : "Network stack failure or connectivity lost.";
+    config.restartInstruction = "Check network connection and restart device.";
+    return config;
+}
+
+// Hardware error template
+inline BSODConfig createHardwareErrorConfig(const char* component, const char* details = nullptr) {
+    BSODConfig config;
+    config.title = "HARDWARE FAILURE";
+    config.message = component ? ("Critical hardware failure: " + std::string(component)) : "Critical hardware component failure detected.";
+    config.errorCode = "ERR_HARDWARE";
+    config.showCpuStatus = true;
+    config.showTechnicalDetails = true;
+    config.technicalDetails = details ? details : "Hardware component not responding.";
+    config.restartInstruction = "Power cycle the device. If problem persists, contact support.";
+    return config;
+}
+
+// Initialization error template
+inline BSODConfig createInitErrorConfig(const char* component, const char* details = nullptr) {
+    BSODConfig config;
+    config.title = "INITIALIZATION FAILED";
+    config.message = component ? ("Failed to initialize: " + std::string(component)) : "System initialization failed.";
+    config.errorCode = "ERR_INIT";
+    config.showCpuStatus = false;
+    config.showTechnicalDetails = true;
+    config.technicalDetails = details ? details : "Component failed to start properly.";
+    config.restartInstruction = "Restart device. Check SD card and connections.";
+    return config;
+}
+
+// Assertion failure template
+inline BSODConfig createAssertionErrorConfig(const char* condition, const char* file, int line) {
+    BSODConfig config;
+    config.title = "ASSERTION FAILED";
+    config.message = "A critical assertion check failed.";
+    config.errorCode = "ERR_ASSERT";
+    config.showCpuStatus = true;
+    config.showTechnicalDetails = true;
+    
+    char techBuf[256];
+    snprintf(techBuf, sizeof(techBuf), "Assertion: %s\nLocation: %s:%d", 
+             condition ? condition : "Unknown", file ? file : "Unknown", line);
+    config.technicalDetails = techBuf;
+    
+    config.restartInstruction = "This is a software bug. Please report to developers.";
+    return config;
+}
+
+// Task failure template
+inline BSODConfig createTaskErrorConfig(const char* taskName, const char* details = nullptr) {
+    BSODConfig config;
+    config.title = "TASK FAILURE";
+    config.message = taskName ? ("Critical task failed: " + std::string(taskName)) : "A critical system task has failed.";
+    config.errorCode = "ERR_TASK";
+    config.showCpuStatus = true;
+    config.showTechnicalDetails = true;
+    config.technicalDetails = details ? details : "Task terminated unexpectedly.";
+    config.restartInstruction = "System will restart automatically...";
+    config.showProgress = true;
+    return config;
+}
 // ===================================================================
 // DUAL-CORE BSOD ARCHITECTURE
 // ===================================================================
@@ -122,28 +211,56 @@ const char* taskStateToString(eTaskState state);
 }  // namespace
 }  // namespace BSODHandler
 
-// Generic critical failure macros
+// Generic critical failure macros with modern templates
 #define CRITICAL_FAILURE(message)                           \
     do {                                                    \
         ESP_LOGE("CRITICAL", "Critical failure triggered"); \
-        BSODHandler::show(message, __FILE__, __LINE__);     \
+        BSODConfig config;                                  \
+        config.title = "CRITICAL FAILURE";                  \
+        config.message = message;                           \
+        BSODHandler::show(config, __FILE__, __LINE__);      \
     } while (0)
 
-#define ASSERT_CRITICAL(condition, message)                           \
-    do {                                                              \
-        if (!(condition)) {                                           \
-            ESP_LOGE("CRITICAL", "Assertion failed: %s", #condition); \
-            BSODHandler::show(message, __FILE__, __LINE__);           \
-        }                                                             \
+#define ASSERT_CRITICAL(condition, message)                                     \
+    do {                                                                        \
+        if (!(condition)) {                                                     \
+            ESP_LOGE("CRITICAL", "Assertion failed: %s", #condition);           \
+            auto config = BSODHandler::createAssertionErrorConfig(#condition, __FILE__, __LINE__); \
+            config.message = message;                                           \
+            BSODHandler::show(config);                                          \
+        }                                                                       \
     } while (0)
 
-#define INIT_CRITICAL(expr, failure_msg)                        \
-    do {                                                        \
-        ESP_LOGI("BOOT", "Critical init: %s", #expr);           \
-        if (!(expr)) {                                          \
-            ESP_LOGE("CRITICAL", "Init failed: %s", #expr);     \
-            BSODHandler::show(failure_msg, __FILE__, __LINE__); \
-        }                                                       \
+#define INIT_CRITICAL(expr, failure_msg)                                    \
+    do {                                                                    \
+        ESP_LOGI("BOOT", "Critical init: %s", #expr);                       \
+        if (!(expr)) {                                                      \
+            ESP_LOGE("CRITICAL", "Init failed: %s", #expr);                 \
+            auto config = BSODHandler::createInitErrorConfig(#expr, failure_msg); \
+            BSODHandler::show(config, __FILE__, __LINE__);                  \
+        }                                                                   \
+    } while (0)
+
+// Specialized failure macros for common scenarios
+#define MEMORY_CRITICAL(details)                                            \
+    do {                                                                    \
+        ESP_LOGE("CRITICAL", "Memory exhausted");                           \
+        auto config = BSODHandler::createMemoryErrorConfig(details);        \
+        BSODHandler::show(config, __FILE__, __LINE__);                      \
+    } while (0)
+
+#define HARDWARE_CRITICAL(component, details)                               \
+    do {                                                                    \
+        ESP_LOGE("CRITICAL", "Hardware failure: %s", component);            \
+        auto config = BSODHandler::createHardwareErrorConfig(component, details); \
+        BSODHandler::show(config, __FILE__, __LINE__);                      \
+    } while (0)
+
+#define TASK_CRITICAL(taskName, details)                                    \
+    do {                                                                    \
+        ESP_LOGE("CRITICAL", "Task failure: %s", taskName);                 \
+        auto config = BSODHandler::createTaskErrorConfig(taskName, details); \
+        BSODHandler::show(config, __FILE__, __LINE__);                      \
     } while (0)
 
 #define INIT_OPTIONAL(expr, component_name)                                                       \
