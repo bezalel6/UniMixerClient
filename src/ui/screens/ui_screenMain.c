@@ -31,36 +31,13 @@ lv_obj_t * ui_statusView = NULL;
 lv_obj_t * ui_containerBuildTime = NULL;
 lv_obj_t * ui_lblBuildTime = NULL;
 lv_obj_t * ui_lblBuildTimeValue = NULL;
-lv_obj_t * ui_Label1 = NULL;
-lv_obj_t * ui_Label3 = NULL;
 lv_obj_t * ui_pnlSettings = NULL;
 lv_obj_t * ui_lblSettingsHeader = NULL;
 lv_obj_t * ui_actionBtns = NULL;
-lv_obj_t * ui_btnGOTOLog = NULL;
-lv_obj_t * ui_btnLbl1 = NULL;
 lv_obj_t * ui_btnGOTOSettings = NULL;
 lv_obj_t * ui_btnLbl2 = NULL;
 lv_obj_t * ui_btnRequestStatus = NULL;
 lv_obj_t * ui_btnLbl3 = NULL;
-lv_obj_t * ui_pnlNetwork = NULL;
-lv_obj_t * ui_wifiContainer = NULL;
-lv_obj_t * ui_lblWifi = NULL;
-lv_obj_t * ui_lblWifiStatus = NULL;
-lv_obj_t * ui_objWifiIndicator = NULL;
-lv_obj_t * ui_ssidContainer = NULL;
-lv_obj_t * ui_lblSSID = NULL;
-lv_obj_t * ui_lblSSIDValue = NULL;
-lv_obj_t * ui_ipContainer = NULL;
-lv_obj_t * ui_lblIP = NULL;
-lv_obj_t * ui_lblIPValue = NULL;
-lv_obj_t * ui_sdContainer = NULL;
-lv_obj_t * ui_lblSD = NULL;
-lv_obj_t * ui_objSDIndicator = NULL;
-lv_obj_t * ui_lblSDStatus = NULL;
-lv_obj_t * ui_mqttContainer = NULL;
-lv_obj_t * ui_lblMQTT = NULL;
-lv_obj_t * ui_objMQTTIndicator = NULL;
-lv_obj_t * ui_lblMQTTValue = NULL;
 lv_obj_t * ui_lblFPS = NULL;
 lv_obj_t * ui_img = NULL;
 // event funtions
@@ -115,15 +92,6 @@ void ui_event_pnlSettings(lv_event_t * e)
     }
     if(event_code == LV_EVENT_DEFOCUSED) {
         slideOutOfFrame_Animation(ui_pnlSettings, 0);
-    }
-}
-
-void ui_event_btnGOTOLog(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-
-    if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(&ui_screenDebug, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0, &ui_screenDebug_screen_init);
     }
 }
 
@@ -268,11 +236,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_flex_align(ui_statusView, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_SPACE_BETWEEN);
     lv_obj_add_flag(ui_statusView, LV_OBJ_FLAG_OVERFLOW_VISIBLE);     /// Flags
     lv_obj_remove_flag(ui_statusView, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-    lv_obj_set_style_border_side(ui_statusView, LV_BORDER_SIDE_BOTTOM, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_outline_color(ui_statusView, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_outline_opa(ui_statusView, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_outline_width(ui_statusView, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_outline_pad(ui_statusView, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(ui_statusView, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_right(ui_statusView, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_top(ui_statusView, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -298,18 +261,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_height(ui_lblBuildTimeValue, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_lblBuildTimeValue, LV_ALIGN_CENTER);
     lv_label_set_text(ui_lblBuildTimeValue, "9:41 PM    12/12");
-
-    ui_Label1 = lv_label_create(ui_statusView);
-    lv_obj_set_width(ui_Label1, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Label1, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Label1, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label1, "Wifi: Disconnected");
-
-    ui_Label3 = lv_label_create(ui_statusView);
-    lv_obj_set_width(ui_Label3, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_Label3, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_Label3, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label3, "SD: Mounted");
 
     ui_pnlSettings = lv_obj_create(ui_screenMain);
     lv_obj_set_width(ui_pnlSettings, 400);
@@ -343,19 +294,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_remove_flag(ui_actionBtns, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SNAPPABLE |
                        LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
-    ui_btnGOTOLog = lv_button_create(ui_actionBtns);
-    lv_obj_set_width(ui_btnGOTOLog, lv_pct(100));
-    lv_obj_set_height(ui_btnGOTOLog, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_btnGOTOLog, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_btnGOTOLog, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
-    lv_obj_remove_flag(ui_btnGOTOLog, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_btnLbl1 = lv_label_create(ui_btnGOTOLog);
-    lv_obj_set_width(ui_btnLbl1, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_btnLbl1, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_btnLbl1, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_btnLbl1, "Log");
-
     ui_btnGOTOSettings = lv_button_create(ui_actionBtns);
     lv_obj_set_width(ui_btnGOTOSettings, lv_pct(100));
     lv_obj_set_height(ui_btnGOTOSettings, LV_SIZE_CONTENT);    /// 1
@@ -381,134 +319,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_height(ui_btnLbl3, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_btnLbl3, LV_ALIGN_CENTER);
     lv_label_set_text(ui_btnLbl3, "Request Status");
-
-    ui_pnlNetwork = lv_obj_create(ui_screenMain);
-    lv_obj_set_width(ui_pnlNetwork, 200);
-    lv_obj_set_height(ui_pnlNetwork, 268);
-    lv_obj_set_x(ui_pnlNetwork, 10);
-    lv_obj_set_y(ui_pnlNetwork, -65);
-    lv_obj_set_align(ui_pnlNetwork, LV_ALIGN_LEFT_MID);
-    lv_obj_set_flex_flow(ui_pnlNetwork, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(ui_pnlNetwork, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_add_flag(ui_pnlNetwork, LV_OBJ_FLAG_HIDDEN);     /// Flags
-    lv_obj_remove_flag(ui_pnlNetwork, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_wifiContainer = lv_obj_create(ui_pnlNetwork);
-    lv_obj_remove_style_all(ui_wifiContainer);
-    lv_obj_set_width(ui_wifiContainer, lv_pct(100));
-    lv_obj_set_height(ui_wifiContainer, LV_SIZE_CONTENT);    /// 100
-    lv_obj_remove_flag(ui_wifiContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_lblWifi = lv_label_create(ui_wifiContainer);
-    lv_obj_set_width(ui_lblWifi, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblWifi, LV_SIZE_CONTENT);    /// 1
-    lv_label_set_text(ui_lblWifi, "Wifi:");
-
-    ui_lblWifiStatus = lv_label_create(ui_wifiContainer);
-    lv_obj_set_width(ui_lblWifiStatus, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblWifiStatus, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblWifiStatus, LV_ALIGN_TOP_RIGHT);
-    lv_label_set_text(ui_lblWifiStatus, "-");
-
-    ui_objWifiIndicator = lv_label_create(ui_wifiContainer);
-    lv_obj_set_width(ui_objWifiIndicator, 10);
-    lv_obj_set_height(ui_objWifiIndicator, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_objWifiIndicator, -1);
-    lv_obj_set_y(ui_objWifiIndicator, 0);
-    lv_obj_set_align(ui_objWifiIndicator, LV_ALIGN_TOP_MID);
-    lv_label_set_text(ui_objWifiIndicator, "");
-
-    ui_ssidContainer = lv_obj_create(ui_pnlNetwork);
-    lv_obj_remove_style_all(ui_ssidContainer);
-    lv_obj_set_width(ui_ssidContainer, lv_pct(100));
-    lv_obj_set_height(ui_ssidContainer, LV_SIZE_CONTENT);    /// 100
-    lv_obj_set_align(ui_ssidContainer, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_ssidContainer, LV_OBJ_FLAG_HIDDEN);     /// Flags
-    lv_obj_remove_flag(ui_ssidContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_lblSSID = lv_label_create(ui_ssidContainer);
-    lv_obj_set_width(ui_lblSSID, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblSSID, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblSSID, LV_ALIGN_LEFT_MID);
-    lv_label_set_text(ui_lblSSID, "SSID:");
-
-    ui_lblSSIDValue = lv_label_create(ui_ssidContainer);
-    lv_obj_set_width(ui_lblSSIDValue, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblSSIDValue, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblSSIDValue, LV_ALIGN_RIGHT_MID);
-    lv_label_set_text(ui_lblSSIDValue, "-");
-
-    ui_ipContainer = lv_obj_create(ui_pnlNetwork);
-    lv_obj_remove_style_all(ui_ipContainer);
-    lv_obj_set_width(ui_ipContainer, lv_pct(100));
-    lv_obj_set_height(ui_ipContainer, LV_SIZE_CONTENT);    /// 1
-    lv_obj_add_flag(ui_ipContainer, LV_OBJ_FLAG_HIDDEN);     /// Flags
-    lv_obj_remove_flag(ui_ipContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_lblIP = lv_label_create(ui_ipContainer);
-    lv_obj_set_width(ui_lblIP, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblIP, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblIP, LV_ALIGN_BOTTOM_LEFT);
-    lv_label_set_text(ui_lblIP, "IP:");
-
-    ui_lblIPValue = lv_label_create(ui_ipContainer);
-    lv_obj_set_width(ui_lblIPValue, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblIPValue, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblIPValue, LV_ALIGN_BOTTOM_RIGHT);
-    lv_label_set_text(ui_lblIPValue, "-");
-
-    ui_sdContainer = lv_obj_create(ui_pnlNetwork);
-    lv_obj_remove_style_all(ui_sdContainer);
-    lv_obj_set_width(ui_sdContainer, lv_pct(100));
-    lv_obj_set_height(ui_sdContainer, LV_SIZE_CONTENT);    /// 1
-    lv_obj_remove_flag(ui_sdContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_lblSD = lv_label_create(ui_sdContainer);
-    lv_obj_set_width(ui_lblSD, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblSD, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblSD, LV_ALIGN_BOTTOM_LEFT);
-    lv_label_set_text(ui_lblSD, "SD:");
-
-    ui_objSDIndicator = lv_label_create(ui_sdContainer);
-    lv_obj_set_width(ui_objSDIndicator, 10);
-    lv_obj_set_height(ui_objSDIndicator, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_objSDIndicator, -1);
-    lv_obj_set_y(ui_objSDIndicator, 0);
-    lv_obj_set_align(ui_objSDIndicator, LV_ALIGN_TOP_MID);
-    lv_label_set_text(ui_objSDIndicator, "");
-
-    ui_lblSDStatus = lv_label_create(ui_sdContainer);
-    lv_obj_set_width(ui_lblSDStatus, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblSDStatus, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblSDStatus, LV_ALIGN_BOTTOM_RIGHT);
-    lv_label_set_text(ui_lblSDStatus, "-");
-
-    ui_mqttContainer = lv_obj_create(ui_pnlNetwork);
-    lv_obj_remove_style_all(ui_mqttContainer);
-    lv_obj_set_width(ui_mqttContainer, lv_pct(100));
-    lv_obj_set_height(ui_mqttContainer, LV_SIZE_CONTENT);    /// 1
-    lv_obj_add_flag(ui_mqttContainer, LV_OBJ_FLAG_HIDDEN);     /// Flags
-    lv_obj_remove_flag(ui_mqttContainer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_lblMQTT = lv_label_create(ui_mqttContainer);
-    lv_obj_set_width(ui_lblMQTT, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblMQTT, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblMQTT, LV_ALIGN_BOTTOM_LEFT);
-    lv_label_set_text(ui_lblMQTT, "MQTT:");
-
-    ui_objMQTTIndicator = lv_label_create(ui_mqttContainer);
-    lv_obj_set_width(ui_objMQTTIndicator, 10);
-    lv_obj_set_height(ui_objMQTTIndicator, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_objMQTTIndicator, -1);
-    lv_obj_set_y(ui_objMQTTIndicator, 0);
-    lv_obj_set_align(ui_objMQTTIndicator, LV_ALIGN_TOP_MID);
-    lv_label_set_text(ui_objMQTTIndicator, "");
-
-    ui_lblMQTTValue = lv_label_create(ui_mqttContainer);
-    lv_obj_set_width(ui_lblMQTTValue, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_lblMQTTValue, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_align(ui_lblMQTTValue, LV_ALIGN_BOTTOM_RIGHT);
-    lv_label_set_text(ui_lblMQTTValue, "-");
 
     ui_lblFPS = lv_label_create(ui_screenMain);
     lv_obj_set_width(ui_lblFPS, 100);
@@ -538,7 +348,6 @@ void ui_screenMain_screen_init(void)
     lv_obj_add_event_cb(ui_comp_get_child(ui_containerBalanceVolumeSlider, UI_COMP_VOLUMESLIDER_PRIMARYVOLUMESLIDER),
                         ui_event_containerBalanceVolumeSlider_containerBalanceVolumeSlider_balanceVolumeSlider, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_statusView, ui_event_statusView, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(ui_btnGOTOLog, ui_event_btnGOTOLog, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_btnGOTOSettings, ui_event_btnGOTOSettings, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_pnlSettings, ui_event_pnlSettings, LV_EVENT_ALL, NULL);
     ui_primaryContainer = ui_primaryContainer;
@@ -584,36 +393,13 @@ void ui_screenMain_screen_destroy(void)
     ui_containerBuildTime = NULL;
     ui_lblBuildTime = NULL;
     ui_lblBuildTimeValue = NULL;
-    ui_Label1 = NULL;
-    ui_Label3 = NULL;
     ui_pnlSettings = NULL;
     ui_lblSettingsHeader = NULL;
     ui_actionBtns = NULL;
-    ui_btnGOTOLog = NULL;
-    ui_btnLbl1 = NULL;
     ui_btnGOTOSettings = NULL;
     ui_btnLbl2 = NULL;
     ui_btnRequestStatus = NULL;
     ui_btnLbl3 = NULL;
-    ui_pnlNetwork = NULL;
-    ui_wifiContainer = NULL;
-    ui_lblWifi = NULL;
-    ui_lblWifiStatus = NULL;
-    ui_objWifiIndicator = NULL;
-    ui_ssidContainer = NULL;
-    ui_lblSSID = NULL;
-    ui_lblSSIDValue = NULL;
-    ui_ipContainer = NULL;
-    ui_lblIP = NULL;
-    ui_lblIPValue = NULL;
-    ui_sdContainer = NULL;
-    ui_lblSD = NULL;
-    ui_objSDIndicator = NULL;
-    ui_lblSDStatus = NULL;
-    ui_mqttContainer = NULL;
-    ui_lblMQTT = NULL;
-    ui_objMQTTIndicator = NULL;
-    ui_lblMQTTValue = NULL;
     ui_lblFPS = NULL;
     ui_img = NULL;
 

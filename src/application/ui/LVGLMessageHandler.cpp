@@ -75,8 +75,6 @@ static std::unordered_map<int, MessageHandler> messageHandlers;
 
 // PERFORMANCE: Message type names for debugging - static array for O(1) lookup
 static const char *messageTypeNames[] = {
-    [MSG_UPDATE_WIFI_STATUS] = "WIFI_STATUS",
-    [MSG_UPDATE_NETWORK_INFO] = "NETWORK_INFO",
     [MSG_UPDATE_FPS_DISPLAY] = "FPS_DISPLAY",
     [MSG_UPDATE_BUILD_TIME_DISPLAY] = "BUILD_TIME_DISPLAY",
     [MSG_SCREEN_CHANGE] = "SCREEN_CHANGE",
@@ -95,7 +93,7 @@ static const char *messageTypeNames[] = {
     [MSG_FORMAT_SD_CONFIRM] = "FORMAT_SD_CONFIRM",
     [MSG_FORMAT_SD_PROGRESS] = "FORMAT_SD_PROGRESS",
     [MSG_FORMAT_SD_COMPLETE] = "FORMAT_SD_COMPLETE",
-    [MSG_DEBUG_UI_LOG] = "DEBUG_UI_LOG"};
+};
 
 // PERFORMANCE: O(1) message type name lookup
 static const char *getMessageTypeName(int messageType) {
@@ -128,40 +126,11 @@ static inline void updateVolumeSlider(lv_obj_t *slider, const LVGLMessage_t *msg
         lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, NULL);
     }
 }
-
-// PERFORMANCE: Message handler implementations - optimized for minimal branching
-static void handleWifiStatus(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.wifi_status;
-
-    // PERFORMANCE: Batch UI updates to reduce render calls
-    if (ui_lblWifiStatus) {
-        lv_label_set_text(ui_lblWifiStatus, data.status);
-    }
-    if (ui_objWifiIndicator) {
-        // PERFORMANCE: Pre-calculated colors to avoid hex conversion
-        static const lv_color_t COLOR_CONNECTED = lv_color_hex(0x00FF00);
-        static const lv_color_t COLOR_DISCONNECTED = lv_color_hex(0xFF0000);
-        lv_obj_set_style_bg_color(ui_objWifiIndicator,
-                                  data.connected ? COLOR_CONNECTED : COLOR_DISCONNECTED,
-                                  LV_PART_MAIN);
-    }
-}
-
-static void handleNetworkInfo(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.network_info;
-    if (ui_lblSSIDValue) {
-        lv_label_set_text(ui_lblSSIDValue, data.ssid);
-    }
-    if (ui_lblIPValue) {
-        lv_label_set_text(ui_lblIPValue, data.ip);
-    }
-}
-
 static void handleFpsDisplay(const LVGLMessage_t *msg) {
     if (ui_lblFPS) {
         // PERFORMANCE: Use static buffer to avoid stack allocation overhead
         static char fpsText[64];
-        float actualFps = msg->data.fps_display.fps; // Temporary fallback
+        float actualFps = msg->data.fps_display.fps;  // Temporary fallback
         snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
                  actualFps, msg->data.fps_display.fps);
         lv_label_set_text(ui_lblFPS, fpsText);
@@ -213,19 +182,6 @@ static void handleScreenChange(const LVGLMessage_t *msg) {
 
 static void handleRequestData(const LVGLMessage_t *msg) {
     ESP_LOGI(TAG, "Data request triggered from UI");
-}
-
-
-
-static void handleDebugUILog(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.debug_ui_log;
-
-    if (ui_txtAreaDebugLog && lv_obj_is_valid(ui_txtAreaDebugLog)) {
-        LOG_TO_UI(ui_txtAreaDebugLog, data.message);
-        ESP_LOGD(TAG, "Debug UI log added: %s", data.message);
-    } else {
-        ESP_LOGW(TAG, "Debug UI log requested but ui_txtAreaDebugLog not available: %s", data.message);
-    }
 }
 
 static void handleShowStateOverview(const LVGLMessage_t *msg) {
@@ -383,8 +339,6 @@ static void handleShowStateOverview(const LVGLMessage_t *msg) {
                 ESP_LOGI(TAG, "FORMAT SD button clicked");
                 requestSDFormat();
             } }, LV_EVENT_CLICKED, NULL);
-
-
 
         // Restart button
         lv_obj_t *restart_btn = lv_btn_create(actions_container);
@@ -709,9 +663,6 @@ static void sdFormatTask(void *parameter) {
 // PERFORMANCE: Initialize message handler mappings - single O(1) lookup
 static void initializeMessageHandlers() {
     messageHandlers = {
-        // Common/simple message handlers
-        {MSG_UPDATE_WIFI_STATUS, handleWifiStatus},
-        {MSG_UPDATE_NETWORK_INFO, handleNetworkInfo},
         {MSG_UPDATE_FPS_DISPLAY, handleFpsDisplay},
         {MSG_UPDATE_BUILD_TIME_DISPLAY, handleBuildTimeDisplay},
         {MSG_UPDATE_MASTER_VOLUME, handleMasterVolume},
@@ -731,7 +682,7 @@ static void initializeMessageHandlers() {
         {MSG_FORMAT_SD_CONFIRM, handleFormatSDConfirm},
         {MSG_FORMAT_SD_PROGRESS, handleFormatSDProgress},
         {MSG_FORMAT_SD_COMPLETE, handleFormatSDComplete},
-        {MSG_DEBUG_UI_LOG, handleDebugUILog}};
+    };
 }
 
 // Queue handle
@@ -900,25 +851,6 @@ void processMessageQueue(lv_timer_t *timer) {
     }
 }
 
-// Helper functions
-bool updateWifiStatus(const char *status, bool connected) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_WIFI_STATUS;
-    message.data.wifi_status.status = status;
-    message.data.wifi_status.connected = connected;
-    return sendMessage(&message);
-}
-
-bool updateNetworkInfo(const char *ssid, const char *ip) {
-    LVGLMessage_t message;
-    message.type = MSG_UPDATE_NETWORK_INFO;
-    message.data.network_info.ssid = ssid;
-    message.data.network_info.ip = ip;
-    return sendMessage(&message);
-}
-
-
-
 bool updateFpsDisplay(float fps) {
     LVGLMessage_t message;
     message.type = MSG_UPDATE_FPS_DISPLAY;
@@ -941,8 +873,6 @@ bool changeScreen(void *screen, int anim_type, int time, int delay) {
     message.data.screen_change.delay = delay;
     return sendMessage(&message);
 }
-
-
 
 // Tab-specific volume update functions
 bool updateMasterVolume(int volume) {
@@ -1202,26 +1132,6 @@ bool completeSDFormat(bool success, const char *msg) {
     }
 
     return sendMessage(&message);
-}
-
-
-
-// Helper function for debug UI logging
-bool sendDebugUILog(const char *message) {
-    if (!message) {
-        ESP_LOGW(TAG, "sendDebugUILog called with null message");
-        return false;
-    }
-
-    LVGLMessage_t lvglMessage;
-    lvglMessage.type = MSG_DEBUG_UI_LOG;
-
-    // Safely copy message string
-    strncpy(lvglMessage.data.debug_ui_log.message, message,
-            sizeof(lvglMessage.data.debug_ui_log.message) - 1);
-    lvglMessage.data.debug_ui_log.message[sizeof(lvglMessage.data.debug_ui_log.message) - 1] = '\0';
-
-    return sendMessage(&lvglMessage);
 }
 
 }  // namespace LVGLMessageHandler

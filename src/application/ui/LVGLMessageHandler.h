@@ -12,8 +12,6 @@ namespace LVGLMessageHandler {
 
 // Message types
 typedef enum {
-    MSG_UPDATE_WIFI_STATUS,
-    MSG_UPDATE_NETWORK_INFO,
     MSG_UPDATE_FPS_DISPLAY,
     MSG_UPDATE_BUILD_TIME_DISPLAY,
     MSG_SCREEN_CHANGE,
@@ -42,9 +40,6 @@ typedef enum {
     MSG_FORMAT_SD_CONFIRM,
     MSG_FORMAT_SD_PROGRESS,
     MSG_FORMAT_SD_COMPLETE,
-
-    // Debug UI logging message
-    MSG_DEBUG_UI_LOG,
 
     // maximum message types, must be the last element
     NUM_OF_MSGS

@@ -21,8 +21,6 @@ extern "C" {
 ///////////////////// SCREENS ////////////////////
 
 #include "screens/ui_screenMain.h"
-#include "screens/ui_screenOTA.h"
-#include "screens/ui_screenDebug.h"
 
 ///////////////////// VARIABLES ////////////////////
 
