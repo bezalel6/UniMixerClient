@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <cinttypes>
 #include <ui/ui.h>
+#include <ui/ui_custom_init.h>
 
 static const char *TAG = "DisplayManager";
 
@@ -61,6 +62,9 @@ bool init(void) {
 
     // Initialize the UI
     ui_init();
+
+    // Initialize custom UI components (process selector, etc.)
+    ui_custom_init();
 
     // Move all widgets with User 1 state to background
     moveUser1WidgetsToBackground();
