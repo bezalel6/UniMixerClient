@@ -85,6 +85,7 @@ void ui_init(void)
                                                true, LV_FONT_DEFAULT);
     lv_disp_set_theme(dispp, theme);
     ui_screenMain_screen_init();
+    ui_screenLogoViewer_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
     lv_disp_load_scr(ui_screenMain);
 }
@@ -92,4 +93,5 @@ void ui_init(void)
 void ui_destroy(void)
 {
     ui_screenMain_screen_destroy();
+    ui_screenLogoViewer_screen_destroy();
 }

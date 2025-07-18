@@ -1,6 +1,7 @@
 #include "DisplayManager.h"
 #include "../core/TaskManager.h"
 #include "../include/UIConstants.h"
+#include "../application/ui/ScreenManager.h"
 #include <SPI.h>
 #include <cinttypes>
 #include <ui/ui.h>
@@ -65,6 +66,9 @@ bool init(void) {
 
     // Initialize custom UI components (process selector, etc.)
     ui_custom_init();
+    
+    // Initialize the screen manager for dynamic widget loading
+    Application::UI::ScreenManager::getInstance().init();
 
     // Move all widgets with User 1 state to background
     moveUser1WidgetsToBackground();
@@ -117,6 +121,13 @@ bool init(void) {
 
 void deinit(void) {
     ESP_LOGI(TAG, "Deinitializing Display Manager");
+    
+    // Cleanup screen manager
+    Application::UI::ScreenManager::getInstance().cleanup();
+    
+    // Cleanup custom UI components
+    ui_custom_cleanup();
+    
     ui_destroy();
 }
 
@@ -128,6 +139,9 @@ void tick(void) {
 
 void update(void) {
     uint32_t startTime = millis();
+    
+    // Update screen manager to handle screen changes
+    Application::UI::ScreenManager::getInstance().update();
 
     unsigned long now = millis();
     if (now - lastFpsTime >= FPS_UPDATE_INTERVAL) {

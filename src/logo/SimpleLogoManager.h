@@ -39,11 +39,24 @@ public:
     
     // Status
     String getStatus() const;
+    
+    // Paging support for logo browser
+    bool scanLogosOnce();
+    std::vector<String> getPagedLogos(int pageIndex, int itemsPerPage);
+    int getTotalLogoCount();
+    String getLogoLVGLPath(const String& logoPath);
+    void refreshLogoList();
 
 private:
     SimpleLogoManager() = default;
     static SimpleLogoManager* instance;
     bool initialized = false;
+    
+    // Logo browsing cache
+    std::vector<String> cachedLogoPaths;
+    bool logoListCached = false;
+    unsigned long lastScanTime = 0;
+    static const unsigned long CACHE_TIMEOUT_MS = 300000; // 5 minutes
     
     // Simple request tracking
     struct LogoRequest {

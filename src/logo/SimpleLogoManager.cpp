@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <esp_log.h>
+#include <algorithm>
 
 static const char *TAG = "SimpleLogoManager";
 
@@ -177,6 +178,87 @@ String SimpleLogoManager::getStatus() const {
     status += "- Requests timed out: " + String(requestsTimedOut) + "\n";
     status += "- Requests failed: " + String(requestsFailed) + "\n";
     return status;
+}
+
+bool SimpleLogoManager::scanLogosOnce() {
+    // Use cached data if still valid
+    if (logoListCached && (millis() - lastScanTime < CACHE_TIMEOUT_MS)) {
+        ESP_LOGI(TAG, "Using cached logo list (%d logos)", cachedLogoPaths.size());
+        return true;
+    }
+
+    ESP_LOGI(TAG, "Scanning logos directory...");
+    cachedLogoPaths.clear();
+
+    // Check if SD is mounted
+    if (!Hardware::SD::isMounted()) {
+        ESP_LOGW(TAG, "SD card not mounted for logo scan");
+        return false;
+    }
+
+    // Scan the logos directory
+    Hardware::SD::listDirectory(LOGOS_DIR, [this](const char *name, bool isDir, size_t size) {
+        if (!isDir && name) {
+            String filename = String(name);
+            // Support both PNG and C formats
+            if (filename.endsWith(".png") || filename.endsWith(".c") || filename.endsWith("bin")) {
+                String fullPath = String(LOGOS_DIR) + "/" + filename;
+                cachedLogoPaths.push_back(fullPath);
+                ESP_LOGD(TAG, "Found logo: %s", fullPath.c_str());
+            }
+        }
+    });
+
+    // Sort for consistent ordering
+    std::sort(cachedLogoPaths.begin(), cachedLogoPaths.end());
+
+    logoListCached = true;
+    lastScanTime = millis();
+    ESP_LOGI(TAG, "Logo scan complete: %d logos found", cachedLogoPaths.size());
+    return true;
+}
+
+std::vector<String> SimpleLogoManager::getPagedLogos(int pageIndex, int itemsPerPage) {
+    std::vector<String> page;
+
+    // Ensure we have scanned
+    if (!logoListCached) {
+        scanLogosOnce();
+    }
+
+    int startIdx = pageIndex * itemsPerPage;
+    int endIdx = std::min(startIdx + itemsPerPage, (int)cachedLogoPaths.size());
+
+    for (int i = startIdx; i < endIdx; i++) {
+        page.push_back(cachedLogoPaths[i]);
+    }
+
+    ESP_LOGD(TAG, "Returning page %d with %d logos", pageIndex, page.size());
+    return page;
+}
+
+int SimpleLogoManager::getTotalLogoCount() {
+    // Ensure we have scanned
+    if (!logoListCached) {
+        scanLogosOnce();
+    }
+    return cachedLogoPaths.size();
+}
+
+String SimpleLogoManager::getLogoLVGLPath(const String &logoPath) {
+    // Convert "/logos/file.png" to "S:/logos/file.png"
+    if (logoPath.startsWith("/")) {
+        return "S:" + logoPath;
+    }
+    // Already in LVGL format or invalid
+    return logoPath;
+}
+
+void SimpleLogoManager::refreshLogoList() {
+    ESP_LOGI(TAG, "Forcing logo list refresh");
+    logoListCached = false;
+    lastScanTime = 0;
+    scanLogosOnce();
 }
 
 void SimpleLogoManager::handleAssetResponse(const Messaging::Message &msg) {

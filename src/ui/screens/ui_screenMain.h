@@ -47,6 +47,10 @@ extern lv_obj_t * ui_btnRequestStatus;
 extern lv_obj_t * ui_btnLbl3;
 extern lv_obj_t * ui_lblFPS;
 extern lv_obj_t * ui_img;
+extern void ui_event_Button1(lv_event_t * e);
+extern lv_obj_t * ui_Button1;
+extern void ui_event_Label1(lv_event_t * e);
+extern lv_obj_t * ui_Label1;
 // CUSTOM VARIABLES
 extern lv_obj_t * ui_primaryContainer;
 extern lv_obj_t * ui_lblPrimaryVolumeSlider;

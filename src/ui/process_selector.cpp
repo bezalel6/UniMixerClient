@@ -37,14 +37,7 @@ static void process_selected_cb(lv_event_t* e) {
 
     ESP_LOGI(TAG, "Selected process: %s (index: %d)", process_name, selected);
 
-    // Update the volume slider label to show selected process
-    if (ui_lblSingleVolumeSlider) {
-        char label_text[80];
-        snprintf(label_text, sizeof(label_text), "%s Volume", process_name);
-        lv_label_set_text(ui_lblSingleVolumeSlider, label_text);
-    }
-
-    // Send message to audio system (example)
+    // Send message to audio system (example - same behavior as original dropdown)
     // Message msg = Message::createAudioProcessSelect(process_name, selected);
     // MessagingService::getInstance()->sendMessage(msg);
 }
@@ -66,9 +59,9 @@ void process_selector_init() {
     // Create the image roller in the single tab
     process_image_roller = lv_image_roller_create(ui_Single);
 
-    // Position where the volume slider container would be
-    lv_obj_set_size(process_image_roller, 280, 320);
-    lv_obj_align(process_image_roller, LV_ALIGN_CENTER, 0, -40);
+    // Size and position - centered and properly sized with more height
+    lv_obj_set_size(process_image_roller, 320, 380);
+    lv_obj_align(process_image_roller, LV_ALIGN_CENTER, 0, -60);
 
     // Configure with actual process data from SD card
     lv_image_roller_set_options(process_image_roller,
@@ -78,27 +71,18 @@ void process_selector_init() {
                                 4,      // Number of processes (Chrome, COD, Legcord, YouTube Music)
                                 true);  // Use SD card
 
-    // Configure appearance
+    // Configure appearance - elegant sizing with more visible rows
     lv_image_roller_set_image_size(process_image_roller, 100, 100);
-    lv_image_roller_set_visible_row_count(process_image_roller, 3);
+    lv_image_roller_set_visible_row_count(process_image_roller, 4);
 
     // Add selection change handler
     lv_obj_add_event_cb(process_image_roller, process_selected_cb,
                         LV_EVENT_IMAGE_ROLLER_CHANGED, NULL);
 
-    // Apply custom styling for the single tab
-    lv_obj_t* roller = lv_image_roller_get_roller(process_image_roller);
-    lv_obj_set_style_text_font(roller, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_font(roller, &lv_font_montserrat_18, LV_PART_SELECTED);
-
-    // Custom colors to match the UI theme
-    lv_obj_set_style_bg_color(process_image_roller, lv_color_hex(0x1a1a1a), 0);
-    lv_obj_set_style_text_color(roller, lv_color_hex(0xffffff), LV_PART_MAIN);
-    lv_obj_set_style_text_color(roller, lv_color_hex(0x00ff00), LV_PART_SELECTED);
-
-    // Move the volume slider container to make room
+    // Move the volume slider container to make room and align properly
     if (ui_containerSingleVolumeSlider) {
-        lv_obj_set_y(ui_containerSingleVolumeSlider, 100);
+        lv_obj_set_y(ui_containerSingleVolumeSlider, 120);
+        lv_obj_set_size(ui_containerSingleVolumeSlider, 450, 100);
     }
 
     ESP_LOGI(TAG, "Process selector initialized with %d processes", 4);

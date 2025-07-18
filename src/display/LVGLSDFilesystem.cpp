@@ -45,13 +45,13 @@ static void* sd_open_cb(lv_fs_drv_t* drv, const char* path, lv_fs_mode_t mode) {
     String sdPath = convertLvglPath(path);
     ESP_LOGI(TAG, "Converted path: %s", sdPath.c_str());
 
-    // Determine file mode
-    const char* fileMode = FILE_READ;
+    // Determine file mode - use string modes for SD library
+    const char* fileMode = "r";  // Default to read in binary mode
     if (mode & LV_FS_MODE_WR) {
         if (mode & LV_FS_MODE_RD) {
-            fileMode = FILE_WRITE;  // Read/Write
+            fileMode = "r+";  // Read/Write binary mode
         } else {
-            fileMode = FILE_WRITE;  // Write only
+            fileMode = "w";   // Write only binary mode
         }
     }
 
@@ -65,7 +65,7 @@ static void* sd_open_cb(lv_fs_drv_t* drv, const char* path, lv_fs_mode_t mode) {
         return nullptr;
     }
 
-    ESP_LOGI(TAG, "File opened successfully: %s", sdPath.c_str());
+    ESP_LOGI(TAG, "File opened successfully: %s (size: %lu bytes)", sdPath.c_str(), file->size());
     return file;
 }
 
@@ -95,6 +95,13 @@ static lv_fs_res_t sd_read_cb(lv_fs_drv_t* drv, void* file_p, void* buf, uint32_
     *br = file->read(static_cast<uint8_t*>(buf), btr);
 
     ESP_LOGI(TAG, "Read %lu bytes (requested: %lu)", *br, btr);
+    
+    // If we couldn't read the requested amount of bytes and we're not at EOF,
+    // it might indicate an error
+    if (*br < btr && !file->available()) {
+        ESP_LOGW(TAG, "Read less than requested but reached EOF");
+    }
+    
     return LV_FS_RES_OK;
 }
 
@@ -175,7 +182,7 @@ static void* sd_dir_open_cb(lv_fs_drv_t* drv, const char* path) {
     }
 
     File* dir = new File();
-    *dir = Hardware::SD::openFile(sdPath.c_str(), FILE_READ);
+    *dir = Hardware::SD::openFile(sdPath.c_str(), "r");
 
     if (!*dir || !dir->isDirectory()) {
         ESP_LOGW(TAG, "Failed to open directory: %s", sdPath.c_str());

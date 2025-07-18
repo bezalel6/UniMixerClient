@@ -21,6 +21,7 @@ extern "C" {
 ///////////////////// SCREENS ////////////////////
 
 #include "screens/ui_screenMain.h"
+#include "screens/ui_screenLogoViewer.h"
 
 ///////////////////// VARIABLES ////////////////////
 

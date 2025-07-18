@@ -13,7 +13,7 @@ namespace LVGLSDFilesystem {
  * that bridges LVGL filesystem calls to the existing Hardware::SD::SDManager.
  *
  * The driver registers the "S:" drive letter so LVGL can access files using
- * paths like "S:/logos/binaries/file.bin"
+ * paths like "S:/logos/file.png" or "S:/logos/file.c"
  */
 
 /**
