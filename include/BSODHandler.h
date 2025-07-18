@@ -123,12 +123,12 @@ inline BSODConfig createAssertionErrorConfig(const char* condition, const char* 
     config.errorCode = "ERR_ASSERT";
     config.showCpuStatus = true;
     config.showTechnicalDetails = true;
-    
+
     char techBuf[256];
-    snprintf(techBuf, sizeof(techBuf), "Assertion: %s\nLocation: %s:%d", 
+    snprintf(techBuf, sizeof(techBuf), "Assertion: %s\nLocation: %s:%d",
              condition ? condition : "Unknown", file ? file : "Unknown", line);
     config.technicalDetails = techBuf;
-    
+
     config.restartInstruction = "This is a software bug. Please report to developers.";
     return config;
 }
@@ -212,55 +212,55 @@ const char* taskStateToString(eTaskState state);
 }  // namespace BSODHandler
 
 // Generic critical failure macros with modern templates
-#define CRITICAL_FAILURE(message)                           \
+#define CRITICAL_FAILURE(message_)                          \
     do {                                                    \
         ESP_LOGE("CRITICAL", "Critical failure triggered"); \
         BSODConfig config;                                  \
         config.title = "CRITICAL FAILURE";                  \
-        config.message = message;                           \
+        config.message = message_;                          \
         BSODHandler::show(config, __FILE__, __LINE__);      \
     } while (0)
 
-#define ASSERT_CRITICAL(condition, message)                                     \
-    do {                                                                        \
-        if (!(condition)) {                                                     \
-            ESP_LOGE("CRITICAL", "Assertion failed: %s", #condition);           \
+#define ASSERT_CRITICAL(condition, message)                                                        \
+    do {                                                                                           \
+        if (!(condition)) {                                                                        \
+            ESP_LOGE("CRITICAL", "Assertion failed: %s", #condition);                              \
             auto config = BSODHandler::createAssertionErrorConfig(#condition, __FILE__, __LINE__); \
-            config.message = message;                                           \
-            BSODHandler::show(config);                                          \
-        }                                                                       \
+            config.message = message;                                                              \
+            BSODHandler::show(config);                                                             \
+        }                                                                                          \
     } while (0)
 
-#define INIT_CRITICAL(expr, failure_msg)                                    \
-    do {                                                                    \
-        ESP_LOGI("BOOT", "Critical init: %s", #expr);                       \
-        if (!(expr)) {                                                      \
-            ESP_LOGE("CRITICAL", "Init failed: %s", #expr);                 \
+#define INIT_CRITICAL(expr, failure_msg)                                          \
+    do {                                                                          \
+        ESP_LOGI("BOOT", "Critical init: %s", #expr);                             \
+        if (!(expr)) {                                                            \
+            ESP_LOGE("CRITICAL", "Init failed: %s", #expr);                       \
             auto config = BSODHandler::createInitErrorConfig(#expr, failure_msg); \
-            BSODHandler::show(config, __FILE__, __LINE__);                  \
-        }                                                                   \
+            BSODHandler::show(config, __FILE__, __LINE__);                        \
+        }                                                                         \
     } while (0)
 
 // Specialized failure macros for common scenarios
-#define MEMORY_CRITICAL(details)                                            \
-    do {                                                                    \
-        ESP_LOGE("CRITICAL", "Memory exhausted");                           \
-        auto config = BSODHandler::createMemoryErrorConfig(details);        \
-        BSODHandler::show(config, __FILE__, __LINE__);                      \
+#define MEMORY_CRITICAL(details)                                     \
+    do {                                                             \
+        ESP_LOGE("CRITICAL", "Memory exhausted");                    \
+        auto config = BSODHandler::createMemoryErrorConfig(details); \
+        BSODHandler::show(config, __FILE__, __LINE__);               \
     } while (0)
 
-#define HARDWARE_CRITICAL(component, details)                               \
-    do {                                                                    \
-        ESP_LOGE("CRITICAL", "Hardware failure: %s", component);            \
+#define HARDWARE_CRITICAL(component, details)                                     \
+    do {                                                                          \
+        ESP_LOGE("CRITICAL", "Hardware failure: %s", component);                  \
         auto config = BSODHandler::createHardwareErrorConfig(component, details); \
-        BSODHandler::show(config, __FILE__, __LINE__);                      \
+        BSODHandler::show(config, __FILE__, __LINE__);                            \
     } while (0)
 
-#define TASK_CRITICAL(taskName, details)                                    \
-    do {                                                                    \
-        ESP_LOGE("CRITICAL", "Task failure: %s", taskName);                 \
+#define TASK_CRITICAL(taskName, details)                                     \
+    do {                                                                     \
+        ESP_LOGE("CRITICAL", "Task failure: %s", taskName);                  \
         auto config = BSODHandler::createTaskErrorConfig(taskName, details); \
-        BSODHandler::show(config, __FILE__, __LINE__);                      \
+        BSODHandler::show(config, __FILE__, __LINE__);                       \
     } while (0)
 
 #define INIT_OPTIONAL(expr, component_name)                                                       \

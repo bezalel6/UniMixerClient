@@ -212,3 +212,8 @@ Extensive documentation in `docs/` covering:
 - **Messaging system**: Type-safe messaging patterns
 - **Performance optimization**: Multi-core optimization strategies
 - **Debugging guides**: Troubleshooting and debugging techniques
+
+## Deployment Notes
+
+### Build and Upload Workflow
+- **Important Development Tip**: Running a pio build/run is NEVER correct. you should instead always use an upload.
