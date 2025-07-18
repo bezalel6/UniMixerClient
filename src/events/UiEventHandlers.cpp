@@ -4,6 +4,7 @@
 #include "../application/ui/LVGLMessageHandler.h"
 #include "../messaging/Message.h"
 #include "../messaging/SimplifiedSerialEngine.h"
+#include "VolumeWidgetMacros.h"
 
 #include "../hardware/DeviceManager.h"
 
@@ -165,7 +166,7 @@ void volumeArcVisualHandler(lv_event_t *e) {
   ON_EVENT(LV_EVENT_VALUE_CHANGED);
 
   lv_obj_t *arc = GET_UI_WIDGET();
-  int volume = lv_arc_get_value(arc);
+  int volume = VOLUME_WIDGET_GET_VALUE(arc);
 
   // Update the corresponding label immediately for visual feedback
   char volumeText[16];
@@ -190,7 +191,7 @@ void volumeArcChangedHandler(lv_event_t *e) {
   lv_obj_t *arc = GET_UI_WIDGET();
 
   // Get the arc value
-  int volume = lv_arc_get_value(arc);
+  int volume = VOLUME_WIDGET_GET_VALUE(arc);
 
   UI_LOG("UIEventHandlers", "Volume arc released - processing volume: %d",
          volume);

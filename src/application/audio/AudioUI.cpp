@@ -2,6 +2,7 @@
 #include "../../logo/SimpleLogoManager.h"
 #include "UiEventHandlers.h"
 #include "ui/screens/ui_screenMain.h"
+#include "VolumeWidgetMacros.h"
 #include <esp_log.h>
 #include <ui/ui.h>
 
@@ -230,7 +231,7 @@ void AudioUI::updateVolumeDisplay() {
   // Update the volume slider directly (uncommented to show current volume)
   lv_obj_t *slider = getCurrentVolumeSlider();
   if (slider) {
-    lv_arc_set_value(slider, currentVolume);
+    VOLUME_WIDGET_SET_VALUE(slider, currentVolume);
     ESP_LOGD(TAG, "Set %s tab slider to volume: %d",
              AudioManager::getInstance().getTabName(state.currentTab),
              currentVolume);
@@ -405,7 +406,7 @@ void AudioUI::updateVolumeSlider() {
 
   if (slider) {
     int currentVolume = state.getCurrentSelectedVolume();
-    lv_slider_set_value(slider, currentVolume, LV_ANIM_OFF);
+    VOLUME_WIDGET_SET_VALUE(slider, currentVolume);
   }
 }
 

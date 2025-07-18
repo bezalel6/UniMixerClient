@@ -31,7 +31,8 @@
 #include "../audio/AudioManager.h"
 #include "DebugUtils.h"
 #include "BuildInfo.h"
-#include "../../ui/UniversalDialog.h"
+#include "dialogs/UniversalDialog.h"
+#include "VolumeWidgetMacros.h"
 #include <cstring>
 #include <map>
 #include <esp_log.h>
@@ -123,7 +124,7 @@ static inline void updateVolumeSlider(lv_obj_t *slider, const LVGLMessage_t *msg
     auto extractor = volumeExtractors.find(msg->type);
     if (extractor != volumeExtractors.end()) {
         int volume = extractor->second(msg);
-        lv_arc_set_value(slider, volume);
+        VOLUME_WIDGET_SET_VALUE(slider, volume);
         lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, NULL);
     }
 }
