@@ -261,6 +261,92 @@ void SimpleLogoManager::refreshLogoList() {
     scanLogosOnce();
 }
 
+int SimpleLogoManager::getFilteredLogoCount(const String& filter) {
+    // Ensure we have scanned
+    if (!logoListCached) {
+        scanLogosOnce();
+    }
+    
+    if (filter.isEmpty()) {
+        return cachedLogoPaths.size();
+    }
+    
+    int count = 0;
+    String lowerFilter = filter;
+    lowerFilter.toLowerCase();
+    
+    for (const auto& path : cachedLogoPaths) {
+        // Extract filename from path
+        int lastSlash = path.lastIndexOf('/');
+        String filename = (lastSlash >= 0) ? path.substring(lastSlash + 1) : path;
+        
+        // Remove .png extension for comparison
+        if (filename.endsWith(".png")) {
+            filename = filename.substring(0, filename.length() - 4);
+        }
+        
+        String lowerFilename = filename;
+        lowerFilename.toLowerCase();
+        
+        // Check if filename contains the filter string
+        if (lowerFilename.indexOf(lowerFilter) >= 0) {
+            count++;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Filtered logo count for '%s': %d", filter.c_str(), count);
+    return count;
+}
+
+std::vector<String> SimpleLogoManager::getFilteredPagedLogos(const String& filter, int pageIndex, int itemsPerPage) {
+    std::vector<String> filteredResults;
+    std::vector<String> page;
+    
+    // Ensure we have scanned
+    if (!logoListCached) {
+        scanLogosOnce();
+    }
+    
+    if (filter.isEmpty()) {
+        return getPagedLogos(pageIndex, itemsPerPage);
+    }
+    
+    String lowerFilter = filter;
+    lowerFilter.toLowerCase();
+    
+    // First, build filtered list
+    for (const auto& path : cachedLogoPaths) {
+        // Extract filename from path
+        int lastSlash = path.lastIndexOf('/');
+        String filename = (lastSlash >= 0) ? path.substring(lastSlash + 1) : path;
+        
+        // Remove .png extension for comparison
+        if (filename.endsWith(".png")) {
+            filename = filename.substring(0, filename.length() - 4);
+        }
+        
+        String lowerFilename = filename;
+        lowerFilename.toLowerCase();
+        
+        // Check if filename contains the filter string
+        if (lowerFilename.indexOf(lowerFilter) >= 0) {
+            filteredResults.push_back(path);
+        }
+    }
+    
+    // Then paginate the filtered results
+    int startIdx = pageIndex * itemsPerPage;
+    int endIdx = std::min(startIdx + itemsPerPage, (int)filteredResults.size());
+    
+    for (int i = startIdx; i < endIdx; i++) {
+        page.push_back(filteredResults[i]);
+    }
+    
+    ESP_LOGD(TAG, "Returning filtered page %d with %d logos (filter: '%s')", 
+             pageIndex, page.size(), filter.c_str());
+    return page;
+}
+
 void SimpleLogoManager::handleAssetResponse(const Messaging::Message &msg) {
     ESP_LOGE(TAG,
              "handleAssetResponse: Processing asset response for requestId: %s",

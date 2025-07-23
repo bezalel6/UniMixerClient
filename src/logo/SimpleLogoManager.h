@@ -46,6 +46,10 @@ public:
     int getTotalLogoCount();
     String getLogoLVGLPath(const String& logoPath);
     void refreshLogoList();
+    
+    // Filtered search support
+    int getFilteredLogoCount(const String& filter);
+    std::vector<String> getFilteredPagedLogos(const String& filter, int pageIndex, int itemsPerPage);
 
 private:
     SimpleLogoManager() = default;
