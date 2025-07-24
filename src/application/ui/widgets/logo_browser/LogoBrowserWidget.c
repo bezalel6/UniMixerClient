@@ -83,9 +83,7 @@ typedef struct {
     lv_obj_t* page_label;
     lv_obj_t* loading_bar;
 
-    // Keyboard
-    lv_obj_t* keyboard;
-    bool keyboard_visible;
+    // Keyboard removed - search is on-demand only
 
     // Data management
     char** current_page_paths;
@@ -122,7 +120,7 @@ static void update_page_display(logo_browser_data_t* browser);
 static void update_navigation_state(logo_browser_data_t* browser);
 static void update_status_label(logo_browser_data_t* browser);
 static void set_browser_state(logo_browser_data_t* browser, browser_state_t state);
-static void toggle_keyboard(logo_browser_data_t* browser, bool show);
+// toggle_keyboard removed - no longer needed
 static void apply_search_filter(logo_browser_data_t* browser);
 static void allocate_page_paths(logo_browser_data_t* browser);
 static void free_page_paths(logo_browser_data_t* browser);
@@ -133,12 +131,10 @@ static void scale_hide_anim_cb(lv_anim_t* a);
 static void btn_prev_clicked(lv_event_t* e);
 static void btn_next_clicked(lv_event_t* e);
 static void logo_clicked(lv_event_t* e);
-static void btn_edit_clicked(lv_event_t* e);
+static void btn_search_clicked(lv_event_t* e);
 static void btn_clear_clicked(lv_event_t* e);
-static void search_text_changed(lv_event_t* e);
-static void search_timer_cb(lv_timer_t* timer);
-static void keyboard_event_cb(lv_event_t* e);
-static void keyboard_cleanup_timer_cb(lv_timer_t* timer);
+static void search_on_enter(lv_event_t* e);
+static void perform_search(logo_browser_data_t* browser);
 
 lv_obj_t* logo_browser_create(lv_obj_t* parent) {
     // Create main container
@@ -168,8 +164,6 @@ lv_obj_t* logo_browser_create(lv_obj_t* parent) {
     browser->current_page_paths = NULL;
     browser->current_page_count = 0;
     browser->search_filter[0] = '\0';
-    browser->keyboard_visible = false;
-    browser->keyboard = NULL;
     browser->search_timer = NULL;
     browser->last_search_time = 0;
     browser->state = BROWSER_STATE_IDLE;
@@ -286,17 +280,18 @@ static void create_search_panel(logo_browser_data_t* browser) {
     lv_obj_set_style_bg_color(browser->search_textarea, lv_color_darken(COLOR_CARD, 50), 0);
     lv_obj_set_style_border_width(browser->search_textarea, 1, 0);
     lv_obj_set_style_border_color(browser->search_textarea, lv_palette_darken(LV_PALETTE_GREY, 2), 0);
-    lv_obj_add_event_cb(browser->search_textarea, search_text_changed, LV_EVENT_VALUE_CHANGED, browser);
+    // Search only on Enter key, not while typing
+    lv_obj_add_event_cb(browser->search_textarea, search_on_enter, LV_EVENT_READY, browser);
 
-    // Edit button
+    // Search button - triggers search on click
     browser->btn_edit = lv_button_create(browser->search_panel);
     lv_obj_set_size(browser->btn_edit, 80, 36);
     lv_obj_align(browser->btn_edit, LV_ALIGN_RIGHT_MID, -95, 0);
     lv_obj_add_style(browser->btn_edit, &browser->style_button, 0);
-    lv_obj_add_event_cb(browser->btn_edit, btn_edit_clicked, LV_EVENT_CLICKED, browser);
+    lv_obj_add_event_cb(browser->btn_edit, btn_search_clicked, LV_EVENT_CLICKED, browser);
 
     lv_obj_t* edit_label = lv_label_create(browser->btn_edit);
-    lv_label_set_text(edit_label, "Edit");
+    lv_label_set_text(edit_label, "Search");
     lv_obj_center(edit_label);
 
     // Clear button
@@ -618,82 +613,7 @@ static void set_browser_state(logo_browser_data_t* browser, browser_state_t stat
     update_status_label(browser);
 }
 
-static void toggle_keyboard(logo_browser_data_t* browser, bool show) {
-    if (!browser) return;
-
-    if (show && !browser->keyboard_visible) {
-        // Create keyboard on the main container, not screen
-        browser->keyboard = lv_keyboard_create(browser->container);
-        if (!browser->keyboard) {
-            ESP_LOGE(TAG, "Failed to create keyboard");
-            return;
-        }
-
-        lv_obj_set_size(browser->keyboard, lv_pct(100), KEYBOARD_HEIGHT);
-        lv_obj_align(browser->keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-        // Set keyboard properties safely
-        lv_keyboard_set_textarea(browser->keyboard, browser->search_textarea);
-        lv_keyboard_set_mode(browser->keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-        // Add event handlers with proper null checks
-        lv_obj_add_event_cb(browser->keyboard, keyboard_event_cb, LV_EVENT_READY, browser);
-        lv_obj_add_event_cb(browser->keyboard, keyboard_event_cb, LV_EVENT_CANCEL, browser);
-
-        // Show keyboard with scale animation instead of fade
-        lv_anim_t scale_anim;
-        lv_anim_init(&scale_anim);
-        lv_anim_set_var(&scale_anim, browser->keyboard);
-        lv_anim_set_values(&scale_anim, 200, 256); // Start small, scale to normal
-        lv_anim_set_time(&scale_anim, ANIMATION_TIME);
-        lv_anim_set_path_cb(&scale_anim, lv_anim_path_ease_out);
-        lv_anim_set_exec_cb(&scale_anim, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_scale);
-        lv_anim_start(&scale_anim);
-
-        browser->keyboard_visible = true;
-
-        // Update button text
-        lv_obj_t* label = lv_obj_get_child(browser->btn_edit, 0);
-        if (label) {
-            lv_label_set_text(label, "Done");
-        }
-
-        // Focus textarea
-        lv_obj_add_state(browser->search_textarea, LV_STATE_FOCUSED);
-
-    } else if (!show && browser->keyboard_visible) {
-        // Hide keyboard with scale animation
-        if (browser->keyboard) {
-            // Use scale down animation instead of fade
-            lv_anim_t scale_anim;
-            lv_anim_init(&scale_anim);
-            lv_anim_set_var(&scale_anim, browser->keyboard);
-            lv_anim_set_values(&scale_anim, 256, 200); // Scale down
-            lv_anim_set_time(&scale_anim, ANIMATION_TIME);
-            lv_anim_set_path_cb(&scale_anim, lv_anim_path_ease_in);
-            lv_anim_set_exec_cb(&scale_anim, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_scale);
-
-            lv_anim_start(&scale_anim);
-            
-            // Create a timer to delete keyboard after animation
-            lv_timer_t* cleanup_timer = lv_timer_create(keyboard_cleanup_timer_cb, ANIMATION_TIME + 50, browser->keyboard);
-            lv_timer_set_repeat_count(cleanup_timer, 1);
-
-            browser->keyboard = NULL;
-        }
-
-        browser->keyboard_visible = false;
-
-        // Update button text
-        lv_obj_t* label = lv_obj_get_child(browser->btn_edit, 0);
-        if (label) {
-            lv_label_set_text(label, "Edit");
-        }
-
-        // Remove focus
-        lv_obj_remove_state(browser->search_textarea, LV_STATE_FOCUSED);
-    }
-}
+// toggle_keyboard function removed - no longer needed
 
 static void apply_search_filter(logo_browser_data_t* browser) {
     if (!browser) return;
@@ -767,7 +687,7 @@ static void logo_clicked(lv_event_t* e) {
     ESP_LOGI(TAG, "Selected logo: %s (index %d)", browser->logos[index].path, global_idx);
 }
 
-static void btn_edit_clicked(lv_event_t* e) {
+static void btn_search_clicked(lv_event_t* e) {
     logo_browser_data_t* browser = (logo_browser_data_t*)lv_event_get_user_data(e);
     if (!browser || !browser->search_textarea) return;
 
@@ -777,7 +697,8 @@ static void btn_edit_clicked(lv_event_t* e) {
         return;
     }
 
-    toggle_keyboard(browser, !browser->keyboard_visible);
+    // Perform search when button is clicked
+    perform_search(browser);
 }
 
 static void btn_clear_clicked(lv_event_t* e) {
@@ -791,39 +712,15 @@ static void btn_clear_clicked(lv_event_t* e) {
     ESP_LOGI(TAG, "Search cleared");
 }
 
-static void search_text_changed(lv_event_t* e) {
+static void search_on_enter(lv_event_t* e) {
     logo_browser_data_t* browser = (logo_browser_data_t*)lv_event_get_user_data(e);
     if (!browser) return;
 
-    // Cancel existing timer
-    if (browser->search_timer) {
-        lv_timer_del(browser->search_timer);
-        browser->search_timer = NULL;
-    }
-
-    // Get current time
-    uint32_t current_time = lv_tick_get();
-
-    // Check if enough time has passed for debouncing
-    if ((current_time - browser->last_search_time) < DEBOUNCE_MS) {
-        // Create timer for delayed search
-        browser->search_timer = lv_timer_create(search_timer_cb, DEBOUNCE_MS, browser);
-        lv_timer_set_repeat_count(browser->search_timer, 1);
-    } else {
-        // Perform search immediately
-        const char* text = lv_textarea_get_text(browser->search_textarea);
-        if (strcmp(browser->search_filter, text) != 0) {
-            strncpy(browser->search_filter, text, MAX_FILENAME_LENGTH - 1);
-            browser->search_filter[MAX_FILENAME_LENGTH - 1] = '\0';
-            apply_search_filter(browser);
-        }
-    }
-
-    browser->last_search_time = current_time;
+    // Perform search when Enter is pressed
+    perform_search(browser);
 }
 
-static void search_timer_cb(lv_timer_t* timer) {
-    logo_browser_data_t* browser = (logo_browser_data_t*)lv_timer_get_user_data(timer);
+static void perform_search(logo_browser_data_t* browser) {
     if (!browser) return;
 
     const char* text = lv_textarea_get_text(browser->search_textarea);
@@ -832,30 +729,13 @@ static void search_timer_cb(lv_timer_t* timer) {
         browser->search_filter[MAX_FILENAME_LENGTH - 1] = '\0';
         apply_search_filter(browser);
     }
-
-    browser->search_timer = NULL;
 }
 
-static void keyboard_event_cb(lv_event_t* e) {
-    logo_browser_data_t* browser = (logo_browser_data_t*)lv_event_get_user_data(e);
-    if (!browser) return;
+// search_timer_cb removed - no longer needed for on-demand search
 
-    lv_event_code_t code = lv_event_get_code(e);
+// keyboard_event_cb removed - no longer needed
 
-    // Handle both ready (enter) and cancel events
-    if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
-        // Safely hide keyboard
-        toggle_keyboard(browser, false);
-    }
-}
-
-static void keyboard_cleanup_timer_cb(lv_timer_t* timer) {
-    lv_obj_t* keyboard = (lv_obj_t*)lv_timer_get_user_data(timer);
-    if (keyboard && lv_obj_is_valid(keyboard)) {
-        lv_obj_del(keyboard);
-    }
-    lv_timer_del(timer);
-}
+// keyboard_cleanup_timer_cb removed - no longer needed
 
 static void scale_hide_anim_cb(lv_anim_t* a) {
     lv_obj_t* obj = (lv_obj_t*)a->var;
@@ -951,12 +831,7 @@ void logo_browser_cleanup(lv_obj_t* browser_obj) {
     logo_browser_data_t* browser = (logo_browser_data_t*)lv_obj_get_user_data(browser_obj);
     if (!browser) return;
 
-    // Clean up keyboard safely
-    if (browser->keyboard && lv_obj_is_valid(browser->keyboard)) {
-        lv_obj_del(browser->keyboard);
-        browser->keyboard = NULL;
-    }
-    browser->keyboard_visible = false;
+    // Keyboard cleanup removed - no longer needed
 
     // Clean up search timer
     if (browser->search_timer) {
