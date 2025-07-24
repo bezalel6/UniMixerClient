@@ -6,6 +6,12 @@
 #include <esp_log.h>
 #include <ui/ui.h>
 
+// Declare process selector functions as extern C
+extern "C" {
+  void process_selector_refresh_devices();
+  void process_selector_sync_with_audio_state();
+}
+
 static const char *TAG = "AudioUI";
 
 namespace Application {
@@ -257,6 +263,10 @@ void AudioUI::updateDeviceSelectors() {
 
   // Update dropdown options
   updateDropdownOptions(devices);
+  
+  // Also update the process selector image roller
+  // Declare the extern C function outside this scope
+  process_selector_refresh_devices();
 
   ESP_LOGD(TAG, "Updated device selectors with %d devices", devices.size());
 }
@@ -308,7 +318,7 @@ void AudioUI::onAudioStateChanged(const AudioStateChangeEvent &event) {
     ESP_LOGI(TAG, "Device selection changed - updating UI");
     updateDropdownSelections();
     updateVolumeDisplay();
-    updateSingleTabLogo(); // Update logo for debugging
+    updateSingleTabLogo(); // This now updates the process selector instead of overlay
     break;
 
   case AudioStateChangeEvent::VOLUME_CHANGED:
@@ -470,69 +480,23 @@ String AudioUI::getCurrentTabName() const {
 }
 
 void AudioUI::updateSingleTabLogo() {
-  if (!initialized || !ui_img) {
-    return;
+  // DISABLED: The image roller is now the single source of truth for process display
+  // We no longer show an overlay logo - keep ui_img hidden
+  if (ui_img) {
+    lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
   }
-
+  
+  // Instead, sync the process selector with the current state
+  // Refresh the device list in the image roller
+  process_selector_refresh_devices();
+  
+  // Sync the selection with current state
+  process_selector_sync_with_audio_state();
+  
   const auto &state = AudioManager::getInstance().getState();
-
-  // Only update if we're on the Single tab
-  if (!state.isInSingleTab()) {
-    lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
-    // Ensure transparency is maintained when hidden
-    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-    return;
-  }
-
-  // Get currently selected device on Single tab
-  if (!state.selectedSingleDevice) {
-    ESP_LOGD(TAG, "No device selected on Single tab - hiding logo");
-    lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
-    // Ensure transparency is maintained when hidden
-    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-    return;
-  }
-
-  String processName = state.selectedSingleDevice->processName;
-  ESP_LOGI(TAG, "Updating Single tab logo for process: %s",
-           processName.c_str());
-
-  // Get logo path from SimpleLogoManager
-  if (SimpleLogoManager::getInstance().hasLogo(processName)) {
-    String logoPath = SimpleLogoManager::getInstance().getLVGLPath(processName);
-
-    ESP_LOGW(TAG, "Found logo for %s at: %s", processName.c_str(),
-             logoPath.c_str());
-
-    // Set the logo image source
-    lv_img_set_src(ui_img, logoPath.c_str());
-
-    // Configure image display properties
-    lv_obj_set_size(ui_img, LV_SIZE_CONTENT,
-                    LV_SIZE_CONTENT); // Auto size to content
-
-    // Enable auto-scaling if the image is too large
-    lv_image_set_scale(ui_img, 256); // Scale to fit (256 = 100% scale)
-
-    // Remove white background to enable transparency
-    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    // Make sure the image object itself is properly sized and positioned
-    lv_obj_center(ui_img); // Center the image in its parent
-
-    // Show the image
-    lv_obj_remove_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
-
-    ESP_LOGI(TAG, "Logo configured and displayed for %s", processName.c_str());
-  } else {
-    ESP_LOGD(TAG, "No logo found for %s - hiding image", processName.c_str());
-    lv_obj_add_flag(ui_img, LV_OBJ_FLAG_HIDDEN);
-    // Ensure transparency is maintained when hidden
-    lv_obj_set_style_bg_opa(ui_img, LV_OPA_TRANSP,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
+  if (state.isInSingleTab() && state.selectedSingleDevice) {
+    ESP_LOGI(TAG, "Process selector updated for: %s", state.selectedSingleDevice->processName.c_str());
   }
 }
 

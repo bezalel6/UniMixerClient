@@ -127,6 +127,7 @@ static void apply_search_filter(logo_browser_data_t* browser);
 static void allocate_page_paths(logo_browser_data_t* browser);
 static void free_page_paths(logo_browser_data_t* browser);
 static const char* extract_filename(const char* path);
+static void scale_hide_anim_cb(lv_anim_t* a);
 
 // Event handlers
 static void btn_prev_clicked(lv_event_t* e);
@@ -146,7 +147,6 @@ lv_obj_t* logo_browser_create(lv_obj_t* parent) {
     lv_obj_set_pos(container, 0, 0);
     lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(container, COLOR_BG, 0);
-    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(container, 0, 0);
     lv_obj_set_style_border_width(container, 0, 0);
 
@@ -185,7 +185,7 @@ lv_obj_t* logo_browser_create(lv_obj_t* parent) {
     lv_obj_set_size(browser->content_panel, lv_pct(100), lv_pct(100));
     lv_obj_set_pos(browser->content_panel, 0, 0);
     lv_obj_clear_flag(browser->content_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_opa(browser->content_panel, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(browser->content_panel, COLOR_BG, 0);
     lv_obj_set_style_pad_all(browser->content_panel, CONTAINER_PADDING, 0);
     lv_obj_set_style_border_width(browser->content_panel, 0, 0);
 
@@ -208,14 +208,12 @@ static void init_styles(logo_browser_data_t* browser) {
     lv_style_init(&browser->style_container);
     lv_style_set_radius(&browser->style_container, 0);
     lv_style_set_bg_color(&browser->style_container, COLOR_BG);
-    lv_style_set_bg_opa(&browser->style_container, LV_OPA_COVER);
     lv_style_set_border_width(&browser->style_container, 0);
 
     // Card style
     lv_style_init(&browser->style_card);
     lv_style_set_radius(&browser->style_card, 8);
     lv_style_set_bg_color(&browser->style_card, COLOR_CARD);
-    lv_style_set_bg_opa(&browser->style_card, LV_OPA_COVER);
     lv_style_set_border_width(&browser->style_card, 1);
     lv_style_set_border_color(&browser->style_card, lv_palette_darken(LV_PALETTE_GREY, 2));
     lv_style_set_pad_all(&browser->style_card, 8);
@@ -230,7 +228,6 @@ static void init_styles(logo_browser_data_t* browser) {
     // Hover style
     lv_style_init(&browser->style_hover);
     lv_style_set_bg_color(&browser->style_hover, COLOR_HOVER);
-    lv_style_set_bg_opa(&browser->style_hover, LV_OPA_20);
 
     // Title style
     lv_style_init(&browser->style_title);
@@ -250,7 +247,7 @@ static void create_title_panel(logo_browser_data_t* browser) {
     lv_obj_set_size(browser->title_panel, lv_pct(100), TITLE_HEIGHT);
     lv_obj_set_pos(browser->title_panel, 0, 0);
     lv_obj_clear_flag(browser->title_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_opa(browser->title_panel, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(browser->title_panel, COLOR_BG, 0);
     lv_obj_set_style_pad_all(browser->title_panel, 0, 0);
     lv_obj_set_style_border_width(browser->title_panel, 0, 0);
 
@@ -324,7 +321,7 @@ static void create_grid_panel(logo_browser_data_t* browser) {
     lv_obj_set_size(browser->grid_panel, lv_pct(100), grid_height);
     lv_obj_set_pos(browser->grid_panel, 0, grid_y);
     lv_obj_clear_flag(browser->grid_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_opa(browser->grid_panel, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(browser->grid_panel, COLOR_BG, 0);
     lv_obj_set_style_pad_all(browser->grid_panel, 0, 0);
     lv_obj_set_style_border_width(browser->grid_panel, 0, 0);
 
@@ -513,9 +510,19 @@ static void update_page_display(logo_browser_data_t* browser) {
                 lv_obj_remove_style(item->container, &browser->style_selected, 0);
             }
 
-            // Show item with animation
+            // Show item with scale animation
             lv_obj_remove_flag(item->container, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_fade_in(item->container, ANIMATION_TIME, i * 50);
+            
+            // Use scale animation instead of fade
+            lv_anim_t scale_anim;
+            lv_anim_init(&scale_anim);
+            lv_anim_set_var(&scale_anim, item->container);
+            lv_anim_set_values(&scale_anim, 200, 256); // Start small, scale to normal
+            lv_anim_set_time(&scale_anim, ANIMATION_TIME);
+            lv_anim_set_delay(&scale_anim, i * 50);
+            lv_anim_set_path_cb(&scale_anim, lv_anim_path_ease_out);
+            lv_anim_set_exec_cb(&scale_anim, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_scale);
+            lv_anim_start(&scale_anim);
 
             item->is_loaded = true;
 
@@ -523,9 +530,18 @@ static void update_page_display(logo_browser_data_t* browser) {
             lv_bar_set_value(browser->loading_bar, ((i + 1) * 100) / browser->current_page_count,
                              LV_ANIM_ON);
         } else {
-            // Hide unused items
+            // Hide unused items with scale animation
             if (!lv_obj_has_flag(item->container, LV_OBJ_FLAG_HIDDEN)) {
-                lv_obj_fade_out(item->container, ANIMATION_TIME, 0);
+                // Scale down animation before hiding
+                lv_anim_t scale_anim;
+                lv_anim_init(&scale_anim);
+                lv_anim_set_var(&scale_anim, item->container);
+                lv_anim_set_values(&scale_anim, 256, 200); // Scale down
+                lv_anim_set_time(&scale_anim, ANIMATION_TIME);
+                lv_anim_set_path_cb(&scale_anim, lv_anim_path_ease_in);
+                lv_anim_set_exec_cb(&scale_anim, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_scale);
+                lv_anim_set_deleted_cb(&scale_anim, scale_hide_anim_cb);
+                lv_anim_start(&scale_anim);
             }
             item->is_loaded = false;
             item->path[0] = '\0';
@@ -554,19 +570,19 @@ static void update_navigation_state(logo_browser_data_t* browser) {
     // Update previous button
     if (browser->current_page == 0) {
         lv_obj_add_state(browser->btn_prev, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(browser->btn_prev, LV_OPA_50, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_color(browser->btn_prev, lv_color_darken(COLOR_CARD, 100), LV_STATE_DISABLED);
     } else {
         lv_obj_remove_state(browser->btn_prev, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(browser->btn_prev, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(browser->btn_prev, COLOR_CARD, 0);
     }
 
     // Update next button
     if (browser->current_page >= browser->total_pages - 1 || browser->total_pages == 0) {
         lv_obj_add_state(browser->btn_next, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(browser->btn_next, LV_OPA_50, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_color(browser->btn_next, lv_color_darken(COLOR_CARD, 100), LV_STATE_DISABLED);
     } else {
         lv_obj_remove_state(browser->btn_next, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(browser->btn_next, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(browser->btn_next, COLOR_CARD, 0);
     }
 }
 
@@ -624,9 +640,15 @@ static void toggle_keyboard(logo_browser_data_t* browser, bool show) {
         lv_obj_add_event_cb(browser->keyboard, keyboard_event_cb, LV_EVENT_READY, browser);
         lv_obj_add_event_cb(browser->keyboard, keyboard_event_cb, LV_EVENT_CANCEL, browser);
 
-        // Show keyboard with fade animation instead of slide
-        lv_obj_set_style_opa(browser->keyboard, LV_OPA_TRANSP, 0);
-        lv_obj_fade_in(browser->keyboard, ANIMATION_TIME, 0);
+        // Show keyboard with scale animation instead of fade
+        lv_anim_t scale_anim;
+        lv_anim_init(&scale_anim);
+        lv_anim_set_var(&scale_anim, browser->keyboard);
+        lv_anim_set_values(&scale_anim, 200, 256); // Start small, scale to normal
+        lv_anim_set_time(&scale_anim, ANIMATION_TIME);
+        lv_anim_set_path_cb(&scale_anim, lv_anim_path_ease_out);
+        lv_anim_set_exec_cb(&scale_anim, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_scale);
+        lv_anim_start(&scale_anim);
 
         browser->keyboard_visible = true;
 
@@ -640,11 +662,19 @@ static void toggle_keyboard(logo_browser_data_t* browser, bool show) {
         lv_obj_add_state(browser->search_textarea, LV_STATE_FOCUSED);
 
     } else if (!show && browser->keyboard_visible) {
-        // Hide keyboard with fade animation
+        // Hide keyboard with scale animation
         if (browser->keyboard) {
-            // Use fade out instead of slide animation
-            lv_obj_fade_out(browser->keyboard, ANIMATION_TIME, 0);
+            // Use scale down animation instead of fade
+            lv_anim_t scale_anim;
+            lv_anim_init(&scale_anim);
+            lv_anim_set_var(&scale_anim, browser->keyboard);
+            lv_anim_set_values(&scale_anim, 256, 200); // Scale down
+            lv_anim_set_time(&scale_anim, ANIMATION_TIME);
+            lv_anim_set_path_cb(&scale_anim, lv_anim_path_ease_in);
+            lv_anim_set_exec_cb(&scale_anim, (lv_anim_exec_xcb_t)lv_obj_set_style_transform_scale);
 
+            lv_anim_start(&scale_anim);
+            
             // Create a timer to delete keyboard after animation
             lv_timer_t* cleanup_timer = lv_timer_create(keyboard_cleanup_timer_cb, ANIMATION_TIME + 50, browser->keyboard);
             lv_timer_set_repeat_count(cleanup_timer, 1);
@@ -825,6 +855,11 @@ static void keyboard_cleanup_timer_cb(lv_timer_t* timer) {
         lv_obj_del(keyboard);
     }
     lv_timer_del(timer);
+}
+
+static void scale_hide_anim_cb(lv_anim_t* a) {
+    lv_obj_t* obj = (lv_obj_t*)a->var;
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Helper functions

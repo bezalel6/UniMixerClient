@@ -52,6 +52,18 @@ lv_obj_t* process_selector_get_widget();
  */
 void process_selector_cleanup();
 
+/**
+ * Synchronize the process selector with current audio state
+ * This updates the selection to match the current audio device
+ */
+void process_selector_sync_with_audio_state();
+
+/**
+ * Refresh the process list from the audio manager
+ * This updates the image roller with the latest device list
+ */
+void process_selector_refresh_devices();
+
 #ifdef __cplusplus
 }
 #endif

@@ -5,10 +5,13 @@
 #include <esp_log.h>
 
 extern "C" {
-    // Functions from LogoBrowserWidget.c
+    // Functions from LogoBrowserWidget.c (fallback)
     lv_obj_t* logo_browser_create(lv_obj_t* parent);
     int logo_browser_scan_directory(lv_obj_t* browser_obj, const char* logo_directory);
     void logo_browser_cleanup(lv_obj_t* browser);
+    
+    // Functions from LogoBrowser.cpp
+    int logo_browser_get_total_logos(void);
 }
 
 namespace Application {
@@ -60,7 +63,7 @@ void LogoViewerScreenHandler::initializeLogoBrowser(lv_obj_t* screen) {
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_24, 0);
     lv_obj_align(titleLabel, LV_ALIGN_TOP_MID, 0, 10);
     
-    // Create logo browser
+    // Create basic logo browser (enhanced version is too complex)
     logoBrowserInstance = logo_browser_create(screen);
     if (logoBrowserInstance) {
         // Position it below the title and BACK button

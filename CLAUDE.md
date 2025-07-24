@@ -217,3 +217,6 @@ Extensive documentation in `docs/` covering:
 
 ### Build and Upload Workflow
 - **Important Development Tip**: Running a pio build/run is NEVER correct. you should instead always use an upload.
+
+### Testing Best Practices
+- When testing with pio run, always attempt uploading to a connected device
