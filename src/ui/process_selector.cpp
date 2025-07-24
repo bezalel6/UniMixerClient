@@ -3,7 +3,7 @@
 #include "ui/ui.h"
 #include "../application/audio/AudioManager.h"
 #include "../application/audio/AudioData.h"
-#include "../logo/SimpleLogoManager.h"
+#include "../logo/LogoManager.h"
 
 extern "C" {
 #include "ui/components/lv_image_roller.h"
@@ -130,14 +130,14 @@ void process_selector_init() {
             
             ESP_LOGI(TAG, "Adding device %d: %s", i, devices[i].processName.c_str());
             
-            // Use SimpleLogoManager to get the proper logo path
-            String logo_path = SimpleLogoManager::getInstance().getLVGLPath(devices[i].processName);
+            // Use LogoManager to get the proper logo path
+            String logo_path = AssetManagement::LogoManager::getInstance().getLVGLPath(devices[i].processName);
             process_image_paths.push_back(logo_path);
             
             // Check if logo exists, if not request it
-            if (!SimpleLogoManager::getInstance().hasLogo(devices[i].processName)) {
+            if (!AssetManagement::LogoManager::getInstance().hasLogo(devices[i].processName)) {
                 ESP_LOGW(TAG, "Logo not found for %s, requesting from host", devices[i].processName.c_str());
-                SimpleLogoManager::getInstance().requestLogo(devices[i].processName, 
+                AssetManagement::LogoManager::getInstance().requestLogo(devices[i].processName, 
                     [processName = devices[i].processName](bool success, uint8_t* data, size_t size, const String& error) {
                         if (success) {
                             ESP_LOGI(TAG, "Logo received for %s, size: %d bytes", processName.c_str(), size);

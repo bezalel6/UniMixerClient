@@ -5,7 +5,7 @@
 #include "../display/DisplayManager.h"
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
-#include "../logo/SimpleLogoManager.h"
+#include "../logo/LogoManager.h"
 #include "../messaging/Message.h"
 #include "../messaging/MessagingInit.h"
 #include "BSODHandler.h"         // NEW: BSOD system
@@ -84,11 +84,11 @@ bool init(void) {
 
     // Initialize logo manager with component-specific error handling
     // The logo manager will trigger its own SD card specific BSOD if needed
-    ESP_LOGI(TAG, "Critical init: SimpleLogoManager::getInstance().init()");
-    if (!SimpleLogoManager::getInstance().init()) {
+    ESP_LOGI(TAG, "Critical init: LogoManager::getInstance().init()");
+    if (!AssetManagement::LogoManager::getInstance().init()) {
         // If we reach here, it means a generic error occurred (not SD card specific)
         // The SD card specific errors will have already triggered their own BSOD
-        ESP_LOGE(TAG, "Init failed: SimpleLogoManager::getInstance().init()");
+        ESP_LOGE(TAG, "Init failed: LogoManager::getInstance().init()");
         CRITICAL_FAILURE("Failed to initialize logo system. Unknown component failure.");
     }
 
@@ -227,8 +227,8 @@ void deinit(void) {
     Application::Audio::AudioUI::getInstance().deinit();
     Application::Audio::AudioManager::getInstance().deinit();
 
-    // Deinitialize Brutal Logo Manager
-    SimpleLogoManager::getInstance().deinit();
+    // Deinitialize Logo Manager
+    AssetManagement::LogoManager::getInstance().deinit();
 
     // Shutdown messaging system
     Messaging::shutdownMessaging();

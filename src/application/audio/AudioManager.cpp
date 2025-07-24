@@ -1,6 +1,6 @@
 #include "AudioManager.h"
 #include "../../hardware/DeviceManager.h"
-#include "../../logo/SimpleLogoManager.h"
+#include "../../logo/LogoManager.h"
 #include "../../messaging/Message.h"
 #include "ManagerMacros.h"
 #include "ui/ui.h"
@@ -65,9 +65,9 @@ bool AudioManager::init() {
 
           // Auto-request logo for this process if we don't have it
           if (!level.processName.isEmpty() && 
-              !SimpleLogoManager::getInstance().hasLogo(level.processName)) {
+              !AssetManagement::LogoManager::getInstance().hasLogo(level.processName)) {
             ESP_LOGD(TAG, "Auto-requesting logo for session: %s", level.processName.c_str());
-            SimpleLogoManager::getInstance().requestLogo(
+            AssetManagement::LogoManager::getInstance().requestLogo(
                 level.processName,
                 [processName = level.processName](bool success, uint8_t* data, size_t size, const String& error) {
                   if (success) {
@@ -991,14 +991,14 @@ void AudioManager::requestLogosForNewProcesses() {
     }
     
     // Check if logo already exists
-    if (SimpleLogoManager::getInstance().hasLogo(processName)) {
+    if (AssetManagement::LogoManager::getInstance().hasLogo(processName)) {
       continue; // Already have logo
     }
     
     // Request logo for this process
     ESP_LOGI(TAG, "Auto-requesting logo for new process: %s", processName.c_str());
     
-    bool requested = SimpleLogoManager::getInstance().requestLogo(
+    bool requested = AssetManagement::LogoManager::getInstance().requestLogo(
         processName,
         [processName](bool success, uint8_t* data, size_t size, const String& error) {
           if (success) {

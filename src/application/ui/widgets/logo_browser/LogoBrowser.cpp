@@ -1,4 +1,4 @@
-#include "../../../../logo/SimpleLogoManager.h"
+#include "../../../../logo/LogoManager.h"
 #include <vector>
 #include <string>
 #include <cstring>
@@ -105,10 +105,10 @@ extern "C" {
  */
 void logo_browser_scan_logos(void) {
     // Force SimpleLogoManager to scan
-    SimpleLogoManager::getInstance().scanLogosOnce();
+    AssetManagement::LogoManager::getInstance().scanLogosOnce();
     
     // Get all logos
-    int totalCount = SimpleLogoManager::getInstance().getTotalLogoCount();
+    int totalCount = AssetManagement::LogoManager::getInstance().getTotalLogoCount();
     
     // Update cache
     g_logoCache.invalidate();
@@ -117,7 +117,7 @@ void logo_browser_scan_logos(void) {
     // Batch fetch all logos efficiently
     int pageSize = 50;  // Fetch in chunks
     for (int page = 0; page * pageSize < totalCount; page++) {
-        auto logos = SimpleLogoManager::getInstance().getPagedLogos(page, pageSize);
+        auto logos = AssetManagement::LogoManager::getInstance().getPagedLogos(page, pageSize);
         for (const auto& logo : logos) {
             g_logoCache.allLogos.push_back(logo);
             if (g_logoCache.allLogos.size() >= CACHE_SIZE) {
@@ -173,7 +173,7 @@ void logo_browser_get_lvgl_path(const char* path, char* lvglPath, size_t maxLen)
     if (!path || !lvglPath) return;
     
     // Use SimpleLogoManager for consistency
-    String result = SimpleLogoManager::getInstance().getLogoLVGLPath(String(path));
+    String result = AssetManagement::LogoManager::getInstance().getLogoLVGLPath(String(path));
     strncpy(lvglPath, result.c_str(), maxLen - 1);
     lvglPath[maxLen - 1] = '\0';
 }

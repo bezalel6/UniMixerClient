@@ -1,7 +1,7 @@
 #include "LogoViewerScreenHandler.h"
 #include "LogoBrowser.h"
 #include "../../../../ui/ui.h"
-#include "../../../../logo/SimpleLogoManager.h"
+#include "../../../../logo/LogoManager.h"
 #include <esp_log.h>
 
 extern "C" {
@@ -70,7 +70,7 @@ void LogoViewerScreenHandler::initializeLogoBrowser(lv_obj_t* screen) {
         lv_obj_set_pos(logoBrowserInstance, 0, 60);
         
         // Scan for logos
-        SimpleLogoManager::getInstance().scanLogosOnce();
+        AssetManagement::LogoManager::getInstance().scanLogosOnce();
         int logoCount = logo_browser_scan_directory(logoBrowserInstance, "/logos");
         
         ESP_LOGI(TAG, "Logo browser initialized with %d logos", logoCount);

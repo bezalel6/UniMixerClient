@@ -1,5 +1,5 @@
 #include "AudioUI.h"
-#include "../../logo/SimpleLogoManager.h"
+#include "../../logo/LogoManager.h"
 #include "UiEventHandlers.h"
 #include "ui/screens/ui_screenMain.h"
 #include "VolumeWidgetMacros.h"
