@@ -32,13 +32,9 @@ public:
     // Core operations
     bool requestLogo(const String& processName, LogoCallback callback);
     bool hasLogo(const String& processName);
-    bool deleteLogo(const String& processName);
     
     // Get path for LVGL (S:/logos/processName.png)
     String getLVGLPath(const String& processName);
-    
-    // Status
-    String getStatus() const;
 
 private:
     SimpleLogoManager() = default;

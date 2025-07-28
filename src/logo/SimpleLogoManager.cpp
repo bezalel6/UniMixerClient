@@ -155,28 +155,8 @@ bool SimpleLogoManager::hasLogo(const String &processName) {
     return Hardware::SD::fileExists(filePath.c_str());
 }
 
-bool SimpleLogoManager::deleteLogo(const String &processName) {
-    if (!initialized)
-        return false;
-    String filePath = getLogoPath(sanitizeProcessName(processName));
-    Hardware::SD::SDFileResult result =
-        Hardware::SD::deleteFile(filePath.c_str());
-    return result.success;
-}
-
 String SimpleLogoManager::getLVGLPath(const String &processName) {
     return "S:" + getLogoPath(sanitizeProcessName(processName));
-}
-
-String SimpleLogoManager::getStatus() const {
-    String status = "SimpleLogoManager Status:\n";
-    status += "- Initialized: " + String(initialized ? "Yes" : "No") + "\n";
-    status += "- Pending requests: " + String(pendingRequests.size()) + "\n";
-    status += "- Requests submitted: " + String(requestsSubmitted) + "\n";
-    status += "- Responses received: " + String(responsesReceived) + "\n";
-    status += "- Requests timed out: " + String(requestsTimedOut) + "\n";
-    status += "- Requests failed: " + String(requestsFailed) + "\n";
-    return status;
 }
 
 void SimpleLogoManager::handleAssetResponse(const Messaging::Message &msg) {
