@@ -1,5 +1,5 @@
 #include "SDManager.h"
-#include "../display/LVGLSDFilesystem.h"
+// Display module dependencies removed for better separation of concerns
 #include "DeviceManager.h"
 #include <esp_log.h>
 #include <esp_task_wdt.h>
@@ -73,8 +73,7 @@ void deinit(void) {
     return;
   }
 
-  // Deinitialize LVGL filesystem first
-  deinitLVGLFilesystem();
+  // LVGL filesystem cleanup is now handled by Display module
 
   // Unmount card if mounted
   if (cardInfo.status == SD_STATUS_MOUNTED) {
@@ -127,8 +126,7 @@ void update(void) {
     }
   }
 
-  // Update LVGL filesystem state based on SD card state changes
-  updateLVGLFilesystem();
+  // LVGL filesystem updates are now handled by Display module
 }
 
 bool mount(void) {
@@ -156,12 +154,8 @@ bool mount(void) {
 
       // Create essential directory structure
       ensureDirectory("/logos");
-      ensureDirectory("/logos/files");
-      ensureDirectory("/logos/mappings");
-      ensureDirectory("/logos/metadata");
 
-      // Note: LVGL filesystem initialization is deferred until LVGL is ready
-      // Call initLVGLFilesystem() manually after Display::init() if needed
+      // LVGL filesystem initialization is now handled by Display module
 
       return true;
     }
@@ -181,8 +175,7 @@ void unmount(void) {
   ESP_LOGI(TAG, "Unmounting SD card");
 
   if (cardInfo.status == SD_STATUS_MOUNTED) {
-    // Deinitialize LVGL filesystem before unmounting SD card
-    deinitLVGLFilesystem();
+    // LVGL filesystem cleanup is now handled by Display module
 
     ::SD.end();
     RESET_CARD_INFO(cardInfo);
@@ -558,43 +551,6 @@ SDFileResult readFile(const char *path, char *buffer, size_t maxLength) {
   return result;
 }
 
-SDFileResult readBinaryFile(const char *path, uint8_t *buffer,
-                            size_t maxLength) {
-  if (!sdOperationMutex ||
-      xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
-    return createFileResult(false, 0, "Failed to acquire SD mutex");
-  }
-
-  SDFileResult result;
-
-  if (!isMounted() || !path || !buffer || maxLength == 0) {
-    result = createFileResult(false, 0, "Invalid parameters");
-    xSemaphoreGive(sdOperationMutex);
-    return result;
-  }
-
-  ESP_LOGI(TAG, "Reading binary file: %s", path);
-
-  File file = ::SD.open(path, FILE_READ);
-  if (!file) {
-    result = createFileResult(false, 0, "Failed to open binary file");
-    xSemaphoreGive(sdOperationMutex);
-    return result;
-  }
-
-  size_t bytesToRead = min((size_t)file.size(), maxLength);
-  size_t bytesRead = file.readBytes((char *)buffer, bytesToRead);
-
-  file.close();
-  cardInfo.set(cardInfo.lastActivity, Hardware::Device::getMillis());
-
-  ESP_LOGI(TAG, "Binary file read successfully: %zu bytes", bytesRead);
-  result = createFileResult(true, bytesRead, nullptr);
-
-  xSemaphoreGive(sdOperationMutex);
-  return result;
-}
-
 SDFileResult writeFile(const char *path, const char *data, bool append) {
   if (!sdOperationMutex ||
       xSemaphoreTake(sdOperationMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
@@ -911,88 +867,15 @@ void cleanup(void) {
   }
 }
 
-// LVGL SD filesystem management
-bool initLVGLFilesystem(void) {
-  ESP_LOGI(TAG, "Initializing LVGL SD filesystem driver");
-
-  if (cardInfo.isLVGLReady()) {
-    ESP_LOGW(TAG, "LVGL filesystem already initialized");
-    return true;
-  }
-
-  if (!isMounted()) {
-    ESP_LOGW(TAG, "Cannot initialize LVGL filesystem: SD card not mounted");
-    return false;
-  }
-
-  if (Display::LVGLSDFilesystem::init()) {
-    cardInfo.setStateFlag(SD_STATE_LVGL_FILESYSTEM_READY);
-    cardInfo.setStateFlag(SD_STATE_LAST_SD_MOUNTED);
-    ESP_LOGI(TAG, "LVGL SD filesystem driver initialized successfully");
-    return true;
-  } else {
-    ESP_LOGE(TAG, "Failed to initialize LVGL SD filesystem driver");
-    return false;
-  }
-}
-
-void deinitLVGLFilesystem(void) {
-  if (cardInfo.isLVGLReady()) {
-    ESP_LOGI(TAG, "Deinitializing LVGL SD filesystem driver");
-    Display::LVGLSDFilesystem::deinit();
-    cardInfo.clearStateFlag(SD_STATE_LVGL_FILESYSTEM_READY);
-    cardInfo.clearStateFlag(SD_STATE_LAST_SD_MOUNTED);
-  }
-}
-
-bool isLVGLFilesystemReady(void) {
-  return cardInfo.isLVGLReady() && isMounted();
-}
-
-void updateLVGLFilesystem(void) {
-  bool currentSDMounted = isMounted();
-
-  // Check if SD card state has changed
-  if (currentSDMounted != cardInfo.wasLastSDMounted()) {
-    ESP_LOGI(
-        TAG,
-        "SD card state changed: mounted=%s, LVGL filesystem initialized=%s",
-        currentSDMounted ? "YES" : "NO", cardInfo.isLVGLReady() ? "YES" : "NO");
-
-    if (currentSDMounted) {
-      // SD card was mounted - initialize LVGL filesystem if not already done
-      if (!cardInfo.isLVGLReady()) {
-        // Check if LVGL is ready before trying to initialize filesystem
-        lv_disp_t *disp = lv_disp_get_default();
-        if (disp != NULL) {
-          ESP_LOGI(
-              TAG,
-              "SD card mounted and LVGL ready, initializing LVGL filesystem");
-          initLVGLFilesystem();
-        } else {
-          ESP_LOGD(TAG, "SD card mounted but LVGL not ready yet, deferring "
-                        "LVGL filesystem initialization");
-        }
-      }
-    } else {
-      // SD card was unmounted - deinitialize LVGL filesystem
-      if (cardInfo.isLVGLReady()) {
-        ESP_LOGI(TAG, "SD card unmounted, deinitializing LVGL filesystem");
-        deinitLVGLFilesystem();
-      }
-    }
-
-    cardInfo.setStateFlag(SD_STATE_LAST_SD_MOUNTED, currentSDMounted);
-  }
-}
+// LVGL filesystem management has been moved to the Display module
+// SDManager now focuses solely on SD card operations
+// Call Display::LVGLSDFilesystem methods directly where needed
 
 // Private function implementations
 static void updateCardInfo(void) {
   if (!isMounted()) {
     // Preserve the current state flags when not mounted
     bool initComplete = cardInfo.isInitialized();
-    bool lvglInit = cardInfo.isLVGLReady();
-    bool lastSDState = cardInfo.wasLastSDMounted();
     unsigned long lastMount = cardInfo.lastMountAttempt;
     unsigned long lastAct = cardInfo.lastActivity;
     SDStatus currentStat = cardInfo.status;
@@ -1000,8 +883,6 @@ static void updateCardInfo(void) {
     RESET_CARD_INFO(cardInfo);
     cardInfo.set(cardInfo.status, currentStat);
     cardInfo.setStateFlag(SD_STATE_INITIALIZED, initComplete);
-    cardInfo.setStateFlag(SD_STATE_LVGL_FILESYSTEM_READY, lvglInit);
-    cardInfo.setStateFlag(SD_STATE_LAST_SD_MOUNTED, lastSDState);
     cardInfo.set(cardInfo.lastMountAttempt, lastMount);
     cardInfo.set(cardInfo.lastActivity, lastAct);
     return;

@@ -34,9 +34,7 @@ bool ensureDirectory(const char *path);
 typedef enum {
   SD_STATE_NONE = 0,
   SD_STATE_INITIALIZED = 1 << 0,
-  SD_STATE_MOUNTED = 1 << 1,
-  SD_STATE_LVGL_FILESYSTEM_READY = 1 << 2,
-  SD_STATE_LAST_SD_MOUNTED = 1 << 3
+  SD_STATE_MOUNTED = 1 << 1
 } SDStateFlags;
 
 // Macro to safely reset cardInfo without corrupting vtable
@@ -74,12 +72,6 @@ typedef struct : public Hashable {
   }
   inline bool isMounted() const {
     return IS(this->stateFlags, SD_STATE_MOUNTED);
-  }
-  inline bool isLVGLReady() const {
-    return IS(this->stateFlags, SD_STATE_LVGL_FILESYSTEM_READY);
-  }
-  inline bool wasLastSDMounted() const {
-    return IS(this->stateFlags, SD_STATE_LAST_SD_MOUNTED);
   }
 
   // Helper methods for flag manipulation
@@ -154,11 +146,7 @@ bool format(void);
 void printCardInfo(void);
 void cleanup(void);
 
-// LVGL SD filesystem management
-bool initLVGLFilesystem(void);
-void deinitLVGLFilesystem(void);
-bool isLVGLFilesystemReady(void);
-void updateLVGLFilesystem(void);
+// LVGL filesystem management removed - now handled by Display module
 
 // File system constants
 static const char *ROOT_PATH = "/";

@@ -3,6 +3,7 @@
 #include "../application/audio/AudioUI.h"
 #include "../application/ui/LVGLMessageHandler.h"
 #include "../display/DisplayManager.h"
+#include "../display/LVGLSDFilesystem.h"  // For LVGL filesystem initialization
 #include "../hardware/DeviceManager.h"
 #include "../hardware/SDManager.h"
 #include "../logo/SimpleLogoManager.h"
@@ -96,13 +97,16 @@ bool init(void) {
     INIT_STEP("Checking SD filesystem", {
         if (Hardware::SD::isMounted()) {
             ESP_LOGI(TAG, "Initializing LVGL SD filesystem...");
-            if (!Hardware::SD::initLVGLFilesystem()) {
+            if (!Display::LVGLSDFilesystem::init()) {
                 ESP_LOGW(TAG,
                          "Failed to initialize LVGL SD filesystem - SD file "
                          "access from UI will be unavailable");
             } else {
                 ESP_LOGI(TAG, "LVGL SD filesystem initialized successfully");
             }
+        } else {
+            ESP_LOGW(TAG, "SD card not mounted - SD file access from UI will be "
+                          "unavailable");
         }
     });
 
