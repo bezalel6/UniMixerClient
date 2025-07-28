@@ -216,4 +216,4 @@ Extensive documentation in `docs/` covering:
 ## Deployment Notes
 
 ### Build and Upload Workflow
-- **Important Development Tip**: Running a pio build/run is NEVER correct. you should instead always use an upload.
+- **Important Development Flow**: Running *JUST* a pio build/run is NEVER correct. you should always attempt an upload to keep a connected device updated along with the codebase.
