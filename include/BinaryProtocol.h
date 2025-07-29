@@ -23,7 +23,7 @@ namespace BinaryProtocol {
 #define ESCAPE_MARKER MSG_ESCAPE_CHAR
 #define ESCAPE_XOR MSG_ESCAPE_XOR
 
-static const uint32_t MAX_PAYLOAD_SIZE = 4096 * 2; // 8192 bytes
+static const uint32_t MAX_PAYLOAD_SIZE = 16384; // 16KB - matches server message limit
 static const uint8_t HEADER_SIZE = 7; // LENGTH(4) + CRC(2) + TYPE(1)
 static const uint32_t MESSAGE_TIMEOUT_MS = 1000;
 

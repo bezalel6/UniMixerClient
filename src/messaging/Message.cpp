@@ -277,26 +277,38 @@ Message Message::fromJson(const String &json) {
         SAFE_JSON_EXTRACT_CSTRING(doc, "processName", msg.data.asset.processName,
                                   sizeof(msg.data.asset.processName), "");
     } else if (msg.type == TYPE_ASSET_RESPONSE) {
+        ESP_LOGW(TAG, "Parsing ASSET_RESPONSE message");
         SAFE_JSON_EXTRACT_CSTRING(doc, "processName", msg.data.asset.processName,
                                   sizeof(msg.data.asset.processName), "");
+        ESP_LOGW(TAG, "Asset response - processName: %s", msg.data.asset.processName);
         SAFE_JSON_EXTRACT_BOOL(doc, "success", msg.data.asset.success, false);
+        ESP_LOGW(TAG, "Asset response - success: %d", msg.data.asset.success);
         SAFE_JSON_EXTRACT_CSTRING(doc, "errorMessage", msg.data.asset.errorMessage,
                                   sizeof(msg.data.asset.errorMessage), "");
+        if (strlen(msg.data.asset.errorMessage) > 0) {
+            ESP_LOGW(TAG, "Asset response - errorMessage: %s", msg.data.asset.errorMessage);
+        }
 
         // Use the shared static buffer for base64 data
+        ESP_LOGW(TAG, "Parsing asset data - checking for assetData field");
         if (doc.containsKey("assetData") && doc["assetData"].is<const char *>()) {
             const char *base64Str = doc["assetData"];
             size_t len = strlen(base64Str);
+            ESP_LOGW(TAG, "Found assetData field, length: %d bytes, buffer size: %d bytes", len, sizeof(sharedAssetBuffer));
             if (len < sizeof(sharedAssetBuffer)) {
                 msg.data.asset.assetDataBase64 = getAssetBuffer();
                 strcpy(msg.data.asset.assetDataBase64, base64Str);
                 msg.data.asset.assetDataLength = len;
+                ESP_LOGW(TAG, "Asset data copied to buffer successfully, first 32 chars: %.32s", base64Str);
             } else {
-                ESP_LOGW(TAG, "Asset data too large: %d bytes", len);
+                ESP_LOGW(TAG, "Asset data too large: %d bytes (max: %d bytes)", len, sizeof(sharedAssetBuffer));
                 msg.data.asset.assetDataBase64 = nullptr;
                 msg.data.asset.assetDataLength = 0;
             }
         } else {
+            ESP_LOGW(TAG, "No assetData field found or not a string - containsKey: %d, is<const char*>: %d", 
+                     doc.containsKey("assetData"), 
+                     doc.containsKey("assetData") ? doc["assetData"].is<const char *>() : 0);
             msg.data.asset.assetDataBase64 = nullptr;
             msg.data.asset.assetDataLength = 0;
         }
@@ -305,6 +317,8 @@ Message Message::fromJson(const String &json) {
         SAFE_JSON_EXTRACT_INT(doc, "height", msg.data.asset.height, 0);
         SAFE_JSON_EXTRACT_CSTRING(doc, "format", msg.data.asset.format,
                                   sizeof(msg.data.asset.format), "");
+        ESP_LOGW(TAG, "Asset response - width: %d, height: %d, format: %s", 
+                 msg.data.asset.width, msg.data.asset.height, msg.data.asset.format);
     } else if (msg.type == TYPE_ASSET_LOCAL_REF) {
         SAFE_JSON_EXTRACT_CSTRING(doc, "processName", msg.data.localAsset.processName,
                                   sizeof(msg.data.localAsset.processName), "");

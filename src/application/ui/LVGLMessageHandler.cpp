@@ -23,667 +23,26 @@
  */
 
 #include "LVGLMessageHandler.h"
+#include "MessageHandlerRegistry.h"
+#include "system/SystemStateOverlay.h"
+#include "../system/SDCardOperations.h"
 #include "../../core/TaskManager.h"
-#include "BootManager.h"
-#include "../../hardware/SDManager.h"
 #include "../../hardware/DeviceManager.h"
-#include "../../display/DisplayManager.h"
 #include "../audio/AudioManager.h"
-#include "DebugUtils.h"
-#include "BuildInfo.h"
-#include "dialogs/UniversalDialog.h"
-#include "VolumeWidgetMacros.h"
-#include <cstring>
-#include <map>
 #include <esp_log.h>
 #include <lvgl.h>
 #include <ui/ui.h>
-#include <functional>
-#include <unordered_map>
+#include <cstring>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-// BULLETPROOF: External UI screen declarations
+// External UI screen declarations
 extern lv_obj_t *ui_screenMain;
 extern lv_obj_t *ui_screenDebug;
-
-// State overview overlay elements
-static lv_obj_t *state_overlay = NULL;
-static lv_obj_t *state_overlay_bg = NULL;
-static lv_obj_t *state_overlay_panel = NULL;
-static lv_obj_t *state_system_label = NULL;
-static lv_obj_t *state_network_label = NULL;
-static lv_obj_t *state_audio_label = NULL;
-static lv_obj_t *state_heap_bar = NULL;
-static lv_obj_t *state_wifi_bar = NULL;
-
-// SD format dialog elements
-static lv_obj_t *format_dialog = NULL;
-static lv_obj_t *format_dialog_panel = NULL;
-static lv_obj_t *format_progress_bar = NULL;
-static lv_obj_t *format_status_label = NULL;
 
 namespace Application {
 namespace LVGLMessageHandler {
 static const char *TAG = "LVGLMessageHandler";
-
-// PERFORMANCE: Message handler callback type
-using MessageHandler = std::function<void(const LVGLMessage_t *)>;
-
-// PERFORMANCE: Single message type to handler mapping for O(1) lookup
-static std::unordered_map<int, MessageHandler> messageHandlers;
-
-// PERFORMANCE: Message type names for debugging - static array for O(1) lookup
-static const char *messageTypeNames[] = {
-    [MSG_UPDATE_FPS_DISPLAY] = "FPS_DISPLAY",
-    [MSG_UPDATE_BUILD_TIME_DISPLAY] = "BUILD_TIME_DISPLAY",
-    [MSG_SCREEN_CHANGE] = "SCREEN_CHANGE",
-    [MSG_REQUEST_DATA] = "REQUEST_DATA",
-    [MSG_UPDATE_MASTER_VOLUME] = "MASTER_VOLUME",
-    [MSG_UPDATE_SINGLE_VOLUME] = "SINGLE_VOLUME",
-    [MSG_UPDATE_BALANCE_VOLUME] = "BALANCE_VOLUME",
-    [MSG_UPDATE_MASTER_DEVICE] = "MASTER_DEVICE",
-    [MSG_UPDATE_SINGLE_DEVICE] = "SINGLE_DEVICE",
-    [MSG_UPDATE_BALANCE_DEVICES] = "BALANCE_DEVICES",
-    [MSG_SHOW_STATE_OVERVIEW] = "SHOW_STATE_OVERVIEW",
-    [MSG_UPDATE_STATE_OVERVIEW] = "UPDATE_STATE_OVERVIEW",
-    [MSG_HIDE_STATE_OVERVIEW] = "HIDE_STATE_OVERVIEW",
-    [MSG_UPDATE_SD_STATUS] = "SD_STATUS",
-    [MSG_FORMAT_SD_REQUEST] = "FORMAT_SD_REQUEST",
-    [MSG_FORMAT_SD_CONFIRM] = "FORMAT_SD_CONFIRM",
-    [MSG_FORMAT_SD_PROGRESS] = "FORMAT_SD_PROGRESS",
-    [MSG_FORMAT_SD_COMPLETE] = "FORMAT_SD_COMPLETE",
-};
-
-// PERFORMANCE: O(1) message type name lookup
-static const char *getMessageTypeName(int messageType) {
-    if (messageType >= 0 && messageType < (sizeof(messageTypeNames) / sizeof(messageTypeNames[0])) && messageTypeNames[messageType]) {
-        return messageTypeNames[messageType];
-    }
-    return "UNKNOWN";
-}
-
-// PERFORMANCE: Fast volume extraction using function pointers
-using VolumeExtractor = int (*)(const LVGLMessage_t *);
-
-static int extractMasterVolume(const LVGLMessage_t *msg) { return msg->data.master_volume.volume; }
-static int extractSingleVolume(const LVGLMessage_t *msg) { return msg->data.single_volume.volume; }
-static int extractBalanceVolume(const LVGLMessage_t *msg) { return msg->data.balance_volume.volume; }
-
-static std::unordered_map<int, VolumeExtractor> volumeExtractors = {
-    {MSG_UPDATE_MASTER_VOLUME, extractMasterVolume},
-    {MSG_UPDATE_SINGLE_VOLUME, extractSingleVolume},
-    {MSG_UPDATE_BALANCE_VOLUME, extractBalanceVolume}};
-
-// PERFORMANCE: Fast volume update function
-static inline void updateVolumeSlider(lv_obj_t *slider, const LVGLMessage_t *msg) {
-    if (!slider) return;
-
-    auto extractor = volumeExtractors.find(msg->type);
-    if (extractor != volumeExtractors.end()) {
-        int volume = extractor->second(msg);
-        VOLUME_WIDGET_SET_VALUE(slider, volume);
-        lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, NULL);
-    }
-}
-static void handleFpsDisplay(const LVGLMessage_t *msg) {
-    if (ui_lblFPS) {
-        // PERFORMANCE: Use static buffer to avoid stack allocation overhead
-        static char fpsText[64];
-        float actualFps = msg->data.fps_display.fps;  // Temporary fallback
-        snprintf(fpsText, sizeof(fpsText), "FPS: %.1f/%.1f",
-                 actualFps, msg->data.fps_display.fps);
-        lv_label_set_text(ui_lblFPS, fpsText);
-    }
-}
-
-static void handleMasterVolume(const LVGLMessage_t *msg) {
-    updateVolumeSlider(ui_primaryVolumeSlider, msg);
-}
-
-static void handleSingleVolume(const LVGLMessage_t *msg) {
-    updateVolumeSlider(ui_singleVolumeSlider, msg);
-}
-
-static void handleBalanceVolume(const LVGLMessage_t *msg) {
-    updateVolumeSlider(ui_balanceVolumeSlider, msg);
-}
-
-static void handleMasterDevice(const LVGLMessage_t *msg) {
-    if (ui_lblPrimaryAudioDeviceValue) {
-        lv_label_set_text(ui_lblPrimaryAudioDeviceValue, msg->data.master_device.device_name);
-    }
-}
-
-static void handleBuildTimeDisplay(const LVGLMessage_t *msg) {
-    if (ui_lblBuildTimeValue) {
-        lv_label_set_text(ui_lblBuildTimeValue, getBuildTimeAndDate());
-    }
-}
-
-// PERFORMANCE: Complex message handlers
-
-static void handleSingleDevice(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "Single device update requested: %s", msg->data.single_device.device_name);
-}
-
-static void handleBalanceDevices(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.balance_devices;
-    ESP_LOGI(TAG, "Balance devices update requested: %s, %s", data.device1_name, data.device2_name);
-}
-
-static void handleScreenChange(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.screen_change;
-    if (data.screen) {
-        lv_screen_load_anim_t anim = static_cast<lv_screen_load_anim_t>(data.anim_type);
-        _ui_screen_change((lv_obj_t **)&data.screen, anim, data.time, data.delay, NULL);
-    }
-}
-
-static void handleRequestData(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "Data request triggered from UI");
-}
-
-static void handleShowStateOverview(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "Settings: Showing comprehensive system overview");
-
-    // Clean up any existing overlay first
-    if (state_overlay && lv_obj_is_valid(state_overlay)) {
-        lv_obj_del(state_overlay);
-        state_overlay = NULL;
-    }
-
-    // Create the comprehensive system overview overlay
-    lv_obj_t *currentScreen = lv_scr_act();
-    if (currentScreen) {
-        // Create main overlay container - larger for comprehensive info
-        state_overlay = lv_obj_create(currentScreen);
-        lv_obj_set_size(state_overlay, 700, 450);
-        lv_obj_set_align(state_overlay, LV_ALIGN_CENTER);
-
-        // Style the overlay
-        lv_obj_set_style_bg_color(state_overlay, lv_color_hex(0x001122), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(state_overlay, 250, LV_PART_MAIN);
-        lv_obj_set_style_border_color(state_overlay, lv_color_hex(0x0088FF), LV_PART_MAIN);
-        lv_obj_set_style_border_width(state_overlay, 3, LV_PART_MAIN);
-        lv_obj_set_style_radius(state_overlay, 20, LV_PART_MAIN);
-        lv_obj_set_style_shadow_width(state_overlay, 30, LV_PART_MAIN);
-        lv_obj_set_style_shadow_opa(state_overlay, 150, LV_PART_MAIN);
-
-        // Create title label
-        lv_obj_t *title_label = lv_label_create(state_overlay);
-        lv_label_set_text(title_label, "SYSTEM OVERVIEW");
-        lv_obj_set_align(title_label, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(title_label, 15);
-        lv_obj_set_style_text_color(title_label, lv_color_hex(0x00CCFF), LV_PART_MAIN);
-        lv_obj_set_style_text_font(title_label, &lv_font_montserrat_16, LV_PART_MAIN);
-
-        // Create close button
-        lv_obj_t *close_btn = lv_btn_create(state_overlay);
-        lv_obj_set_size(close_btn, 70, 35);
-        lv_obj_set_align(close_btn, LV_ALIGN_TOP_RIGHT);
-        lv_obj_set_pos(close_btn, -15, 10);
-        lv_obj_set_style_bg_color(close_btn, lv_color_hex(0xFF3333), LV_PART_MAIN);
-
-        lv_obj_t *close_label = lv_label_create(close_btn);
-        lv_label_set_text(close_label, "CLOSE");
-        lv_obj_center(close_label);
-        lv_obj_set_style_text_color(close_label, lv_color_white(), LV_PART_MAIN);
-
-        // Add click event to close button
-        lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                hideStateOverview();
-            } }, LV_EVENT_CLICKED, NULL);
-
-        // Create three-column layout
-        lv_obj_t *main_container = lv_obj_create(state_overlay);
-        lv_obj_remove_style_all(main_container);
-        lv_obj_set_size(main_container, 670, 350);
-        lv_obj_set_align(main_container, LV_ALIGN_CENTER);
-        lv_obj_set_y(main_container, 15);
-        lv_obj_set_flex_flow(main_container, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(main_container, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
-        // Left Column - System Information
-        lv_obj_t *left_col = lv_obj_create(main_container);
-        lv_obj_set_size(left_col, 200, 340);
-        lv_obj_set_style_bg_color(left_col, lv_color_hex(0x002244), LV_PART_MAIN);
-        lv_obj_set_style_border_width(left_col, 1, LV_PART_MAIN);
-        lv_obj_set_style_border_color(left_col, lv_color_hex(0x0066AA), LV_PART_MAIN);
-        lv_obj_set_style_radius(left_col, 10, LV_PART_MAIN);
-
-        lv_obj_t *sys_title = lv_label_create(left_col);
-        lv_label_set_text(sys_title, "SYSTEM");
-        lv_obj_set_align(sys_title, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(sys_title, 10);
-        lv_obj_set_style_text_color(sys_title, lv_color_hex(0x00FF88), LV_PART_MAIN);
-        lv_obj_set_style_text_font(sys_title, &lv_font_montserrat_14, LV_PART_MAIN);
-
-        state_system_label = lv_label_create(left_col);
-        lv_obj_set_align(state_system_label, LV_ALIGN_TOP_LEFT);
-        lv_obj_set_pos(state_system_label, 10, 40);
-        lv_obj_set_size(state_system_label, 180, 280);
-        lv_obj_set_style_text_color(state_system_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(state_system_label, &lv_font_montserrat_12, LV_PART_MAIN);
-        lv_label_set_long_mode(state_system_label, LV_LABEL_LONG_WRAP);
-
-        // Middle Column - Network & Connectivity
-        lv_obj_t *mid_col = lv_obj_create(main_container);
-        lv_obj_set_size(mid_col, 200, 340);
-        lv_obj_set_style_bg_color(mid_col, lv_color_hex(0x002244), LV_PART_MAIN);
-        lv_obj_set_style_border_width(mid_col, 1, LV_PART_MAIN);
-        lv_obj_set_style_border_color(mid_col, lv_color_hex(0x0066AA), LV_PART_MAIN);
-        lv_obj_set_style_radius(mid_col, 10, LV_PART_MAIN);
-
-        lv_obj_t *net_title = lv_label_create(mid_col);
-        lv_label_set_text(net_title, "NETWORK");
-        lv_obj_set_align(net_title, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(net_title, 10);
-        lv_obj_set_style_text_color(net_title, lv_color_hex(0x00FF88), LV_PART_MAIN);
-        lv_obj_set_style_text_font(net_title, &lv_font_montserrat_14, LV_PART_MAIN);
-
-        state_network_label = lv_label_create(mid_col);
-        lv_obj_set_align(state_network_label, LV_ALIGN_TOP_LEFT);
-        lv_obj_set_pos(state_network_label, 10, 40);
-        lv_obj_set_size(state_network_label, 180, 280);
-        lv_obj_set_style_text_color(state_network_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(state_network_label, &lv_font_montserrat_12, LV_PART_MAIN);
-        lv_label_set_long_mode(state_network_label, LV_LABEL_LONG_WRAP);
-
-        // Right Column - Audio & Actions
-        lv_obj_t *right_col = lv_obj_create(main_container);
-        lv_obj_set_size(right_col, 240, 340);
-        lv_obj_set_style_bg_color(right_col, lv_color_hex(0x002244), LV_PART_MAIN);
-        lv_obj_set_style_border_width(right_col, 1, LV_PART_MAIN);
-        lv_obj_set_style_border_color(right_col, lv_color_hex(0x0066AA), LV_PART_MAIN);
-        lv_obj_set_style_radius(right_col, 10, LV_PART_MAIN);
-
-        lv_obj_t *audio_title = lv_label_create(right_col);
-        lv_label_set_text(audio_title, "AUDIO & ACTIONS");
-        lv_obj_set_align(audio_title, LV_ALIGN_TOP_MID);
-        lv_obj_set_y(audio_title, 10);
-        lv_obj_set_style_text_color(audio_title, lv_color_hex(0x00FF88), LV_PART_MAIN);
-        lv_obj_set_style_text_font(audio_title, &lv_font_montserrat_14, LV_PART_MAIN);
-
-        state_audio_label = lv_label_create(right_col);
-        lv_obj_set_align(state_audio_label, LV_ALIGN_TOP_LEFT);
-        lv_obj_set_pos(state_audio_label, 10, 40);
-        lv_obj_set_size(state_audio_label, 220, 150);  // Reduced to make room for 4 buttons
-        lv_obj_set_style_text_color(state_audio_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(state_audio_label, &lv_font_montserrat_12, LV_PART_MAIN);
-        lv_label_set_long_mode(state_audio_label, LV_LABEL_LONG_WRAP);
-
-        // Action buttons in right column (expanded for 4 buttons)
-        lv_obj_t *actions_container = lv_obj_create(right_col);
-        lv_obj_remove_style_all(actions_container);
-        lv_obj_set_size(actions_container, 220, 140);  // Increased height for 4 buttons
-        lv_obj_set_align(actions_container, LV_ALIGN_BOTTOM_MID);
-        lv_obj_set_y(actions_container, -10);
-        lv_obj_set_flex_flow(actions_container, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(actions_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-        // FORMAT SD button
-        lv_obj_t *format_sd_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(format_sd_btn, 200, 32);  // Standardized for 4 buttons
-        lv_obj_set_style_bg_color(format_sd_btn, lv_color_hex(0xFF6600), LV_PART_MAIN);
-
-        lv_obj_t *format_label = lv_label_create(format_sd_btn);
-        lv_label_set_text(format_label, "FORMAT SD CARD");
-        lv_obj_center(format_label);
-        lv_obj_set_style_text_color(format_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(format_label, &lv_font_montserrat_12, LV_PART_MAIN);
-
-        lv_obj_add_event_cb(format_sd_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "FORMAT SD button clicked");
-                requestSDFormat();
-            } }, LV_EVENT_CLICKED, NULL);
-
-        // Restart button
-        lv_obj_t *restart_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(restart_btn, 200, 32);  // Standardized for 4 buttons
-        lv_obj_set_style_bg_color(restart_btn, lv_color_hex(0xFF3366), LV_PART_MAIN);
-
-        lv_obj_t *restart_label = lv_label_create(restart_btn);
-        lv_label_set_text(restart_label, "RESTART SYSTEM");
-        lv_obj_center(restart_label);
-        lv_obj_set_style_text_color(restart_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(restart_label, &lv_font_montserrat_12, LV_PART_MAIN);
-
-        lv_obj_add_event_cb(restart_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "RESTART button clicked - restarting in 2 seconds");
-                hideStateOverview();
-                vTaskDelay(pdMS_TO_TICKS(2000));
-                esp_restart();
-            } }, LV_EVENT_CLICKED, NULL);
-
-        // Refresh button
-        lv_obj_t *refresh_btn = lv_btn_create(actions_container);
-        lv_obj_set_size(refresh_btn, 200, 32);  // Standardized for 4 buttons
-        lv_obj_set_style_bg_color(refresh_btn, lv_color_hex(0x00AA66), LV_PART_MAIN);
-
-        lv_obj_t *refresh_label = lv_label_create(refresh_btn);
-        lv_label_set_text(refresh_label, "REFRESH DATA");
-        lv_obj_center(refresh_label);
-        lv_obj_set_style_text_color(refresh_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(refresh_label, &lv_font_montserrat_12, LV_PART_MAIN);
-
-        lv_obj_add_event_cb(refresh_btn, [](lv_event_t *e) {
-            if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-                ESP_LOGI(TAG, "REFRESH button clicked - updating overview");
-                updateStateOverview();
-            } }, LV_EVENT_CLICKED, NULL);
-
-        ESP_LOGI(TAG, "Settings: Comprehensive system overview created successfully");
-
-        // Trigger immediate update of the state data
-        updateStateOverview();
-    } else {
-        ESP_LOGE(TAG, "Settings: No current screen available for state overlay");
-    }
-}
-
-static void handleUpdateStateOverview(const LVGLMessage_t *msg) {
-    if (!state_overlay || !lv_obj_is_valid(state_overlay)) {
-        ESP_LOGW(TAG, "Settings: Update requested but no state overlay exists");
-        return;
-    }
-
-    const auto &data = msg->data.state_overview;
-    ESP_LOGI(TAG, "Settings: Updating state overview with current system data");
-
-    // Update system information
-    if (state_system_label && lv_obj_is_valid(state_system_label)) {
-        static char system_text[512];
-        uint32_t uptimeMinutes = data.uptime_ms / 60000;
-        uint32_t uptimeHours = uptimeMinutes / 60;
-        uint32_t uptime_display_min = uptimeMinutes % 60;
-
-        snprintf(system_text, sizeof(system_text),
-                 "Memory:\n"
-                 "  Free Heap: %u KB\n"
-                 "  Free PSRAM: %u KB\n\n"
-                 "Performance:\n"
-                 "  CPU Freq: %u MHz\n"
-                 "  Uptime: %uh %um\n\n"
-                 "Storage:\n"
-                 "  SD Card Status: Available\n"
-                 "  Format Support: Yes\n\n"
-                 "Hardware:\n"
-                 "  Touch: Responsive\n"
-                 "  Display: Active",
-                 data.free_heap / 1024,
-                 data.free_psram / 1024,
-                 data.cpu_freq,
-                 uptimeHours, uptime_display_min);
-        lv_label_set_text(state_system_label, system_text);
-    }
-
-    // Update network information
-    if (state_network_label && lv_obj_is_valid(state_network_label)) {
-        static char network_text[512];
-        const char *signal_strength = "Unknown";
-        if (data.wifi_rssi > -50)
-            signal_strength = "Excellent";
-        else if (data.wifi_rssi > -60)
-            signal_strength = "Good";
-        else if (data.wifi_rssi > -70)
-            signal_strength = "Fair";
-        else if (data.wifi_rssi > -80)
-            signal_strength = "Poor";
-        else
-            signal_strength = "Very Poor";
-
-        snprintf(network_text, sizeof(network_text),
-                 "WiFi Connection:\n"
-                 "  Status: %s\n"
-                 "  Signal: %s\n"
-                 "  RSSI: %d dBm\n\n"
-                 "Network:\n"
-                 "  IP Address: %s\n\n"
-                 "Services:\n"
-                 "  Serial: Active\n"
-                 "  Network: Not Available\n\n"
-                 "Protocol:\n"
-                 "  Message Bus: Active\n"
-                 "  Audio Streaming: OK",
-                 data.wifi_status, signal_strength, data.wifi_rssi,
-                 data.ip_address);
-        lv_label_set_text(state_network_label, network_text);
-    }
-
-    // Update audio information
-    if (state_audio_label && lv_obj_is_valid(state_audio_label)) {
-        static char audio_text[512];
-        const char *mute_indicator = data.main_device_muted ? " [MUTED]" : "";
-
-        snprintf(audio_text, sizeof(audio_text),
-                 "Current Tab: %s\n\n"
-                 "Primary Device:\n"
-                 "  Name: %s\n"
-                 "  Volume: %d%%%s\n\n"
-                 "Balance Mode:\n"
-                 "  Device 1: %s\n"
-                 "  Volume 1: %d%%%s\n"
-                 "  Device 2: %s\n"
-                 "  Volume 2: %d%%%s\n\n"
-                 "System Actions:\n"
-                 "  FORMAT SD: Erase all data\n"
-                 "  RESTART: Reboot device\n"
-                 "  REFRESH: Update info",
-                 data.current_tab,
-                 data.main_device, data.main_device_volume, mute_indicator,
-                 data.balance_device1, data.balance_device1_volume,
-                 data.balance_device1_muted ? " [MUTED]" : "",
-                 data.balance_device2, data.balance_device2_volume,
-                 data.balance_device2_muted ? " [MUTED]" : "");
-        lv_label_set_text(state_audio_label, audio_text);
-    }
-
-    ESP_LOGI(TAG, "Settings: State overview updated successfully");
-}
-
-static void handleHideStateOverview(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "Settings: Hiding state overview overlay");
-
-    if (state_overlay && lv_obj_is_valid(state_overlay)) {
-        lv_obj_del(state_overlay);
-        state_overlay = NULL;
-        state_system_label = NULL;
-        state_network_label = NULL;
-        state_audio_label = NULL;
-        ESP_LOGI(TAG, "Settings: State overview overlay hidden successfully");
-    } else {
-        ESP_LOGW(TAG, "Settings: Hide requested but no state overlay exists");
-    }
-}
-
-static void handleFormatSDRequest(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "SD Format: Showing confirmation dialog using Universal Dialog");
-
-    // Use the new Universal Dialog system for SD format confirmation
-    UI::Dialog::UniversalDialog::showWarning(
-        "FORMAT SD CARD",
-        "*** WARNING ***\n\n"
-        "This will PERMANENTLY ERASE\n"
-        "ALL DATA on the SD card!\n\n"
-        "This action CANNOT be undone.\n"
-        "Are you absolutely sure?",
-        []() {
-            // Confirmed - start format
-            ESP_LOGI(TAG, "SD Format: Confirmed by user - starting format");
-            confirmSDFormat();
-        },
-        []() {
-            // Cancelled
-            ESP_LOGI(TAG, "SD Format: Cancelled by user");
-        },
-        UI::Dialog::DialogSize::MEDIUM);
-}
-
-// Forward declaration for the SD format task
-static void sdFormatTask(void *parameter);
-
-static void handleFormatSDConfirm(const LVGLMessage_t *msg) {
-    ESP_LOGI(TAG, "SD Format: Starting format process using Universal Dialog");
-
-    // Use Universal Dialog system for progress dialog
-    UI::Dialog::ProgressConfig progressConfig;
-    progressConfig.title = "FORMATTING SD CARD";
-    progressConfig.message = "Initializing format...";
-    progressConfig.value = 0;
-    progressConfig.max = 100;
-    progressConfig.indeterminate = false;
-    progressConfig.cancellable = false;  // Don't allow cancellation during format
-
-    UI::Dialog::UniversalDialog::showProgress(progressConfig, UI::Dialog::DialogSize::MEDIUM);
-
-    ESP_LOGI(TAG, "SD Format: Progress dialog created, starting actual format task");
-
-    // Start the actual SD format process in a separate task
-    xTaskCreate(sdFormatTask, "SDFormatTask", 4096, NULL, tskIDLE_PRIORITY + 1, NULL);
-
-    // Initial progress update
-    updateSDFormatProgress(5, "Starting format operation...");
-}
-
-static void handleFormatSDProgress(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.sd_format;
-    ESP_LOGI(TAG, "SD Format: Progress update - %d%% - %s", data.progress, data.message);
-
-    // Update progress using Universal Dialog system
-    UI::Dialog::UniversalDialog::updateProgress(data.progress, data.message);
-}
-
-static void handleFormatSDComplete(const LVGLMessage_t *msg) {
-    const auto &data = msg->data.sd_format;
-    ESP_LOGI(TAG, "SD Format: Complete - Success: %s - %s", data.success ? "YES" : "NO", data.message);
-
-    // Close the progress dialog and show completion status
-    UI::Dialog::UniversalDialog::closeDialog();
-
-    // Show completion dialog based on success/failure
-    if (data.success) {
-        UI::Dialog::UniversalDialog::showInfo(
-            "Format Complete",
-            data.message,
-            nullptr,
-            UI::Dialog::DialogSize::MEDIUM);
-    } else {
-        UI::Dialog::UniversalDialog::showError(
-            "Format Failed",
-            data.message,
-            nullptr,
-            UI::Dialog::DialogSize::MEDIUM);
-    }
-}
-
-// SD Format Task Implementation
-static void sdFormatTask(void *parameter) {
-    ESP_LOGI(TAG, "SD Format Task: Starting SD card format operation");
-
-    bool formatSuccess = false;
-
-    // Phase 1: Preparation (5-15%)
-    updateSDFormatProgress(10, "Preparing for format...");
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Check if SD card is available
-    if (!Hardware::SD::isMounted()) {
-        ESP_LOGW(TAG, "SD Format Task: SD card not mounted, attempting to mount");
-        updateSDFormatProgress(15, "Mounting SD card...");
-
-        if (!Hardware::SD::mount()) {
-            ESP_LOGE(TAG, "SD Format Task: Failed to mount SD card");
-            completeSDFormat(false, "ERROR: Cannot access SD card");
-            vTaskDelete(NULL);
-            return;
-        }
-    }
-
-    // Phase 2: Pre-format checks (15-25%)
-    updateSDFormatProgress(20, "Verifying SD card...");
-    vTaskDelay(pdMS_TO_TICKS(300));
-
-    Hardware::SD::SDCardInfo cardInfo = Hardware::SD::getCardInfo();
-    if (cardInfo.cardType == CARD_NONE) {
-        ESP_LOGE(TAG, "SD Format Task: No SD card detected");
-        completeSDFormat(false, "ERROR: No SD card found");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "SD Format Task: Card detected - Type: %d, Size: %.2f MB",
-             cardInfo.cardType, cardInfo.cardSize / (1024.0 * 1024.0));
-
-    // Phase 3: Begin format operation (25-90%)
-    updateSDFormatProgress(25, "Starting format operation...");
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Update progress during format
-    updateSDFormatProgress(40, "Removing files and directories...");
-    vTaskDelay(pdMS_TO_TICKS(300));
-
-    updateSDFormatProgress(60, "Cleaning file system...");
-    vTaskDelay(pdMS_TO_TICKS(200));
-
-    updateSDFormatProgress(75, "Finalizing format...");
-
-    // Perform the actual format operation
-    ESP_LOGI(TAG, "SD Format Task: Calling Hardware::SD::format()");
-    formatSuccess = Hardware::SD::format();
-
-    if (formatSuccess) {
-        ESP_LOGI(TAG, "SD Format Task: Format completed successfully");
-        updateSDFormatProgress(90, "Format completed successfully");
-        vTaskDelay(pdMS_TO_TICKS(500));
-
-        // Phase 4: Post-format verification (90-100%)
-        updateSDFormatProgress(95, "Verifying format...");
-        vTaskDelay(pdMS_TO_TICKS(300));
-
-        // Check if card is still accessible after format
-        if (Hardware::SD::isMounted()) {
-            completeSDFormat(true, "SD card formatted successfully!");
-        } else {
-            ESP_LOGW(TAG, "SD Format Task: Format completed but card not accessible");
-            completeSDFormat(true, "Format completed (remount required)");
-        }
-    } else {
-        ESP_LOGE(TAG, "SD Format Task: Format operation failed");
-        completeSDFormat(false, "Format operation failed");
-    }
-
-    ESP_LOGI(TAG, "SD Format Task: Task completed, deleting task");
-    vTaskDelete(NULL);
-}
-
-// PERFORMANCE: Initialize message handler mappings - single O(1) lookup
-static void initializeMessageHandlers() {
-    messageHandlers = {
-        {MSG_UPDATE_FPS_DISPLAY, handleFpsDisplay},
-        {MSG_UPDATE_BUILD_TIME_DISPLAY, handleBuildTimeDisplay},
-        {MSG_UPDATE_MASTER_VOLUME, handleMasterVolume},
-        {MSG_UPDATE_SINGLE_VOLUME, handleSingleVolume},
-        {MSG_UPDATE_BALANCE_VOLUME, handleBalanceVolume},
-        {MSG_UPDATE_MASTER_DEVICE, handleMasterDevice},
-
-        // Complex message handlers
-        {MSG_UPDATE_SINGLE_DEVICE, handleSingleDevice},
-        {MSG_UPDATE_BALANCE_DEVICES, handleBalanceDevices},
-        {MSG_SCREEN_CHANGE, handleScreenChange},
-        {MSG_REQUEST_DATA, handleRequestData},
-        {MSG_SHOW_STATE_OVERVIEW, handleShowStateOverview},
-        {MSG_UPDATE_STATE_OVERVIEW, handleUpdateStateOverview},
-        {MSG_HIDE_STATE_OVERVIEW, handleHideStateOverview},
-        {MSG_FORMAT_SD_REQUEST, handleFormatSDRequest},
-        {MSG_FORMAT_SD_CONFIRM, handleFormatSDConfirm},
-        {MSG_FORMAT_SD_PROGRESS, handleFormatSDProgress},
-        {MSG_FORMAT_SD_COMPLETE, handleFormatSDComplete},
-    };
-}
 
 // Queue handle
 QueueHandle_t lvglMessageQueue = NULL;
@@ -694,8 +53,8 @@ QueueHandle_t lvglMessageQueue = NULL;
 bool init(void) {
     ESP_LOGI(TAG, "Initializing LVGL Message Handler");
 
-    // PERFORMANCE: Initialize message handler mappings
-    initializeMessageHandlers();
+    // Initialize the message handler registry
+    UI::MessageHandlerRegistry::getInstance().initializeAllHandlers();
 
     // Create message queue
     lvglMessageQueue =
@@ -801,11 +160,8 @@ void processMessageQueue(lv_timer_t *timer) {
            xQueueReceive(lvglMessageQueue, &message, 0) == pdTRUE) {
         messagesProcessed++;
 
-        // PERFORMANCE: Single O(1) hash map lookup - no more double lookups!
-        auto handler = messageHandlers.find(message.type);
-        if (handler != messageHandlers.end()) {
-            handler->second(&message);
-        } else {
+        // Use the registry to dispatch messages
+        if (!UI::MessageHandlerRegistry::getInstance().dispatch(&message)) {
             ESP_LOGD(TAG, "Unhandled message type: %d", message.type);
         }
     }
@@ -841,7 +197,7 @@ void processMessageQueue(lv_timer_t *timer) {
             ESP_LOGW(TAG, "Purged %d messages. Distribution:", totalPurged);
             for (int i = 0; i < 32; i++) {
                 if (messageTypeCounts[i] > 0) {
-                    const char *msgTypeName = getMessageTypeName(i);
+                    const char *msgTypeName = UI::MessageHandlerRegistry::getMessageTypeName(i);
                     ESP_LOGW(TAG, "  Type %d (%s): %d messages (%.1f%%)",
                              i, msgTypeName, messageTypeCounts[i],
                              (messageTypeCounts[i] * 100.0f) / totalPurged);
@@ -954,27 +310,22 @@ bool updateBalanceDevices(const char *device1_name, const char *device2_name) {
     return sendMessage(&message);
 }
 
-// PERFORMANCE: Tab volume update function pointers for O(1) lookup
-using TabVolumeUpdater = bool (*)(int);
-
-static std::unordered_map<uint32_t, TabVolumeUpdater> tabVolumeUpdaters = {
-    {0, updateMasterVolume},  // Master tab
-    {1, updateSingleVolume},  // Single tab
-    {2, updateBalanceVolume}  // Balance tab
-};
-
 // Convenience function to update volume for the currently active tab
 bool updateCurrentTabVolume(int volume) {
     // Get the currently active tab from the UI
     if (ui_tabsModeSwitch) {
         uint32_t activeTab = lv_tabview_get_tab_active(ui_tabsModeSwitch);
-
-        auto tabUpdater = tabVolumeUpdaters.find(activeTab);
-        if (tabUpdater != tabVolumeUpdaters.end()) {
-            return tabUpdater->second(volume);
-        } else {
-            ESP_LOGW(TAG, "Unknown active tab: %d, defaulting to Master volume", activeTab);
-            return updateMasterVolume(volume);  // Default to Master tab
+        
+        switch (activeTab) {
+            case 0:
+                return updateMasterVolume(volume);
+            case 1:
+                return updateSingleVolume(volume);
+            case 2:
+                return updateBalanceVolume(volume);
+            default:
+                ESP_LOGW(TAG, "Unknown active tab: %d, defaulting to Master volume", activeTab);
+                return updateMasterVolume(volume);
         }
     } else {
         ESP_LOGW(TAG, "Tab view not available, defaulting to Master volume");
@@ -1006,7 +357,7 @@ bool updateStateOverview(void) {
 
     message.data.state_overview.wifi_rssi = 0;  // No WiFi in network-free mode
 
-    strncpy(message.data.state_overview.ip_address, "N/A (Network-Free)",
+    strncpy(message.data.state_overview.ip_address, "N/A",
             sizeof(message.data.state_overview.ip_address) - 1);
     message.data.state_overview.ip_address[sizeof(message.data.state_overview.ip_address) - 1] = '\0';
 

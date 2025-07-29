@@ -1,14 +1,15 @@
 #pragma once
 
 #include "Message.h"
+#include "MessageQueue.h"
 #include "UiEventHandlers.h"
 #include <Arduino.h>
 #include <BinaryProtocol.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>  // Added for SemaphoreHandle_t
+#include <memory>
 
 namespace Messaging {
 static uint8_t testPayload[] = {
@@ -59,6 +60,11 @@ static uint8_t testPayload[] = {
  * objects. Messages are converted to JSON and queued for efficient Core 1
  * transmission. The queuing stage is completely invisible to application code.
  *
+ * MESSAGE SIZE LIMITS:
+ * - Maximum message size: 16KB (16,384 bytes) to match server limit
+ * - Asset data: Up to 16KB base64 encoded
+ * - Binary protocol overhead: ~1KB for framing and escaping
+ *
  * Usage Examples:
  *   // Method 1: Direct SerialEngine call
  *   auto msg = Message::createStatusRequest("device123");
@@ -80,19 +86,17 @@ class SerialEngine {
 
     // Serial configuration
     static const int SERIAL_BAUD_RATE = 115200;
-    static const size_t RX_BUFFER_SIZE = 4096;
+    static const size_t RX_BUFFER_SIZE = 16384;  // 16KB to match server message limit
 
     // Task configuration
     TaskHandle_t rxtxTaskHandle = nullptr;
     bool running = false;
 
     // Frame buffer for encoding - shared across all send operations
-    uint8_t frameBuffer[4096];
+    uint8_t frameBuffer[16384 + 1024];  // 16KB payload + overhead for framing/escaping
 
-    // Inter-core message queue for stringified JSON messages
-    QueueHandle_t txMessageQueue = nullptr;
-    static const int TX_QUEUE_SIZE = 20;
-    static const int MAX_JSON_MESSAGE_SIZE = 2048;
+    // Modern message queue using FreeRTOS MessageBuffer
+    std::unique_ptr<MessageQueue> txMessageQueue;
 
    public:
     // Binary protocol for framing
@@ -199,7 +203,7 @@ class SerialEngine {
         // Start consolidated RXTX Task
         BaseType_t rxtxResult = xTaskCreatePinnedToCore(
             rxtxTaskWrapper, "SerialRxTx",
-            16384 * 2,  // 16*2=32KB for RX/TX processing (increased from 12KB)
+            32768,  // 32KB stack for handling 16KB messages
             this,
             5,  // Priority
             &rxtxTaskHandle,
@@ -278,8 +282,7 @@ class SerialEngine {
 
         // Cleanup TX message queue
         if (txMessageQueue) {
-            vQueueDelete(txMessageQueue);
-            txMessageQueue = nullptr;
+            txMessageQueue.reset();  // Smart pointer automatically cleans up
             ESP_LOGI("SerialEngine", "TX message queue cleaned up");
         }
 
@@ -289,13 +292,14 @@ class SerialEngine {
    private:
     // Initialize TX message queue for inter-core communication
     bool initTxMessageQueue() {
-        if (txMessageQueue == nullptr) {
-            txMessageQueue = xQueueCreate(TX_QUEUE_SIZE, MAX_JSON_MESSAGE_SIZE);
-            if (txMessageQueue == nullptr) {
+        if (!txMessageQueue) {
+            txMessageQueue = std::make_unique<MessageQueue>();
+            if (!txMessageQueue->isValid()) {
                 ESP_LOGE("SerialEngine", "Failed to create TX message queue");
+                txMessageQueue.reset();
                 return false;
             }
-            ESP_LOGI("SerialEngine", "TX message queue initialized");
+            ESP_LOGI("SerialEngine", "TX message queue initialized with efficient memory usage");
         }
         return true;
     }
@@ -307,27 +311,18 @@ class SerialEngine {
             return;
         }
 
-        if (json.length() >= MAX_JSON_MESSAGE_SIZE) {
-            ESP_LOGW("SerialEngine", "Message too large for queue: %d bytes",
-                     json.length());
-            stats.queueOverflows++;
-            return;
-        }
-
-        // Create a fixed-size buffer for the queue
-        char queueBuffer[MAX_JSON_MESSAGE_SIZE];
-        strncpy(queueBuffer, json.c_str(), MAX_JSON_MESSAGE_SIZE - 1);
-        queueBuffer[MAX_JSON_MESSAGE_SIZE - 1] = '\0';
-
-        BaseType_t result =
-            xQueueSend(txMessageQueue, queueBuffer, 0);  // Non-blocking
-        if (result == pdTRUE) {
+        // Convert Arduino String to std::string for the queue
+        std::string jsonStr(json.c_str());
+        
+        // Try to send with non-blocking (0ms timeout)
+        if (txMessageQueue->send(jsonStr, 0)) {
             stats.messagesQueued++;
             ESP_LOGD("SerialEngine", "Queued JSON message for Core 1 TX: %d bytes",
                      json.length());
         } else {
             stats.queueOverflows++;
-            ESP_LOGW("SerialEngine", "TX queue full - message dropped");
+            ESP_LOGW("SerialEngine", "TX queue full - message dropped. Free space: %zu bytes",
+                     txMessageQueue->getFreeSpace());
         }
     }
 
@@ -383,13 +378,13 @@ class SerialEngine {
         }
 
         bool processedMessages = false;
-        char queueBuffer[MAX_JSON_MESSAGE_SIZE];
 
-        while (xQueueReceive(txMessageQueue, queueBuffer, 0) == pdTRUE) {
+        // Process all available messages with non-blocking receive
+        while (auto message = txMessageQueue->receive(16384, 0)) {
             processedMessages = true;
-            queueBuffer[MAX_JSON_MESSAGE_SIZE - 1] = '\0';  // Ensure null termination
-
-            String json(queueBuffer);
+            
+            // Convert std::string back to Arduino String for sendJsonDirect
+            String json(message->c_str());
             ESP_LOGD("SerialEngine", "Processing queued message: %d bytes",
                      json.length());
 
@@ -406,7 +401,7 @@ class SerialEngine {
 
     // Consolidated RXTX task - handles both receiving and transmitting
     void rxtxTask() {
-        uint8_t data[256];
+        uint8_t data[4096];  // Increased to read larger chunks
 
         ESP_LOGI("SerialEngine",
                  "=== RXTX TASK STARTED ON CORE %d ===", xPortGetCoreID());
