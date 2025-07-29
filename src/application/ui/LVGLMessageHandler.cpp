@@ -876,6 +876,21 @@ bool changeScreen(void *screen, int anim_type, int time, int delay) {
 
 // Tab-specific volume update functions
 bool updateMasterVolume(int volume) {
+    // Check if we're already on the LVGL core (Core 0)
+    if (xPortGetCoreID() == LVGL_TASK_CORE) {
+        ESP_LOGW(TAG, "updateMasterVolume called on LVGL core - handling directly without queue");
+        
+        // Create message for direct handling
+        LVGLMessage_t message;
+        message.type = MSG_UPDATE_MASTER_VOLUME;
+        message.data.master_volume.volume = volume;
+        
+        // Call handler directly
+        handleMasterVolume(&message);
+        return true;
+    }
+    
+    // Not on LVGL core, send via queue as normal
     LVGLMessage_t message;
     message.type = MSG_UPDATE_MASTER_VOLUME;
     message.data.master_volume.volume = volume;
@@ -883,6 +898,21 @@ bool updateMasterVolume(int volume) {
 }
 
 bool updateSingleVolume(int volume) {
+    // Check if we're already on the LVGL core (Core 0)
+    if (xPortGetCoreID() == LVGL_TASK_CORE) {
+        ESP_LOGW(TAG, "updateSingleVolume called on LVGL core - handling directly without queue");
+        
+        // Create message for direct handling
+        LVGLMessage_t message;
+        message.type = MSG_UPDATE_SINGLE_VOLUME;
+        message.data.single_volume.volume = volume;
+        
+        // Call handler directly
+        handleSingleVolume(&message);
+        return true;
+    }
+    
+    // Not on LVGL core, send via queue as normal
     LVGLMessage_t message;
     message.type = MSG_UPDATE_SINGLE_VOLUME;
     message.data.single_volume.volume = volume;
@@ -890,6 +920,21 @@ bool updateSingleVolume(int volume) {
 }
 
 bool updateBalanceVolume(int volume) {
+    // Check if we're already on the LVGL core (Core 0)
+    if (xPortGetCoreID() == LVGL_TASK_CORE) {
+        ESP_LOGW(TAG, "updateBalanceVolume called on LVGL core - handling directly without queue");
+        
+        // Create message for direct handling
+        LVGLMessage_t message;
+        message.type = MSG_UPDATE_BALANCE_VOLUME;
+        message.data.balance_volume.volume = volume;
+        
+        // Call handler directly
+        handleBalanceVolume(&message);
+        return true;
+    }
+    
+    // Not on LVGL core, send via queue as normal
     LVGLMessage_t message;
     message.type = MSG_UPDATE_BALANCE_VOLUME;
     message.data.balance_volume.volume = volume;
