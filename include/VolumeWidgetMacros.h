@@ -30,10 +30,10 @@ static const char* VOLUME_WIDGET_TAG = "VolumeWidget";
 #if VOLUME_WIDGET_TYPE == VOLUME_WIDGET_TYPE_ARC
 
 // Arc-specific implementations
-#define VOLUME_WIDGET_CREATE(parent)                             \
-    ({                                                           \
+#define VOLUME_WIDGET_CREATE(parent)                                \
+    ({                                                              \
         ESP_LOGD(VOLUME_WIDGET_TAG, "CREATE: Creating arc widget"); \
-        lv_arc_create(parent);                                   \
+        lv_arc_create(parent);                                      \
     })
 
 #define VOLUME_WIDGET_SET_VALUE(widget, value)                                                               \
@@ -48,23 +48,24 @@ static const char* VOLUME_WIDGET_TAG = "VolumeWidget";
         }                                                                                                    \
     } while (0)
 
-#define VOLUME_WIDGET_GET_VALUE(widget) \
-    ((widget) ? ({                                                                                                \
-        ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE: Reading arc value");                                              \
-        lv_arc_get_value(widget);                                                                                 \
-    }) : ({                                                                                                       \
-        ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE failed: NULL widget pointer");                                     \
-        0;                                                                                                        \
-    }))
-#define VOLUME_WIDGET_SET_RANGE(widget, min, max)                                              \
-    ({                                                                                              \
+#define VOLUME_WIDGET_GET_VALUE(widget)                                                   \
+    ((widget) ? ({                                                                        \
+        ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE: Reading arc value");                      \
+        lv_arc_get_value(widget);                                                         \
+    })                                                                                    \
+              : ({                                                                        \
+                    ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE failed: NULL widget pointer"); \
+                    0;                                                                    \
+                }))
+#define VOLUME_WIDGET_SET_RANGE(widget, min, max)                                                 \
+    ({                                                                                            \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_RANGE: Arc range set to %d-%d", (int)(min), (int)(max)); \
-        lv_arc_set_range(widget, min, max);                                                         \
+        lv_arc_set_range(widget, min, max);                                                       \
     })
-#define VOLUME_WIDGET_SET_MODE(widget, mode)                                   \
-    ({                                                                          \
+#define VOLUME_WIDGET_SET_MODE(widget, mode)                                      \
+    ({                                                                            \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_MODE: Arc mode set to %d", (int)(mode)); \
-        lv_arc_set_mode(widget, mode);                                          \
+        lv_arc_set_mode(widget, mode);                                            \
     })
 
 // Arc-specific mode constants
@@ -73,25 +74,25 @@ static const char* VOLUME_WIDGET_TAG = "VolumeWidget";
 #define VOLUME_WIDGET_MODE_SYMMETRICAL LV_ARC_MODE_SYMMETRICAL
 
 // Style setters for arc
-#define VOLUME_WIDGET_SET_WIDTH(widget, width)                                    \
-    ({                                                                             \
+#define VOLUME_WIDGET_SET_WIDTH(widget, width)                                       \
+    ({                                                                               \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_WIDTH: Arc width set to %d", (int)(width)); \
-        lv_obj_set_style_arc_width(widget, width, LV_PART_MAIN | LV_STATE_DEFAULT); \
+        lv_obj_set_style_arc_width(widget, width, LV_PART_MAIN | LV_STATE_DEFAULT);  \
     })
 
-#define VOLUME_WIDGET_SET_INDICATOR_WIDTH(widget, width)                                              \
-    ({                                                                                                 \
+#define VOLUME_WIDGET_SET_INDICATOR_WIDTH(widget, width)                                                 \
+    ({                                                                                                   \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_INDICATOR_WIDTH: Arc indicator width set to %d", (int)(width)); \
-        lv_obj_set_style_arc_width(widget, width, LV_PART_INDICATOR | LV_STATE_DEFAULT);               \
+        lv_obj_set_style_arc_width(widget, width, LV_PART_INDICATOR | LV_STATE_DEFAULT);                 \
     })
 
 #elif VOLUME_WIDGET_TYPE == VOLUME_WIDGET_TYPE_SLIDER
 
 // Slider-specific implementations
-#define VOLUME_WIDGET_CREATE(parent)                                \
-    ({                                                              \
+#define VOLUME_WIDGET_CREATE(parent)                                   \
+    ({                                                                 \
         ESP_LOGD(VOLUME_WIDGET_TAG, "CREATE: Creating slider widget"); \
-        lv_slider_create(parent);                                   \
+        lv_slider_create(parent);                                      \
     })
 
 #define VOLUME_WIDGET_SET_VALUE(widget, value)                                                               \
@@ -102,27 +103,28 @@ static const char* VOLUME_WIDGET_TAG = "VolumeWidget";
             ESP_LOGD(VOLUME_WIDGET_TAG, "SET_VALUE failed: Invalid value %d (must be 0-100)", (int)(value)); \
         } else {                                                                                             \
             lv_slider_set_value(widget, value, LV_ANIM_OFF);                                                 \
-            ESP_LOGD(VOLUME_WIDGET_TAG, "Slider value set to %d", (int)(value));                             \
+            ESP_LOGW(VOLUME_WIDGET_TAG, "Slider value set to %d", (int)(value));                             \
         }                                                                                                    \
     } while (0)
 
-#define VOLUME_WIDGET_GET_VALUE(widget) \
-    ((widget) ? ({                                                                                                \
-        ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE: Reading slider value");                                           \
-        lv_slider_get_value(widget);                                                                              \
-    }) : ({                                                                                                       \
-        ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE failed: NULL widget pointer");                                     \
-        0;                                                                                                        \
-    }))
-#define VOLUME_WIDGET_SET_RANGE(widget, min, max)                                                 \
-    ({                                                                                                 \
+#define VOLUME_WIDGET_GET_VALUE(widget)                                                   \
+    ((widget) ? ({                                                                        \
+        ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE: Reading slider value");                   \
+        lv_slider_get_value(widget);                                                      \
+    })                                                                                    \
+              : ({                                                                        \
+                    ESP_LOGD(VOLUME_WIDGET_TAG, "GET_VALUE failed: NULL widget pointer"); \
+                    0;                                                                    \
+                }))
+#define VOLUME_WIDGET_SET_RANGE(widget, min, max)                                                    \
+    ({                                                                                               \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_RANGE: Slider range set to %d-%d", (int)(min), (int)(max)); \
-        lv_slider_set_range(widget, min, max);                                                         \
+        lv_slider_set_range(widget, min, max);                                                       \
     })
-#define VOLUME_WIDGET_SET_MODE(widget, mode)                                      \
-    ({                                                                             \
+#define VOLUME_WIDGET_SET_MODE(widget, mode)                                         \
+    ({                                                                               \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_MODE: Slider mode set to %d", (int)(mode)); \
-        lv_slider_set_mode(widget, mode);                                          \
+        lv_slider_set_mode(widget, mode);                                            \
     })
 
 // Slider-specific mode constants
@@ -131,14 +133,16 @@ static const char* VOLUME_WIDGET_TAG = "VolumeWidget";
 #define VOLUME_WIDGET_MODE_SYMMETRICAL LV_SLIDER_MODE_SYMMETRICAL
 
 // Style setters for slider (map to appropriate slider styles)
-#define VOLUME_WIDGET_SET_WIDTH(widget, width)                                        \
-    ({                                                                                 \
+#define VOLUME_WIDGET_SET_WIDTH(widget, width)                                           \
+    ({                                                                                   \
         ESP_LOGD(VOLUME_WIDGET_TAG, "SET_WIDTH: Slider height set to %d", (int)(width)); \
-        lv_obj_set_height(widget, width);                                             \
+        lv_obj_set_height(widget, width);                                                \
     })  // For horizontal slider, height controls thickness
 
-#define VOLUME_WIDGET_SET_INDICATOR_WIDTH(widget, width) \
-    do { ESP_LOGD(VOLUME_WIDGET_TAG, "SET_INDICATOR_WIDTH: Not applicable for sliders"); } while(0)
+#define VOLUME_WIDGET_SET_INDICATOR_WIDTH(widget, width)                                \
+    do {                                                                                \
+        ESP_LOGD(VOLUME_WIDGET_TAG, "SET_INDICATOR_WIDTH: Not applicable for sliders"); \
+    } while (0)
 // Sliders don't have separate indicator width
 
 #else

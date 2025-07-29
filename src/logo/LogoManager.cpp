@@ -201,14 +201,11 @@ void LogoManager::updateLogoCache() {
     while (file) {
         if (!file.isDirectory()) {
             String filename = file.name();
-            // Only cache PNG files
-            if (filename.endsWith(".png") || filename.endsWith(".PNG")) {
-                LogoEntry entry;
-                entry.filename = filename;
-                entry.lowerFilename = filename;
-                entry.lowerFilename.toLowerCase();
-                logoCache.push_back(entry);
-            }
+            LogoEntry entry;
+            entry.filename = filename;
+            entry.lowerFilename = filename;
+            entry.lowerFilename.toLowerCase();
+            logoCache.push_back(entry);
         }
         file = root.openNextFile();
     }
@@ -235,7 +232,9 @@ String LogoManager::findMatchingLogo(const String &processName) {
         lowerProcessName + "_logo\\.png$",       // chrome_logo.png
         lowerProcessName + "_icon\\.png$",       // chrome_icon.png
         "logo_" + lowerProcessName + "\\.png$",  // logo_chrome.png
-        "icon_" + lowerProcessName + "\\.png$"   // icon_chrome.png
+        "icon_" + lowerProcessName + "\\.png$",  // icon_chrome.png
+        lowerProcessName,
+        processName,
     };
 
     for (const auto &pattern : exactPatterns) {
@@ -319,7 +318,6 @@ String LogoManager::findMatchingLogo(const String &processName) {
     ESP_LOGD(TAG, "No logo match found for: %s", processName.c_str());
     return "";
 }
-
 
 re_t LogoManager::getCompiledRegex(const String &pattern) {
     // Check cache first

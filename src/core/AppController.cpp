@@ -105,8 +105,9 @@ bool init(void) {
                 ESP_LOGI(TAG, "LVGL SD filesystem initialized successfully");
             }
         } else {
-            ESP_LOGW(TAG, "SD card not mounted - SD file access from UI will be "
-                          "unavailable");
+            ESP_LOGW(TAG,
+                     "SD card not mounted - SD file access from UI will be "
+                     "unavailable");
         }
     });
 
@@ -290,8 +291,9 @@ void setupUiComponents(void) {
     // All audio dropdowns at once
     SETUP_ALL_AUDIO_DROPDOWNS(Events::UI::audioDeviceDropdownChangedHandler);
 
-    // All volume sliders with both visual and change handlers
-    SETUP_ALL_VOLUME_SLIDERS(Events::UI::volumeArcVisualHandler,
+    //// All volume sliders with both visual and change handlers
+    // New protocol is okay with 'spamming' while dragging the sliders
+    SETUP_ALL_VOLUME_SLIDERS(Events::UI::volumeArcChangedHandler,
                              Events::UI::volumeArcChangedHandler);
 
     // Complete tab system setup (tabview + all individual buttons)
