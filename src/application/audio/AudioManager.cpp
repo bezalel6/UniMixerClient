@@ -1,6 +1,6 @@
 #include "AudioManager.h"
 #include "../../hardware/DeviceManager.h"
-#include "../../logo/SimpleLogoManager.h"
+#include "../../logo/LogoManager.h"
 #include "../../messaging/Message.h"
 #include "ManagerMacros.h"
 #include "ui/ui.h"
@@ -65,20 +65,9 @@ bool AudioManager::init() {
 
           // Auto-request logo for this process if we don't have it
           if (!level.processName.isEmpty() && 
-              !SimpleLogoManager::getInstance().hasLogo(level.processName)) {
+              !LogoManager::getInstance().hasLogo(level.processName)) {
             ESP_LOGD(TAG, "Auto-requesting logo for session: %s", level.processName.c_str());
-            SimpleLogoManager::getInstance().requestLogo(
-                level.processName,
-                [processName = level.processName](bool success, uint8_t* data, size_t size, const String& error) {
-                  if (success) {
-                    ESP_LOGI("AudioManager", "Auto-received logo for session: %s (%zu bytes)", 
-                             processName.c_str(), size);
-                    if (data) free(data);
-                  } else {
-                    ESP_LOGD("AudioManager", "Auto-request failed for session: %s - %s", 
-                             processName.c_str(), error.c_str());
-                  }
-                });
+            LogoManager::getInstance().requestLogo(level.processName);
           }
         }
 
@@ -991,27 +980,15 @@ void AudioManager::requestLogosForNewProcesses() {
     }
     
     // Check if logo already exists
-    if (SimpleLogoManager::getInstance().hasLogo(processName)) {
+    if (LogoManager::getInstance().hasLogo(processName)) {
       continue; // Already have logo
     }
     
     // Request logo for this process
     ESP_LOGI(TAG, "Auto-requesting logo for new process: %s", processName.c_str());
     
-    bool requested = SimpleLogoManager::getInstance().requestLogo(
-        processName,
-        [processName](bool success, uint8_t* data, size_t size, const String& error) {
-          if (success) {
-            ESP_LOGI("AudioManager", "Auto-received logo for process: %s (%zu bytes)", 
-                     processName.c_str(), size);
-            // Logo data is automatically saved by the brutal system
-            // Free the data pointer since we don't need it here
-            if (data) free(data);
-          } else {
-            ESP_LOGW("AudioManager", "Auto-request failed for process: %s - %s", 
-                     processName.c_str(), error.c_str());
-          }
-        });
+    LogoManager::getInstance().requestLogo(processName);
+    bool requested = true; // Always succeeds now
     
     // Update debouncing timestamp regardless of success
     lastLogoCheckTime[processName] = currentTime;
@@ -1029,26 +1006,16 @@ void AudioManager::checkSingleProcessLogo(const char *processName) {
   }
 
   // Check if logo already exists locally
-  if (SimpleLogoManager::getInstance().hasLogo(processName)) {
+  if (LogoManager::getInstance().hasLogo(processName)) {
     ESP_LOGD(TAG, "Logo already exists for process: %s", processName);
     return;
   }
 
   ESP_LOGI(TAG, "Requesting logo for process: %s", processName);
 
-  // Request logo using BRUTAL system
-  bool requested = SimpleLogoManager::getInstance().requestLogo(
-      processName,
-      [processName](bool success, uint8_t* data, size_t size, const String& error) {
-        if (success) {
-          ESP_LOGI(TAG, "Successfully received logo for process: %s (%zu bytes)", processName, size);
-          // Logo data is automatically saved by the brutal system
-          // Free the data pointer since we don't need it here
-          if (data) free(data);
-        } else {
-          ESP_LOGW(TAG, "Failed to receive logo for process: %s - %s", processName, error.c_str());
-        }
-      });
+  // Request logo
+  LogoManager::getInstance().requestLogo(processName);
+  bool requested = true; // Always succeeds now
 
   LOG_DEBUG_IF(requested, TAG, "Logo request submitted for process: %s", processName);
   LOG_WARN_IF(!requested, TAG, "Failed to submit logo request for process: %s", processName);

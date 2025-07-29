@@ -2,7 +2,7 @@
 #include "../application/audio/AudioUI.h"
 #include "../application/ui/LVGLMessageHandler.h"
 #include "../display/DisplayManager.h"
-#include "../logo/SimpleLogoManager.h"
+#include "../logo/LogoManager.h"
 #include "../messaging/SimplifiedSerialEngine.h"
 #include <esp_log.h>
 #include <ui/ui.h>
@@ -310,7 +310,7 @@ void audioTask(void *parameter) {
         // }
 
         // Update logo manager (with safety check)
-        SimpleLogoManager::getInstance().update();
+        // LogoManager no longer needs periodic updates
 
         // Sleep for 1 second
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1000));
