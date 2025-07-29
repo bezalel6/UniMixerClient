@@ -2,6 +2,7 @@
 #include "../application/audio/AudioManager.h"
 #include "../application/audio/AudioUI.h"
 #include "../application/ui/LVGLMessageHandler.h"
+#include "../application/debug/LogoDebugView.h"
 #include "../messaging/Message.h"
 #include "../messaging/SimplifiedSerialEngine.h"
 #include "VolumeWidgetMacros.h"
@@ -239,6 +240,17 @@ void openSettings(lv_event_t *e) {
 
   // Show state overview overlay
   Application::LVGLMessageHandler::showStateOverview();
+}
+
+// Logo Debug View handler
+void openLogoDebug(lv_event_t *e) {
+  ON_EVENT(LV_EVENT_CLICKED);
+
+  UI_LOG("UIEventHandlers",
+         "Logo Debug button clicked - showing logo debug view");
+
+  // Show logo debug view
+  Application::Debug::LogoDebugView::getInstance().show();
 }
 
 // Cleanup function - simplified since messaging queue is handled by

@@ -51,6 +51,9 @@ const char *getTabName(TabState tab);
 // State overview handler
 void openSettings(lv_event_t *e);
 
+// Logo debug handler
+void openLogoDebug(lv_event_t *e);
+
 // File Explorer handlers
 
 // Volume change processing for Audio task (avoids LVGL task stack overflow)

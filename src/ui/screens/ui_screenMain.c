@@ -38,6 +38,8 @@ lv_obj_t * ui_btnGOTOSettings = NULL;
 lv_obj_t * ui_btnLbl2 = NULL;
 lv_obj_t * ui_btnRequestStatus = NULL;
 lv_obj_t * ui_btnLbl3 = NULL;
+lv_obj_t * ui_btnLogoDebug = NULL;
+lv_obj_t * ui_btnLbl4 = NULL;
 lv_obj_t * ui_lblFPS = NULL;
 lv_obj_t * ui_img = NULL;
 // event funtions
@@ -320,6 +322,19 @@ void ui_screenMain_screen_init(void)
     lv_obj_set_align(ui_btnLbl3, LV_ALIGN_CENTER);
     lv_label_set_text(ui_btnLbl3, "Request Status");
 
+    ui_btnLogoDebug = lv_button_create(ui_actionBtns);
+    lv_obj_set_width(ui_btnLogoDebug, lv_pct(100));
+    lv_obj_set_height(ui_btnLogoDebug, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnLogoDebug, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_btnLogoDebug, LV_OBJ_FLAG_SCROLL_ON_FOCUS);     /// Flags
+    lv_obj_remove_flag(ui_btnLogoDebug, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_btnLbl4 = lv_label_create(ui_btnLogoDebug);
+    lv_obj_set_width(ui_btnLbl4, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_btnLbl4, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_btnLbl4, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_btnLbl4, "Logo Debug");
+
     ui_lblFPS = lv_label_create(ui_screenMain);
     lv_obj_set_width(ui_lblFPS, 100);
     lv_obj_set_height(ui_lblFPS, LV_SIZE_CONTENT);    /// 1
@@ -400,6 +415,8 @@ void ui_screenMain_screen_destroy(void)
     ui_btnLbl2 = NULL;
     ui_btnRequestStatus = NULL;
     ui_btnLbl3 = NULL;
+    ui_btnLogoDebug = NULL;
+    ui_btnLbl4 = NULL;
     ui_lblFPS = NULL;
     ui_img = NULL;
 

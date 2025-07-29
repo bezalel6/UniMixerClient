@@ -45,6 +45,8 @@ extern lv_obj_t * ui_btnGOTOSettings;
 extern lv_obj_t * ui_btnLbl2;
 extern lv_obj_t * ui_btnRequestStatus;
 extern lv_obj_t * ui_btnLbl3;
+extern lv_obj_t * ui_btnLogoDebug;
+extern lv_obj_t * ui_btnLbl4;
 extern lv_obj_t * ui_lblFPS;
 extern lv_obj_t * ui_img;
 // CUSTOM VARIABLES
