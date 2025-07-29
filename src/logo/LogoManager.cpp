@@ -84,35 +84,33 @@ void LogoManager::requestLogo(const String &processName) {
         return;
     }
 
-    String coreProcess = extractProcessCore(processName);
-    ESP_LOGI(TAG, "Requesting logo for: %s (extracted: %s)",
-             processName.c_str(), coreProcess.c_str());
+    ESP_LOGI(TAG, "Requesting logo for: %s", processName.c_str());
 
     // Check if we already have the logo locally
-    String matchedLogo = findMatchingLogo(coreProcess);
+    String matchedLogo = findMatchingLogo(processName);
     if (!matchedLogo.isEmpty()) {
         ESP_LOGI(TAG, "Logo already exists locally: %s", matchedLogo.c_str());
         return;
     }
 
     // Check if we've recently requested this logo
-    auto it = requestTimestamps.find(coreProcess);
+    auto it = requestTimestamps.find(processName);
     if (it != requestTimestamps.end()) {
         unsigned long timeSinceRequest = millis() - it->second;
         if (timeSinceRequest < RETRY_ASSET_REQUEST_MS) {
             ESP_LOGD(TAG, "Already requested %s recently (%lu ms ago), skipping",
-                     coreProcess.c_str(), timeSinceRequest);
+                     processName.c_str(), timeSinceRequest);
             return;
         }
     }
 
     // Update timestamp and send request
-    requestTimestamps[coreProcess] = millis();
-    
-    ESP_LOGI(TAG, "Sending asset request for: %s", coreProcess.c_str());
-    auto msg = Messaging::Message::createAssetRequest(coreProcess.c_str(), "");
+    requestTimestamps[processName] = millis();
+
+    ESP_LOGI(TAG, "Sending asset request for: %s", processName.c_str());
+    auto msg = Messaging::Message::createAssetRequest(processName.c_str(), "");
     Messaging::sendMessage(msg);
-    
+
     requestsSubmitted++;
 }
 
@@ -120,14 +118,12 @@ bool LogoManager::hasLogo(const String &processName) {
     if (!initialized)
         return false;
 
-    String coreProcess = extractProcessCore(processName);
-    String matchedLogo = findMatchingLogo(coreProcess);
+    String matchedLogo = findMatchingLogo(processName);
     return !matchedLogo.isEmpty();
 }
 
 String LogoManager::getLVGLPath(const String &processName) {
-    String coreProcess = extractProcessCore(processName);
-    String matchedLogo = findMatchingLogo(coreProcess);
+    String matchedLogo = findMatchingLogo(processName);
 
     if (!matchedLogo.isEmpty()) {
         return "S:" + String(LOGOS_DIR) + "/" + matchedLogo;
@@ -184,7 +180,7 @@ void LogoManager::handleAssetResponse(const Messaging::Message &msg) {
             ESP_LOGE(TAG, "Failed to save logo: %s", writeResult.errorMessage);
         }
     } else {
-        ESP_LOGW(TAG, "Asset response failed for: %s - %s", 
+        ESP_LOGW(TAG, "Asset response failed for: %s - %s",
                  asset.processName,
                  strlen(asset.errorMessage) > 0 ? asset.errorMessage : "Unknown error");
     }
@@ -229,13 +225,17 @@ String LogoManager::findMatchingLogo(const String &processName) {
 
     ESP_LOGD(TAG, "Finding logo for: %s (cache has %d entries)", processName.c_str(), logoCache.size());
 
+    // Convert process name to lowercase for case-insensitive matching
+    String lowerProcessName = processName;
+    lowerProcessName.toLowerCase();
+
     // Strategy 1: Exact match with common suffixes
     std::vector<String> exactPatterns = {
-        processName + "\\.png$",            // chrome.png
-        processName + "_logo\\.png$",       // chrome_logo.png
-        processName + "_icon\\.png$",       // chrome_icon.png
-        "logo_" + processName + "\\.png$",  // logo_chrome.png
-        "icon_" + processName + "\\.png$"   // icon_chrome.png
+        lowerProcessName + "\\.png$",            // chrome.png
+        lowerProcessName + "_logo\\.png$",       // chrome_logo.png
+        lowerProcessName + "_icon\\.png$",       // chrome_icon.png
+        "logo_" + lowerProcessName + "\\.png$",  // logo_chrome.png
+        "icon_" + lowerProcessName + "\\.png$"   // icon_chrome.png
     };
 
     for (const auto &pattern : exactPatterns) {
@@ -295,10 +295,10 @@ String LogoManager::findMatchingLogo(const String &processName) {
 
     // Try common variations
     std::vector<String> variations = {
-        processName + "32",   // chrome32
-        processName + "64",   // chrome64
-        processName + "x86",  // chromex86
-        processName + "x64"   // chromex64
+        lowerProcessName + "32",   // chrome32
+        lowerProcessName + "64",   // chrome64
+        lowerProcessName + "x86",  // chromex86
+        lowerProcessName + "x64"   // chromex64
     };
 
     for (const auto &variant : variations) {
@@ -320,63 +320,6 @@ String LogoManager::findMatchingLogo(const String &processName) {
     return "";
 }
 
-String LogoManager::extractProcessCore(const String &processName) {
-    String core = processName;
-
-    // Remove common executable extensions (case-insensitive)
-    const char *extensions[] = {
-        ".exe", ".EXE", ".app", ".APP", ".bat", ".BAT",
-        ".cmd", ".CMD", ".com", ".COM", ".scr", ".SCR",
-        ".msi", ".MSI", ".dll", ".DLL"};
-
-    String lowerCore = core;
-    lowerCore.toLowerCase();
-
-    for (const char *ext : extensions) {
-        String extLower = String(ext);
-        extLower.toLowerCase();
-        if (lowerCore.endsWith(extLower)) {
-            core = core.substring(0, core.length() - strlen(ext));
-            break;
-        }
-    }
-
-    // Remove version numbers at the end (e.g., chrome86, firefox91)
-    String cleaned = "";
-    bool foundNonDigit = false;
-    for (int i = core.length() - 1; i >= 0; i--) {
-        if (!isdigit(core[i])) {
-            foundNonDigit = true;
-        }
-        if (foundNonDigit || i == 0) {
-            cleaned = core.substring(0, i + 1);
-            break;
-        }
-    }
-
-    if (!cleaned.isEmpty()) {
-        core = cleaned;
-    }
-
-    // Convert to lowercase for matching
-    core.toLowerCase();
-
-    // Keep alphanumeric, underscore, hyphen, and dots (for domains)
-    cleaned = "";
-    for (size_t i = 0; i < core.length(); i++) {
-        char c = core[i];
-        if (isalnum(c) || c == '_' || c == '-' || c == '.') {
-            cleaned += c;
-        }
-    }
-
-    // Remove trailing dots or hyphens
-    while (cleaned.endsWith(".") || cleaned.endsWith("-") || cleaned.endsWith("_")) {
-        cleaned = cleaned.substring(0, cleaned.length() - 1);
-    }
-
-    return cleaned.isEmpty() ? "unknown" : cleaned;
-}
 
 re_t LogoManager::getCompiledRegex(const String &pattern) {
     // Check cache first
@@ -411,7 +354,7 @@ bool LogoManager::ensureLogosDirectory() {
 }
 
 size_t LogoManager::base64Decode(const char *encoded, uint8_t *decoded,
-                                       size_t maxDecodedSize) {
+                                 size_t maxDecodedSize) {
     static const char base64_chars[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

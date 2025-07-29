@@ -62,7 +62,6 @@ class LogoManager {
     // Helper methods
     void updateLogoCache();
     String findMatchingLogo(const String& processName);
-    String extractProcessCore(const String& processName);
     re_t getCompiledRegex(const String& pattern);
     void clearRegexCache();
     bool ensureLogosDirectory();
